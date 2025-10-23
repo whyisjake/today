@@ -189,6 +189,14 @@ struct AIChatView: View {
 struct MessageBubble: View {
     let message: ChatMessage
 
+    private func parseMarkdown(_ text: String) -> AttributedString {
+        do {
+            return try AttributedString(markdown: text, options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace))
+        } catch {
+            return AttributedString(text)
+        }
+    }
+
     var body: some View {
         HStack {
             if message.isUser {
@@ -196,11 +204,12 @@ struct MessageBubble: View {
             }
 
             VStack(alignment: message.isUser ? .trailing : .leading, spacing: 8) {
-                Text(message.content)
+                Text(parseMarkdown(message.content))
                     .padding(12)
                     .background(message.isUser ? Color.blue : Color.gray.opacity(0.2))
                     .foregroundStyle(message.isUser ? .white : .primary)
                     .cornerRadius(16)
+                    .textSelection(.enabled)
 
                 // Show recommended articles if available
                 if let articles = message.recommendedArticles, !articles.isEmpty {
