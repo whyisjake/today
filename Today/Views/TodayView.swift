@@ -185,18 +185,6 @@ struct ArticleRowView: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    if let feedTitle = article.feed?.title {
-                        Text(feedTitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Text(article.publishedDate, style: .relative)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-
                 Text(article.title)
                     .font(.headline)
                     .fontWeight(article.isRead ? .regular : .semibold)
@@ -209,6 +197,22 @@ struct ArticleRowView: View {
                 }
 
                 HStack {
+                    Text(article.publishedDate, style: .relative)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+
+                    if let feedTitle = article.feed?.title {
+                        Text("•")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 4)
+
+                        Text(feedTitle)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
                     if article.isRead {
                         Image(systemName: "envelope.open.fill")
                             .font(.caption2)

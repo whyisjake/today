@@ -19,6 +19,7 @@ class RSSParser: NSObject, XMLParserDelegate {
     private var currentAuthor = ""
     private var currentGuid = ""
     private var insideItem = false
+    private var feedTitleParsed = false
 
     private(set) var articles: [ParsedArticle] = []
     private(set) var feedTitle = ""
@@ -112,7 +113,9 @@ class RSSParser: NSObject, XMLParserDelegate {
             // Feed-level metadata
             switch currentElement {
             case "title":
-                feedTitle += trimmed
+                if !feedTitleParsed {
+                    feedTitle += trimmed
+                }
             case "description":
                 feedDescription += trimmed
             default:
@@ -141,6 +144,9 @@ class RSSParser: NSObject, XMLParserDelegate {
             )
 
             articles.append(article)
+        } else if elementName == "title" && !insideItem {
+            // Mark feed title as parsed when we finish the feed-level title element
+            feedTitleParsed = true
         }
     }
 
