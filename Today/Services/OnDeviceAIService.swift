@@ -20,8 +20,14 @@ class OnDeviceAIService {
         return true // Will implement proper check
     }
 
+    /// Newsletter item structure for returning structured data
+    struct NewsletterItemData {
+        let summary: String
+        let article: Article
+    }
+
     /// Generate a newsletter-style summary using on-device AI
-    func generateNewsletterSummary(articles: [Article]) async throws -> (String, [Article]?) {
+    func generateNewsletterSummary(articles: [Article]) async throws -> (String, [NewsletterItemData]) {
         guard !articles.isEmpty else {
             throw AIError.noArticles
         }
@@ -39,52 +45,52 @@ class OnDeviceAIService {
         var newsletter = "📰 **Today's Brief**\n\n"
         newsletter += "Here's what you need to know from your feeds today.\n\n"
 
-        var featuredArticles: [Article] = []
+        var newsletterItems: [NewsletterItemData] = []
         var itemNumber = 1
 
         // Process each article with on-device summarization
         for article in sortedArticles {
-            newsletter += "**\(itemNumber).** "
+            let itemPrefix = "**\(itemNumber).** "
 
             // Use NaturalLanguage to generate summary
-            if let summary = await generateSmartSummary(for: article) {
-                newsletter += summary
+            let summary: String
+            if let smartSummary = await generateSmartSummary(for: article, itemNumber: itemNumber) {
+                summary = itemPrefix + smartSummary
             } else {
                 // Fallback to article title
-                newsletter += "**\(article.title)**"
+                summary = itemPrefix + "**\(article.title)**"
             }
 
-            newsletter += "\n\n"
-            featuredArticles.append(article)
+            newsletterItems.append(NewsletterItemData(summary: summary, article: article))
             itemNumber += 1
         }
 
-        newsletter += "\n---\n\n"
-        newsletter += "That's it for today! Tap any article below to read more. ✌️"
+        newsletter += "That's it for today! ✌️"
 
-        return (newsletter, featuredArticles)
+        return (newsletter, newsletterItems)
     }
 
     /// Generate a smart summary for an article using Apple's NaturalLanguage
-    private func generateSmartSummary(for article: Article) async -> String? {
-        // Combine article text for analysis
-        var fullText = article.title
+    private func generateSmartSummary(for article: Article, itemNumber: Int) async -> String? {
+        // Get article content (NOT including title in the summary text)
+        var contentText = ""
 
         // Get the content, preferring content:encoded > content > description
-        if let contentEncoded = article.contentEncoded?.htmlToPlainText {
-            fullText = article.title + ". " + contentEncoded
-        } else if let content = article.content?.htmlToPlainText {
-            fullText = article.title + ". " + content
-        } else if let description = article.articleDescription?.htmlToPlainText {
-            fullText = article.title + ". " + description
+        if let contentEncoded = article.contentEncoded?.htmlToPlainText, !contentEncoded.isEmpty {
+            contentText = contentEncoded
+        } else if let content = article.content?.htmlToPlainText, !content.isEmpty {
+            contentText = content
+        } else if let description = article.articleDescription?.htmlToPlainText, !description.isEmpty {
+            contentText = description
         }
 
-        // Extract key themes and important sentences
-        let summary = extractKeyInformation(from: fullText, title: article.title)
+        // Extract key sentences from content (not title)
+        let summary = extractKeyInformation(from: contentText, title: article.title)
 
-        let category = article.feed?.category ?? "general"
-        let intro = getContextualIntro(for: category)
+        // Generate dynamic, content-aware intro
+        let intro = generateDynamicIntro(title: article.title, content: contentText, category: article.feed?.category ?? "general")
 
+        // Format: Intro + Title (bold) + em dash + summary
         return "\(intro) **\(article.title)** — \(summary)"
     }
 
@@ -112,15 +118,46 @@ class OnDeviceAIService {
             (sentence: sentence, score: scoreSentence(sentence, title: title, fullText: text))
         }
 
-        // Get top 2 most important sentences
-        let topSentences = scoredSentences
-            .sorted { $0.score > $1.score }
-            .prefix(2)
-            .map { $0.sentence }
+        // Get top sentences by importance, but respect a reasonable length
+        let topSentences = scoredSentences.sorted { $0.score > $1.score }
 
-        // Combine and format
-        let summary = topSentences.joined(separator: " ")
-        return String(summary.prefix(200)) + (summary.count > 200 ? "..." : "")
+        var summary = ""
+        var totalLength = 0
+        let maxLength = 250 // Slightly longer limit
+
+        for sentenceData in topSentences {
+            let sentence = sentenceData.sentence
+            // Add sentence if it doesn't make the summary too long
+            if totalLength + sentence.count <= maxLength {
+                if !summary.isEmpty {
+                    summary += " "
+                }
+                summary += sentence
+                totalLength = summary.count
+            } else if summary.isEmpty {
+                // If first sentence is too long, truncate at word boundary
+                let words = sentence.split(separator: " ")
+                var truncated = ""
+                for word in words {
+                    if truncated.count + word.count + 1 > maxLength - 3 {
+                        break
+                    }
+                    if !truncated.isEmpty {
+                        truncated += " "
+                    }
+                    truncated += word
+                }
+                summary = truncated + "..."
+                break
+            }
+
+            // Stop after we have at least 150 characters and 1-2 sentences
+            if summary.count >= 150 && summary.split(separator: ".").count >= 1 {
+                break
+            }
+        }
+
+        return summary.isEmpty ? String(text.prefix(150)) : summary
     }
 
     /// Score a sentence for importance using NaturalLanguage features
@@ -181,15 +218,144 @@ class OnDeviceAIService {
         return score / Double(max(wordCount, 1))
     }
 
-    private func getContextualIntro(for category: String) -> String {
-        let intros: [String: String] = [
-            "tech": "In tech news,",
-            "news": "Worth knowing:",
-            "work": "For your career,",
-            "social": "Trending now:",
-            "general": "Interesting read:"
+    /// Generate dynamic, content-aware intro based on article analysis
+    private func generateDynamicIntro(title: String, content: String, category: String) -> String {
+        let combinedText = title + " " + content
+
+        // Analyze sentiment and key themes using NLTagger
+        let tagger = NLTagger(tagSchemes: [.nameType, .lexicalClass])
+        tagger.string = combinedText
+
+        var hasPersonName = false
+        var hasPlaceName = false
+        var hasOrganization = false
+        var keyVerbs: [String] = []
+
+        // Detect named entities
+        tagger.enumerateTags(in: combinedText.startIndex..<combinedText.endIndex,
+                            unit: .word,
+                            scheme: .nameType) { tag, range in
+            if let tag = tag {
+                switch tag {
+                case .personalName:
+                    hasPersonName = true
+                case .placeName:
+                    hasPlaceName = true
+                case .organizationName:
+                    hasOrganization = true
+                default:
+                    break
+                }
+            }
+            return true
+        }
+
+        // Detect action verbs to understand story type
+        tagger.enumerateTags(in: title.startIndex..<title.endIndex,
+                            unit: .word,
+                            scheme: .lexicalClass) { tag, range in
+            if tag == .verb {
+                let verb = String(title[range]).lowercased()
+                if !["is", "are", "was", "were", "be", "been", "being", "has", "have", "had"].contains(verb) {
+                    keyVerbs.append(verb)
+                }
+            }
+            return true
+        }
+
+        // Detect urgency/breaking news indicators
+        let urgentWords = ["breaking", "urgent", "alert", "warning", "crisis", "emergency"]
+        let isUrgent = urgentWords.contains { title.lowercased().contains($0) }
+
+        // Detect controversial/debate topics
+        let controversialWords = ["controversy", "debate", "battle", "clash", "dispute", "fight", "conflict"]
+        let isControversial = controversialWords.contains { title.lowercased().contains($0) }
+
+        // Detect announcement/launch
+        let announcementWords = ["announces", "launches", "reveals", "unveils", "introduces"]
+        let isAnnouncement = announcementWords.contains { title.lowercased().contains($0) }
+
+        // Detect study/research
+        let researchWords = ["study", "research", "report", "survey", "finds", "shows"]
+        let isResearch = researchWords.contains { title.lowercased().contains($0) }
+
+        // Generate contextual intro based on content analysis
+        if isUrgent {
+            return "Breaking:"
+        } else if isAnnouncement {
+            return "Just announced:"
+        } else if isResearch {
+            return "New findings:"
+        } else if isControversial {
+            return "Here we go again..."
+        } else if hasPersonName && keyVerbs.contains(where: { ["says", "claims", "argues", "warns"].contains($0) }) {
+            return "Quote of the day:"
+        } else if hasPlaceName && hasPersonName {
+            return "Making headlines:"
+        } else if hasOrganization {
+            return category == "tech" ? "From the tech world:" : "In the news:"
+        } else if keyVerbs.contains(where: { ["plans", "proposes", "considering"].contains($0) }) {
+            return "Looking ahead:"
+        } else if keyVerbs.contains(where: { ["wins", "loses", "defeats", "beats"].contains($0) }) {
+            return "The result:"
+        } else {
+            // Fallback to category-based intros with some variety
+            let fallbacks: [String: [String]] = [
+                "tech": ["In tech news,", "From Silicon Valley,", "Tech update:"],
+                "news": ["Worth knowing:", "In case you missed it,", "Today's story:"],
+                "work": ["Career news:", "From the workplace,", "Business update:"],
+                "social": ["Trending now:", "What people are saying:", "Social update:"],
+                "general": ["Interesting:", "Check this out:", "Worth a read:"]
+            ]
+
+            let options = fallbacks[category.lowercased()] ?? fallbacks["general"]!
+            return options.randomElement()!
+        }
+    }
+
+    // Keep old function for backward compatibility/fallback
+    private func getContextualIntro(for category: String, itemNumber: Int) -> String {
+        let intros: [String: [String]] = [
+            "tech": [
+                "In tech news,",
+                "Silicon Valley strikes again:",
+                "From the world of tech,",
+                "Here's what's buzzing in tech:",
+                "Tech news that matters:"
+            ],
+            "news": [
+                "Making headlines:",
+                "Worth knowing:",
+                "In case you missed it,",
+                "Here's what's happening:",
+                "From the news desk:"
+            ],
+            "work": [
+                "On the work front,",
+                "Career and business news:",
+                "From the professional world,",
+                "In workplace news,",
+                "For your work life:"
+            ],
+            "social": [
+                "Social sphere update:",
+                "What people are talking about:",
+                "From the social scene,",
+                "Trending now:",
+                "Social media's buzzing about:"
+            ],
+            "general": [
+                "Interesting read:",
+                "Worth your attention:",
+                "Here's something:",
+                "Don't miss this:",
+                "Check this out:"
+            ]
         ]
-        return intros[category.lowercased()] ?? intros["general"]!
+
+        let categoryIntros = intros[category.lowercased()] ?? intros["general"]!
+        let index = (itemNumber - 1) % categoryIntros.count
+        return categoryIntros[index]
     }
 
     enum AIError: LocalizedError {

@@ -8,18 +8,30 @@
 import SwiftUI
 import SwiftData
 
+struct NewsletterItem: Identifiable, Equatable {
+    let id = UUID()
+    let summary: String
+    let article: Article
+
+    static func == (lhs: NewsletterItem, rhs: NewsletterItem) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
 struct ChatMessage: Identifiable, Equatable {
     let id = UUID()
     let content: String
     let isUser: Bool
     let timestamp: Date
     let recommendedArticles: [Article]?
+    let newsletterItems: [NewsletterItem]?
 
-    init(content: String, isUser: Bool, recommendedArticles: [Article]? = nil) {
+    init(content: String, isUser: Bool, recommendedArticles: [Article]? = nil, newsletterItems: [NewsletterItem]? = nil) {
         self.content = content
         self.isUser = isUser
         self.timestamp = Date()
         self.recommendedArticles = recommendedArticles
+        self.newsletterItems = newsletterItems
     }
 
     static func == (lhs: ChatMessage, rhs: ChatMessage) -> Bool {
@@ -176,23 +188,30 @@ struct AIChatView: View {
         isProcessing = true
 
         Task {
-            let (newsletter, featuredArticles): (String, [Article]?)
+            let newsletter: String
+            let newsletterItems: [NewsletterItem]
 
             // Use on-device AI if available (iOS 18+)
             if #available(iOS 18.0, *), OnDeviceAIService.shared.isAvailable {
                 do {
-                    (newsletter, featuredArticles) = try await OnDeviceAIService.shared.generateNewsletterSummary(articles: Array(articles))
+                    let (header, items) = try await OnDeviceAIService.shared.generateNewsletterSummary(articles: Array(articles))
+                    newsletter = header
+                    newsletterItems = items.map { NewsletterItem(summary: $0.summary, article: $0.article) }
                 } catch {
                     // Fallback to basic service if on-device AI fails
-                    (newsletter, featuredArticles) = await AIService.shared.generateNewsletterSummary(articles: Array(articles))
+                    let (text, _) = await AIService.shared.generateNewsletterSummary(articles: Array(articles))
+                    newsletter = text
+                    newsletterItems = []
                 }
             } else {
                 // Use basic service for older iOS versions
-                (newsletter, featuredArticles) = await AIService.shared.generateNewsletterSummary(articles: Array(articles))
+                let (text, _) = await AIService.shared.generateNewsletterSummary(articles: Array(articles))
+                newsletter = text
+                newsletterItems = []
             }
 
             await MainActor.run {
-                messages.append(ChatMessage(content: newsletter, isUser: false, recommendedArticles: featuredArticles))
+                messages.append(ChatMessage(content: newsletter, isUser: false, newsletterItems: newsletterItems.isEmpty ? nil : newsletterItems))
                 isProcessing = false
             }
         }
@@ -217,6 +236,7 @@ struct MessageBubble: View {
             }
 
             VStack(alignment: message.isUser ? .trailing : .leading, spacing: 8) {
+                // Show header text
                 Text(parseMarkdown(message.content))
                     .padding(12)
                     .background(message.isUser ? Color.blue : Color.gray.opacity(0.2))
@@ -224,7 +244,60 @@ struct MessageBubble: View {
                     .cornerRadius(16)
                     .textSelection(.enabled)
 
-                // Show recommended articles if available
+                // Show newsletter items (summary + article link interleaved)
+                if let items = message.newsletterItems, !items.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        ForEach(items) { item in
+                            NavigationLink {
+                                ArticleDetailSimple(article: item.article)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    // Summary text
+                                    Text(parseMarkdown(item.summary))
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .textSelection(.enabled)
+                                        .foregroundStyle(.primary)
+
+                                    Divider()
+
+                                    // Article link inside the same box
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "arrow.right.circle.fill")
+                                            .font(.subheadline)
+                                            .foregroundStyle(.blue)
+
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Read full article")
+                                                .font(.subheadline)
+                                                .fontWeight(.medium)
+
+                                            if let feedTitle = item.article.feed?.title {
+                                                Text(feedTitle)
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                        }
+
+                                        Spacer()
+
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .foregroundStyle(.blue)
+                                }
+                                .padding(12)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color.gray.opacity(0.1))
+                                .cornerRadius(12)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 4)
+                }
+
+                // Show recommended articles if available (for non-newsletter responses)
                 if let articles = message.recommendedArticles, !articles.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         ForEach(articles) { article in
