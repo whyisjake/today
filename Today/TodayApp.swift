@@ -12,7 +12,8 @@ import SwiftData
 struct TodayApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            Feed.self,
+            Article.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
@@ -23,9 +24,18 @@ struct TodayApp: App {
         }
     }()
 
+    init() {
+        // Register background tasks
+        BackgroundSyncManager.shared.registerBackgroundTasks()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .onAppear {
+                    // Schedule background sync when app launches
+                    BackgroundSyncManager.shared.enableBackgroundFetch()
+                }
         }
         .modelContainer(sharedModelContainer)
     }
