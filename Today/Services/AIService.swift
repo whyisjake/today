@@ -25,6 +25,110 @@ class AIService {
         return summary
     }
 
+    /// Generate a newsletter-style summary with article links (Dave Pell style)
+    func generateNewsletterSummary(articles: [Article]) async -> (String, [Article]?) {
+        guard !articles.isEmpty else {
+            return ("No articles to summarize today.", nil)
+        }
+
+        // Get the most interesting articles (unread first, then by date)
+        let sortedArticles = articles
+            .sorted { a, b in
+                if a.isRead != b.isRead {
+                    return !a.isRead
+                }
+                return a.publishedDate > b.publishedDate
+            }
+            .prefix(10)
+
+        var newsletter = "📰 **Today's Brief**\n\n"
+        newsletter += "Here's what you need to know from your feeds today. I've curated the highlights with a bit of context.\n\n"
+
+        // Group by category for better organization
+        let articlesByCategory = Dictionary(grouping: Array(sortedArticles), by: { $0.feed?.category ?? "general" })
+
+        var itemNumber = 1
+        var featuredArticles: [Article] = []
+
+        for (category, categoryArticles) in articlesByCategory.sorted(by: { $0.key < $1.key }) {
+            for article in categoryArticles.prefix(3) {
+                newsletter += "**\(itemNumber).** "
+
+                // Add witty intro based on category
+                let intro = getNewsletterIntro(for: category, itemNumber: itemNumber)
+                newsletter += intro
+                newsletter += " "
+
+                // Add article title as the main point
+                newsletter += "**\(article.title)**"
+
+                // Add a snippet of context if available
+                if let description = article.articleDescription?.htmlToPlainText, !description.isEmpty {
+                    let snippet = String(description.prefix(120))
+                    newsletter += " — \(snippet)..."
+                }
+
+                newsletter += "\n\n"
+
+                featuredArticles.append(article)
+                itemNumber += 1
+
+                if itemNumber > 10 { break }
+            }
+            if itemNumber > 10 { break }
+        }
+
+        newsletter += "\n---\n\n"
+        newsletter += "That's it for today! Tap any article below to read more. See you tomorrow. ✌️"
+
+        return (newsletter, featuredArticles.isEmpty ? nil : featuredArticles)
+    }
+
+    /// Get witty newsletter intro based on category
+    private func getNewsletterIntro(for category: String, itemNumber: Int) -> String {
+        let intros: [String: [String]] = [
+            "tech": [
+                "In the latest tech news,",
+                "Silicon Valley strikes again:",
+                "From the world of tech,",
+                "Here's what's buzzing in tech:",
+                "Tech news that matters:"
+            ],
+            "news": [
+                "Making headlines:",
+                "In case you missed it,",
+                "Here's what's happening:",
+                "From the news desk,",
+                "Worth knowing:"
+            ],
+            "work": [
+                "On the work front,",
+                "Career and business news:",
+                "From the professional world,",
+                "In workplace news,",
+                "For your work life:"
+            ],
+            "social": [
+                "Social sphere update:",
+                "What people are talking about:",
+                "From the social scene,",
+                "Trending now:",
+                "Social media's buzzing about:"
+            ],
+            "general": [
+                "Interesting read:",
+                "Worth your attention:",
+                "Here's something:",
+                "Don't miss this:",
+                "FYI:"
+            ]
+        ]
+
+        let categoryIntros = intros[category.lowercased()] ?? intros["general"]!
+        let index = (itemNumber - 1) % categoryIntros.count
+        return categoryIntros[index]
+    }
+
     /// Analyze content trends and generate insights
     private func analyzeTrends(from articles: [Article]) async -> String {
         var insights: [String] = []

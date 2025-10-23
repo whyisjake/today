@@ -4,6 +4,8 @@
 <dict>
 	<key>CFBundleDisplayName</key>
 	<string>Today - RSS Reader</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>com.today.feedsync</string>

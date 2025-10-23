@@ -49,18 +49,39 @@ struct AIChatView: View {
                             .font(.title2)
                             .fontWeight(.bold)
 
-                        Text("Ask me about your articles or request a summary of today's content.")
+                        Text("Ask me about your articles or get a curated news summary.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
 
+                        // Newsletter-style summary button
+                        Button {
+                            generateNewsletterSummary()
+                        } label: {
+                            VStack(spacing: 8) {
+                                Image(systemName: "newspaper.fill")
+                                    .font(.title)
+                                Text("Generate Today's Newsletter")
+                                    .font(.headline)
+                                Text("Get a curated summary with commentary")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.blue)
+                            .foregroundStyle(.white)
+                            .cornerRadius(12)
+                        }
+                        .padding(.horizontal)
+                        .disabled(articles.isEmpty)
+
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("Try asking:")
+                            Text("Or try asking:")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
 
-                            SuggestionButton(text: "Summarize today's articles", action: sendMessage)
                             SuggestionButton(text: "What should I read?", action: sendMessage)
                             SuggestionButton(text: "Show me recent articles", action: sendMessage)
                             SuggestionButton(text: "What's trending?", action: sendMessage)
@@ -146,6 +167,19 @@ struct AIChatView: View {
 
             await MainActor.run {
                 messages.append(ChatMessage(content: response, isUser: false, recommendedArticles: recommendedArticles))
+                isProcessing = false
+            }
+        }
+    }
+
+    private func generateNewsletterSummary() {
+        isProcessing = true
+
+        Task {
+            let (newsletter, featuredArticles) = await AIService.shared.generateNewsletterSummary(articles: Array(articles))
+
+            await MainActor.run {
+                messages.append(ChatMessage(content: newsletter, isUser: false, recommendedArticles: featuredArticles))
                 isProcessing = false
             }
         }
