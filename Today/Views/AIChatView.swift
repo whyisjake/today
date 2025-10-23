@@ -176,7 +176,20 @@ struct AIChatView: View {
         isProcessing = true
 
         Task {
-            let (newsletter, featuredArticles) = await AIService.shared.generateNewsletterSummary(articles: Array(articles))
+            let (newsletter, featuredArticles): (String, [Article]?)
+
+            // Use on-device AI if available (iOS 18+)
+            if #available(iOS 18.0, *), OnDeviceAIService.shared.isAvailable {
+                do {
+                    (newsletter, featuredArticles) = try await OnDeviceAIService.shared.generateNewsletterSummary(articles: Array(articles))
+                } catch {
+                    // Fallback to basic service if on-device AI fails
+                    (newsletter, featuredArticles) = await AIService.shared.generateNewsletterSummary(articles: Array(articles))
+                }
+            } else {
+                // Use basic service for older iOS versions
+                (newsletter, featuredArticles) = await AIService.shared.generateNewsletterSummary(articles: Array(articles))
+            }
 
             await MainActor.run {
                 messages.append(ChatMessage(content: newsletter, isUser: false, recommendedArticles: featuredArticles))
