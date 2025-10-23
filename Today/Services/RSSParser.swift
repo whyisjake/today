@@ -145,14 +145,14 @@ class RSSParser: NSObject, XMLParserDelegate {
             }
 
             let article = ParsedArticle(
-                title: currentTitle,
+                title: normalizeWhitespace(currentTitle),
                 link: currentLink,
-                description: currentDescription.isEmpty ? nil : currentDescription,
-                content: currentContent.isEmpty ? nil : currentContent,
-                contentEncoded: currentContentEncoded.isEmpty ? nil : currentContentEncoded,
+                description: currentDescription.isEmpty ? nil : normalizeWhitespace(currentDescription),
+                content: currentContent.isEmpty ? nil : normalizeWhitespace(currentContent),
+                contentEncoded: currentContentEncoded.isEmpty ? nil : normalizeWhitespace(currentContentEncoded),
                 imageUrl: finalImageUrl.isEmpty ? nil : finalImageUrl,
                 publishedDate: parseDate(currentPubDate),
-                author: currentAuthor.isEmpty ? nil : currentAuthor,
+                author: currentAuthor.isEmpty ? nil : normalizeWhitespace(currentAuthor),
                 guid: finalGuid
             )
 
@@ -161,6 +161,15 @@ class RSSParser: NSObject, XMLParserDelegate {
             // Mark feed title as parsed when we finish the feed-level title element
             feedTitleParsed = true
         }
+    }
+
+    /// Normalize whitespace in text - collapses multiple spaces/newlines into single space and trims
+    private func normalizeWhitespace(_ text: String) -> String {
+        // Replace all sequences of whitespace (spaces, tabs, newlines) with a single space
+        let normalized = text.components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        return normalized.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Extract the first image URL from HTML content

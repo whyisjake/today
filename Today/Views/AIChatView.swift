@@ -69,7 +69,10 @@ struct AIChatView: View {
 
                         // Newsletter-style summary button
                         Button {
-                            generateNewsletterSummary()
+                            Task { @MainActor in
+                                try? await Task.sleep(nanoseconds: 50_000_000)
+                                generateNewsletterSummary()
+                            }
                         } label: {
                             VStack(spacing: 8) {
                                 Image(systemName: "newspaper.fill")
@@ -87,7 +90,7 @@ struct AIChatView: View {
                             .cornerRadius(12)
                         }
                         .padding(.horizontal)
-                        .disabled(articles.isEmpty)
+                        .disabled(articles.isEmpty || isProcessing)
 
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Or try asking:")
@@ -358,7 +361,10 @@ struct SuggestionButton: View {
 
     var body: some View {
         Button {
-            action(text)
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 50_000_000)
+                action(text)
+            }
         } label: {
             HStack {
                 Text(text)

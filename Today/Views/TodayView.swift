@@ -16,6 +16,8 @@ struct TodayView: View {
     @State private var searchText = ""
     @State private var hideReadArticles = false
     @State private var showFavoritesOnly = false
+    @State private var selectedArticleID: PersistentIdentifier?
+    @State private var isRefreshing = false
 
     private var categories: [String] {
         let feedCategories = Set(allArticles.compactMap { $0.feed?.category })
@@ -122,9 +124,21 @@ struct TodayView: View {
                 } else {
                     List {
                         ForEach(filteredArticles, id: \.id) { article in
-                            NavigationLink(destination: ArticleDetailSimple(article: article)) {
-                                ArticleRowView(article: article)
+                            Button {
+                                Task { @MainActor in
+                                    try? await Task.sleep(nanoseconds: 50_000_000)
+                                    selectedArticleID = article.persistentModelID
+                                }
+                            } label: {
+                                HStack {
+                                    ArticleRowView(article: article)
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
+                            .buttonStyle(.plain)
                             .id(article.id)
                             .swipeActions(edge: .leading) {
                                 Button {
@@ -151,22 +165,36 @@ struct TodayView: View {
                         }
                     }
                     .listStyle(.plain)
+                    .refreshable {
+                        await refreshFeeds()
+                    }
                 }
             }
             .navigationTitle("Today")
             .searchable(text: $searchText, prompt: "Search articles")
+            .navigationDestination(item: $selectedArticleID) { articleID in
+                if let article = modelContext.model(for: articleID) as? Article {
+                    ArticleDetailSimple(article: article)
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Section("Read Status") {
                             Button {
-                                hideReadArticles = false
+                                Task { @MainActor in
+                                    try? await Task.sleep(nanoseconds: 50_000_000)
+                                    hideReadArticles = false
+                                }
                             } label: {
                                 Label("Show All", systemImage: hideReadArticles ? "circle" : "checkmark.circle")
                             }
 
                             Button {
-                                hideReadArticles = true
+                                Task { @MainActor in
+                                    try? await Task.sleep(nanoseconds: 50_000_000)
+                                    hideReadArticles = true
+                                }
                             } label: {
                                 Label("Unread Only", systemImage: hideReadArticles ? "checkmark.circle" : "circle")
                             }
@@ -174,13 +202,19 @@ struct TodayView: View {
 
                         Section("Favorites") {
                             Button {
-                                showFavoritesOnly = false
+                                Task { @MainActor in
+                                    try? await Task.sleep(nanoseconds: 50_000_000)
+                                    showFavoritesOnly = false
+                                }
                             } label: {
                                 Label("All Articles", systemImage: showFavoritesOnly ? "circle" : "checkmark.circle")
                             }
 
                             Button {
-                                showFavoritesOnly = true
+                                Task { @MainActor in
+                                    try? await Task.sleep(nanoseconds: 50_000_000)
+                                    showFavoritesOnly = true
+                                }
                             } label: {
                                 Label("Favorites Only", systemImage: showFavoritesOnly ? "checkmark.circle" : "circle")
                             }
@@ -216,6 +250,13 @@ struct TodayView: View {
         article.isFavorite.toggle()
         try? modelContext.save()
     }
+
+    private func refreshFeeds() async {
+        isRefreshing = true
+        let feedManager = FeedManager(modelContext: modelContext)
+        await feedManager.syncAllFeeds()
+        isRefreshing = false
+    }
 }
 
 struct ArticleRowView: View {
@@ -229,7 +270,7 @@ struct ArticleRowView: View {
                     .fontWeight(article.isRead ? .regular : .semibold)
 
                 if let description = article.articleDescription {
-                    Text(description.htmlToAttributedString)
+                    Text(description.htmlToPlainText)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)

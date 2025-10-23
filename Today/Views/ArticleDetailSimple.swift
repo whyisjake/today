@@ -13,6 +13,7 @@ struct ArticleDetailSimple: View {
     let article: Article
     @Environment(\.openURL) private var openURL
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         ScrollView {
@@ -78,6 +79,15 @@ struct ArticleDetailSimple: View {
             .padding()
         }
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    markAsUnreadAndGoBack()
+                } label: {
+                    Label("Mark as Unread", systemImage: "envelope.badge")
+                }
+            }
+        }
         .onAppear {
             markAsRead()
         }
@@ -88,6 +98,12 @@ struct ArticleDetailSimple: View {
             article.isRead = true
             try? modelContext.save()
         }
+    }
+
+    private func markAsUnreadAndGoBack() {
+        article.isRead = false
+        try? modelContext.save()
+        dismiss()
     }
 }
 
