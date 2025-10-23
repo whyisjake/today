@@ -131,13 +131,26 @@ class RSSParser: NSObject, XMLParserDelegate {
             // Use link as guid if guid is not provided
             let finalGuid = currentGuid.isEmpty ? currentLink : currentGuid
 
+            // If no explicit image found, try to extract from HTML content
+            var finalImageUrl = currentImageUrl
+            if finalImageUrl.isEmpty {
+                // Try content:encoded first, then content, then description
+                if !currentContentEncoded.isEmpty {
+                    finalImageUrl = extractFirstImageUrl(from: currentContentEncoded)
+                } else if !currentContent.isEmpty {
+                    finalImageUrl = extractFirstImageUrl(from: currentContent)
+                } else if !currentDescription.isEmpty {
+                    finalImageUrl = extractFirstImageUrl(from: currentDescription)
+                }
+            }
+
             let article = ParsedArticle(
                 title: currentTitle,
                 link: currentLink,
                 description: currentDescription.isEmpty ? nil : currentDescription,
                 content: currentContent.isEmpty ? nil : currentContent,
                 contentEncoded: currentContentEncoded.isEmpty ? nil : currentContentEncoded,
-                imageUrl: currentImageUrl.isEmpty ? nil : currentImageUrl,
+                imageUrl: finalImageUrl.isEmpty ? nil : finalImageUrl,
                 publishedDate: parseDate(currentPubDate),
                 author: currentAuthor.isEmpty ? nil : currentAuthor,
                 guid: finalGuid
@@ -148,6 +161,25 @@ class RSSParser: NSObject, XMLParserDelegate {
             // Mark feed title as parsed when we finish the feed-level title element
             feedTitleParsed = true
         }
+    }
+
+    /// Extract the first image URL from HTML content
+    private func extractFirstImageUrl(from html: String) -> String {
+        // Look for <img src="..." patterns
+        let pattern = "<img[^>]*src=[\"']([^\"']+)[\"'][^>]*>"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return ""
+        }
+
+        let nsString = html as NSString
+        let results = regex.matches(in: html, options: [], range: NSRange(location: 0, length: nsString.length))
+
+        if let match = results.first, match.numberOfRanges > 1 {
+            let range = match.range(at: 1)
+            return nsString.substring(with: range)
+        }
+
+        return ""
     }
 
     private func parseDate(_ dateString: String) -> Date? {

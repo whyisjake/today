@@ -15,10 +15,23 @@ struct TodayView: View {
     @State private var selectedCategory: String = "all"
     @State private var searchText = ""
     @State private var hideReadArticles = false
+    @State private var showFavoritesOnly = false
 
     private var categories: [String] {
         let feedCategories = Set(allArticles.compactMap { $0.feed?.category })
         return ["all"] + feedCategories.sorted()
+    }
+
+    private var unreadCount: Int {
+        allArticles.filter { !$0.isRead }.count
+    }
+
+    private var favoritesCount: Int {
+        allArticles.filter { $0.isFavorite }.count
+    }
+
+    private var activeFilterCount: Int {
+        showFavoritesOnly ? favoritesCount : unreadCount
     }
 
     private var filteredArticles: [Article] {
@@ -40,6 +53,11 @@ struct TodayView: View {
         // Filter by read status
         if hideReadArticles {
             articles = articles.filter { !$0.isRead }
+        }
+
+        // Filter by favorites
+        if showFavoritesOnly {
+            articles = articles.filter { $0.isFavorite }
         }
 
         // Show only articles from the last 7 days
@@ -82,11 +100,17 @@ struct TodayView: View {
 
                 // Articles list
                 if filteredArticles.isEmpty {
-                    if hideReadArticles && !allArticles.isEmpty {
+                    if showFavoritesOnly && !allArticles.isEmpty {
+                        ContentUnavailableView(
+                            "No Favorites Yet",
+                            systemImage: "star",
+                            description: Text("Swipe left on articles to add them to favorites.")
+                        )
+                    } else if hideReadArticles && !allArticles.isEmpty {
                         ContentUnavailableView(
                             "No Unread Articles",
                             systemImage: "checkmark.circle",
-                            description: Text("You're all caught up! Tap the eye icon to show read articles.")
+                            description: Text("You're all caught up! Tap the filter icon to show read articles.")
                         )
                     } else {
                         ContentUnavailableView(
@@ -97,10 +121,11 @@ struct TodayView: View {
                     }
                 } else {
                     List {
-                        ForEach(filteredArticles) { article in
+                        ForEach(filteredArticles, id: \.id) { article in
                             NavigationLink(destination: ArticleDetailSimple(article: article)) {
                                 ArticleRowView(article: article)
                             }
+                            .id(article.id)
                             .swipeActions(edge: .leading) {
                                 Button {
                                     toggleRead(article)
@@ -133,30 +158,44 @@ struct TodayView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
-                        Button {
-                            hideReadArticles = false
-                        } label: {
-                            Label("Show All", systemImage: hideReadArticles ? "circle" : "checkmark.circle")
+                        Section("Read Status") {
+                            Button {
+                                hideReadArticles = false
+                            } label: {
+                                Label("Show All", systemImage: hideReadArticles ? "circle" : "checkmark.circle")
+                            }
+
+                            Button {
+                                hideReadArticles = true
+                            } label: {
+                                Label("Unread Only", systemImage: hideReadArticles ? "checkmark.circle" : "circle")
+                            }
                         }
 
-                        Button {
-                            hideReadArticles = true
-                        } label: {
-                            Label("Unread Only", systemImage: hideReadArticles ? "checkmark.circle" : "circle")
+                        Section("Favorites") {
+                            Button {
+                                showFavoritesOnly = false
+                            } label: {
+                                Label("All Articles", systemImage: showFavoritesOnly ? "circle" : "checkmark.circle")
+                            }
+
+                            Button {
+                                showFavoritesOnly = true
+                            } label: {
+                                Label("Favorites Only", systemImage: showFavoritesOnly ? "checkmark.circle" : "circle")
+                            }
                         }
 
                         Divider()
 
-                        let unreadCount = allArticles.filter { !$0.isRead }.count
-                        Text("\(unreadCount) unread articles")
+                        Text("\(unreadCount) unread • \(favoritesCount) favorites")
                             .foregroundStyle(.secondary)
                     } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: hideReadArticles ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
-                            if hideReadArticles {
-                                let unreadCount = allArticles.filter { !$0.isRead }.count
-                                if unreadCount > 0 {
-                                    Text("\(unreadCount)")
+                            Image(systemName: (hideReadArticles || showFavoritesOnly) ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                            if hideReadArticles || showFavoritesOnly {
+                                if activeFilterCount > 0 {
+                                    Text("\(activeFilterCount)")
                                         .font(.caption2)
                                         .fontWeight(.semibold)
                                 }

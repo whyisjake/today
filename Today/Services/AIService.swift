@@ -19,15 +19,6 @@ class AIService {
             return "No articles to summarize."
         }
 
-        // Combine article titles and descriptions (strip HTML for analysis)
-        let combinedText = articles.prefix(20).map { article in
-            var text = article.title
-            if let description = article.articleDescription {
-                text += ": \(description.htmlToPlainText)"
-            }
-            return text
-        }.joined(separator: "\n\n")
-
         // Use NLTagger for basic content analysis
         let summary = await analyzeTrends(from: articles)
 

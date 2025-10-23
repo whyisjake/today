@@ -99,6 +99,11 @@ struct AIChatView: View {
                         .textFieldStyle(.roundedBorder)
                         .lineLimit(1...4)
                         .disabled(isProcessing)
+                        .onSubmit {
+                            if !inputText.isEmpty && !isProcessing {
+                                sendMessage(inputText)
+                            }
+                        }
 
                     Button {
                         sendMessage(inputText)
@@ -118,7 +123,7 @@ struct AIChatView: View {
                     Button {
                         messages.removeAll()
                     } label: {
-                        Image(systemName: "trash")
+                        Image(systemName: "arrow.counterclockwise")
                     }
                     .disabled(messages.isEmpty)
                 }
