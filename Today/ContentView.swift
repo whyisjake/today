@@ -15,7 +15,7 @@ struct ContentView: View {
         TabView {
             TodayView()
                 .tabItem {
-                    Label("Briefed", systemImage: "newspaper")
+                    Label("Today", systemImage: "newspaper")
                 }
 
             FeedListView(modelContext: modelContext)

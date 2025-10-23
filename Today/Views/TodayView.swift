@@ -153,7 +153,7 @@ struct TodayView: View {
                     .listStyle(.plain)
                 }
             }
-            .navigationTitle("Briefed")
+            .navigationTitle("Today")
             .searchable(text: $searchText, prompt: "Search articles")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
