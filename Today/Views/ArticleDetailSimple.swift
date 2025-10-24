@@ -9,6 +9,23 @@ import SwiftUI
 import SwiftData
 import WebKit
 
+// Shared WebView configuration to speed up initialization
+class WebViewPool {
+    static let shared = WebViewPool()
+
+    private let sharedConfiguration: WKWebViewConfiguration = {
+        let config = WKWebViewConfiguration()
+        config.dataDetectorTypes = [.link, .phoneNumber]
+        // Pre-warm the process pool
+        config.processPool = WKProcessPool()
+        return config
+    }()
+
+    func makeConfiguration() -> WKWebViewConfiguration {
+        return sharedConfiguration
+    }
+}
+
 struct ArticleDetailSimple: View {
     let article: Article
     let nextArticleID: PersistentIdentifier?
@@ -195,8 +212,8 @@ struct WebViewWithHeight: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
-        configuration.dataDetectorTypes = [.link, .phoneNumber]
+        // Use shared configuration for faster initialization
+        let configuration = WebViewPool.shared.makeConfiguration()
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.isOpaque = false

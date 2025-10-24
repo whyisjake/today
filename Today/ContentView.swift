@@ -28,6 +28,10 @@ struct ContentView: View {
                     Label("AI Summary", systemImage: "sparkles")
                 }
         }
+        .onAppear {
+            // Pre-warm WebView pool for faster article loading
+            _ = WebViewPool.shared
+        }
     }
 }
 
