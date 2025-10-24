@@ -271,6 +271,32 @@ struct TodayView: View {
                 Text("This cannot be undone.")
             }
         }
+        .task {
+            // Background task to populate plain text cache for existing articles
+            await populatePlainTextCache()
+        }
+    }
+
+    private func populatePlainTextCache() async {
+        let articlesNeedingCache = allArticles.filter { $0.plainTextDescription == nil && $0.articleDescription != nil }
+
+        guard !articlesNeedingCache.isEmpty else { return }
+
+        // Process in background to avoid blocking UI
+        await Task.detached(priority: .background) {
+            for article in articlesNeedingCache {
+                await MainActor.run {
+                    if article.plainTextDescription == nil, let desc = article.articleDescription {
+                        article.plainTextDescription = desc.htmlToPlainText
+                    }
+                }
+            }
+
+            // Save once after processing all
+            await MainActor.run {
+                try? modelContext.save()
+            }
+        }.value
     }
 
     private func markAllAsRead() {
@@ -317,8 +343,9 @@ struct ArticleRowView: View {
                     .font(.headline)
                     .fontWeight(article.isRead ? .regular : .semibold)
 
-                if let description = article.plainTextDescription {
-                    Text(description)
+                // Use cached plain text if available, otherwise compute on-the-fly
+                if let plainText = article.plainTextDescription ?? article.articleDescription?.htmlToPlainText {
+                    Text(plainText)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
