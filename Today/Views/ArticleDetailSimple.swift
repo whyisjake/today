@@ -41,12 +41,16 @@ struct ArticleDetailSimple: View {
                 Divider()
 
                 // Show full content if available, otherwise show description
+                // Use native Text rendering for better performance
                 if let contentEncoded = article.contentEncoded {
-                    ArticleContentWebView(htmlContent: contentEncoded)
+                    Text(contentEncoded.htmlToAttributedString)
+                        .textSelection(.enabled)
                 } else if let content = article.content {
-                    ArticleContentWebView(htmlContent: content)
+                    Text(content.htmlToAttributedString)
+                        .textSelection(.enabled)
                 } else if let description = article.articleDescription {
-                    ArticleContentWebView(htmlContent: description)
+                    Text(description.htmlToAttributedString)
+                        .textSelection(.enabled)
                 }
 
                 // Pull-up indicator for next article
