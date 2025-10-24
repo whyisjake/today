@@ -162,15 +162,12 @@ struct ArticleContentText: View {
     }
 
     private func loadContent() async {
-        // Parse HTML in background to avoid blocking main thread
-        let result = await Task.detached(priority: .userInitiated) {
-            htmlContent.htmlToAttributedString
-        }.value
-
-        await MainActor.run {
-            self.attributedText = result
+        // Parse HTML on main actor (required for NSAttributedString)
+        // but use Task to yield control and not block UI
+        await Task { @MainActor in
+            self.attributedText = htmlContent.htmlToAttributedString
             self.isLoading = false
-        }
+        }.value
     }
 }
 

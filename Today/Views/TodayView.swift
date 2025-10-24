@@ -282,21 +282,15 @@ struct TodayView: View {
 
         guard !articlesNeedingCache.isEmpty else { return }
 
-        // Process in background to avoid blocking UI
-        await Task.detached(priority: .background) {
-            for article in articlesNeedingCache {
-                await MainActor.run {
-                    if article.plainTextDescription == nil, let desc = article.articleDescription {
-                        article.plainTextDescription = desc.htmlToPlainText
-                    }
-                }
+        // Process on main actor (required for SwiftData models)
+        for article in articlesNeedingCache {
+            if article.plainTextDescription == nil, let desc = article.articleDescription {
+                article.plainTextDescription = desc.htmlToPlainText
             }
+        }
 
-            // Save once after processing all
-            await MainActor.run {
-                try? modelContext.save()
-            }
-        }.value
+        // Save once after processing all
+        try? modelContext.save()
     }
 
     private func markAllAsRead() {
