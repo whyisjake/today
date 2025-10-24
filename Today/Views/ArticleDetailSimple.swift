@@ -228,6 +228,9 @@ struct WebViewWithHeight: UIViewRepresentable {
         webView.scrollView.isScrollEnabled = false
         webView.navigationDelegate = context.coordinator
 
+        // Make webview background transparent to inherit from SwiftUI
+        webView.underPageBackgroundColor = .clear
+
         return webView
     }
 
@@ -280,10 +283,9 @@ struct WebViewWithHeight: UIViewRepresentable {
     func createStyledHTML(from html: String, colorScheme: ColorScheme) -> String {
         // Dynamic colors based on color scheme
         let textColor = colorScheme == .dark ? "#FFFFFF" : "#000000"
-        let backgroundColor = colorScheme == .dark ? "#1C1C1E" : "#FFFFFF"
         let secondaryBg = colorScheme == .dark ? "#2C2C2E" : "#F2F2F7"
         let borderColor = colorScheme == .dark ? "#3A3A3C" : "#E5E5EA"
-        let linkColor = colorScheme == .dark ? "#0A84FF" : "#007AFF"
+        let accentColor = "#FF4F00" // International Orange (Aerospace)
         // Clean up WordPress emoji images and CDATA
         let cleanedHTML = html
             .replacingOccurrences(of: "<img[^>]*class=\"wp-smiley\"[^>]*>", with: "", options: .regularExpression)
@@ -303,7 +305,7 @@ struct WebViewWithHeight: UIViewRepresentable {
                     font-size: 17px;
                     line-height: 1.6;
                     color: \(textColor);
-                    background-color: \(backgroundColor);
+                    background-color: transparent;
                     margin: 0;
                     padding: 0;
                 }
@@ -338,7 +340,7 @@ struct WebViewWithHeight: UIViewRepresentable {
                 blockquote {
                     margin: 16px 0;
                     padding: 12px 16px;
-                    border-left: 4px solid \(linkColor);
+                    border-left: 4px solid \(accentColor);
                     background-color: \(secondaryBg);
                     font-style: italic;
                 }
@@ -365,7 +367,7 @@ struct WebViewWithHeight: UIViewRepresentable {
                 }
 
                 a {
-                    color: \(linkColor);
+                    color: \(accentColor);
                     text-decoration: none;
                 }
 
