@@ -6,7 +6,23 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		F52BB6272EAC23870054AEC5 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F52BB6262EAC23870054AEC5 /* XCTest.framework */; platformFilter = ios; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		F52BB61E2EAC22F60054AEC5 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F54DF3FA2EA9AB9F00FBDC60 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F54DF4012EA9AB9F00FBDC60;
+			remoteInfo = Today;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
+		F52BB61A2EAC22F60054AEC5 /* TodayTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TodayTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F52BB6262EAC23870054AEC5 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Platforms/iPhoneOS.platform/Developer/Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
 		F54DF4022EA9AB9F00FBDC60 /* Today.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Today.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -21,6 +37,11 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		F52BB61B2EAC22F60054AEC5 /* TodayTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = TodayTests;
+			sourceTree = "<group>";
+		};
 		F54DF4042EA9AB9F00FBDC60 /* Today */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -32,6 +53,14 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		F52BB6172EAC22F60054AEC5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F52BB6272EAC23870054AEC5 /* XCTest.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		F54DF3FF2EA9AB9F00FBDC60 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -42,10 +71,20 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		F52BB6252EAC23860054AEC5 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				F52BB6262EAC23870054AEC5 /* XCTest.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		F54DF3F92EA9AB9F00FBDC60 = {
 			isa = PBXGroup;
 			children = (
 				F54DF4042EA9AB9F00FBDC60 /* Today */,
+				F52BB61B2EAC22F60054AEC5 /* TodayTests */,
+				F52BB6252EAC23860054AEC5 /* Frameworks */,
 				F54DF4032EA9AB9F00FBDC60 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -54,6 +93,7 @@
 			isa = PBXGroup;
 			children = (
 				F54DF4022EA9AB9F00FBDC60 /* Today.app */,
+				F52BB61A2EAC22F60054AEC5 /* TodayTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -61,6 +101,29 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		F52BB6192EAC22F60054AEC5 /* TodayTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F52BB6202EAC22F60054AEC5 /* Build configuration list for PBXNativeTarget "TodayTests" */;
+			buildPhases = (
+				F52BB6162EAC22F60054AEC5 /* Sources */,
+				F52BB6172EAC22F60054AEC5 /* Frameworks */,
+				F52BB6182EAC22F60054AEC5 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				F52BB61F2EAC22F60054AEC5 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				F52BB61B2EAC22F60054AEC5 /* TodayTests */,
+			);
+			name = TodayTests;
+			packageProductDependencies = (
+			);
+			productName = TodayTests;
+			productReference = F52BB61A2EAC22F60054AEC5 /* TodayTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		F54DF4012EA9AB9F00FBDC60 /* Today */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = F54DF40F2EA9ABA200FBDC60 /* Build configuration list for PBXNativeTarget "Today" */;
@@ -93,6 +156,10 @@
 				LastSwiftUpdateCheck = 2600;
 				LastUpgradeCheck = 2600;
 				TargetAttributes = {
+					F52BB6192EAC22F60054AEC5 = {
+						CreatedOnToolsVersion = 26.0.1;
+						TestTargetID = F54DF4012EA9AB9F00FBDC60;
+					};
 					F54DF4012EA9AB9F00FBDC60 = {
 						CreatedOnToolsVersion = 26.0.1;
 					};
@@ -113,11 +180,19 @@
 			projectRoot = "";
 			targets = (
 				F54DF4012EA9AB9F00FBDC60 /* Today */,
+				F52BB6192EAC22F60054AEC5 /* TodayTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		F52BB6182EAC22F60054AEC5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		F54DF4002EA9AB9F00FBDC60 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -128,6 +203,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		F52BB6162EAC22F60054AEC5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		F54DF3FE2EA9AB9F00FBDC60 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -137,7 +219,57 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		F52BB61F2EAC22F60054AEC5 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = F54DF4012EA9AB9F00FBDC60 /* Today */;
+			targetProxy = F52BB61E2EAC22F60054AEC5 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		F52BB6212EAC22F60054AEC5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 36ERVRQ23S;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = jakespurlock.TodayTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Today.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Today";
+			};
+			name = Debug;
+		};
+		F52BB6222EAC22F60054AEC5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 36ERVRQ23S;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = jakespurlock.TodayTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Today.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Today";
+			};
+			name = Release;
+		};
 		F54DF40D2EA9ABA200FBDC60 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -336,6 +468,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		F52BB6202EAC22F60054AEC5 /* Build configuration list for PBXNativeTarget "TodayTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F52BB6212EAC22F60054AEC5 /* Debug */,
+				F52BB6222EAC22F60054AEC5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		F54DF3FD2EA9AB9F00FBDC60 /* Build configuration list for PBXProject "Today" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

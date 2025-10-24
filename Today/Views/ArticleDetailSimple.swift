@@ -101,10 +101,16 @@ struct ArticleDetailSimple: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    markAsUnreadAndGoBack()
-                } label: {
-                    Label("Mark as Unread", systemImage: "envelope.badge")
+                HStack(spacing: 16) {
+                    ShareLink(item: URL(string: article.link)!, subject: Text(article.title)) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                    }
+
+                    Button {
+                        markAsUnreadAndGoBack()
+                    } label: {
+                        Label("Mark as Unread", systemImage: "envelope.badge")
+                    }
                 }
             }
 
