@@ -19,6 +19,7 @@ struct TodayView: View {
     @State private var selectedArticleID: PersistentIdentifier?
     @State private var isRefreshing = false
     @State private var showMarkAllReadConfirmation = false
+    @State private var displayedArticleCount = 30 // Start with 30 articles
 
     // Cache expensive computations
     private var categories: [String] {
@@ -65,6 +66,11 @@ struct TodayView: View {
         }
 
         return articles
+    }
+
+    // Only show a limited number of articles for performance
+    private var displayedArticles: [Article] {
+        Array(filteredArticles.prefix(displayedArticleCount))
     }
 
     var body: some View {
@@ -121,7 +127,7 @@ struct TodayView: View {
                     }
                 } else {
                     List {
-                        ForEach(filteredArticles, id: \.id) { article in
+                        ForEach(displayedArticles, id: \.id) { article in
                             Button {
                                 Task { @MainActor in
                                     try? await Task.sleep(nanoseconds: 50_000_000)
@@ -161,6 +167,22 @@ struct TodayView: View {
                                 .tint(.yellow)
                             }
                         }
+
+                        // Load more button if there are more articles
+                        if displayedArticleCount < filteredArticles.count {
+                            Button {
+                                loadMoreArticles()
+                            } label: {
+                                HStack {
+                                    Spacer()
+                                    Text("Load More (\(filteredArticles.count - displayedArticleCount) remaining)")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                }
+                                .padding()
+                            }
+                        }
                     }
                     .listStyle(.plain)
                     .refreshable {
@@ -170,6 +192,18 @@ struct TodayView: View {
             }
             .navigationTitle("Today")
             .searchable(text: $searchText, prompt: "Search articles")
+            .onChange(of: selectedCategory) { _, _ in
+                displayedArticleCount = 30 // Reset to initial count when filter changes
+            }
+            .onChange(of: searchText) { _, _ in
+                displayedArticleCount = 30
+            }
+            .onChange(of: hideReadArticles) { _, _ in
+                displayedArticleCount = 30
+            }
+            .onChange(of: showFavoritesOnly) { _, _ in
+                displayedArticleCount = 30
+            }
             .navigationDestination(item: $selectedArticleID) { articleID in
                 if let article = modelContext.model(for: articleID) as? Article {
                     // Find previous and next articles in filtered list
@@ -344,6 +378,11 @@ struct TodayView: View {
         let feedManager = FeedManager(modelContext: modelContext)
         await feedManager.syncAllFeeds()
         isRefreshing = false
+    }
+
+    private func loadMoreArticles() {
+        // Load 30 more articles at a time
+        displayedArticleCount = min(displayedArticleCount + 30, filteredArticles.count)
     }
 }
 
