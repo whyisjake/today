@@ -20,17 +20,18 @@ struct TodayView: View {
     @State private var isRefreshing = false
     @State private var showMarkAllReadConfirmation = false
 
+    // Cache expensive computations
     private var categories: [String] {
         let feedCategories = Set(allArticles.compactMap { $0.feed?.category })
         return ["all"] + feedCategories.sorted()
     }
 
     private var unreadCount: Int {
-        allArticles.filter { !$0.isRead }.count
+        allArticles.lazy.filter { !$0.isRead }.count
     }
 
     private var favoritesCount: Int {
-        allArticles.filter { $0.isFavorite }.count
+        allArticles.lazy.filter { $0.isFavorite }.count
     }
 
     private var activeFilterCount: Int {
@@ -316,8 +317,8 @@ struct ArticleRowView: View {
                     .font(.headline)
                     .fontWeight(article.isRead ? .regular : .semibold)
 
-                if let description = article.articleDescription {
-                    Text(description.htmlToPlainText)
+                if let description = article.plainTextDescription {
+                    Text(description)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)

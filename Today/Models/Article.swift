@@ -13,6 +13,7 @@ final class Article {
     var title: String
     var link: String
     var articleDescription: String?
+    var plainTextDescription: String? // Cached plain text version for list display
     var content: String?
     var contentEncoded: String? // Full content from content:encoded
     var imageUrl: String? // Featured image URL
@@ -29,6 +30,8 @@ final class Article {
         self.title = title
         self.link = link
         self.articleDescription = articleDescription
+        // Pre-compute plain text version once for performance
+        self.plainTextDescription = articleDescription?.htmlToPlainText
         self.content = content
         self.contentEncoded = contentEncoded
         self.imageUrl = imageUrl
