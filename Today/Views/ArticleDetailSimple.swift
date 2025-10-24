@@ -147,16 +147,21 @@ struct WebViewRepresentable: UIViewRepresentable {
 struct ArticleContentWebView: View {
     let htmlContent: String
     @State private var contentHeight: CGFloat = 0
+    @State private var selectedURL: URL?
 
     var body: some View {
-        WebViewWithHeight(htmlContent: htmlContent, height: $contentHeight)
+        WebViewWithHeight(htmlContent: htmlContent, height: $contentHeight, selectedURL: $selectedURL)
             .frame(height: max(300, contentHeight))
+            .navigationDestination(item: $selectedURL) { url in
+                ArticleWebViewSimple(url: url)
+            }
     }
 }
 
 struct WebViewWithHeight: UIViewRepresentable {
     let htmlContent: String
     @Binding var height: CGFloat
+    @Binding var selectedURL: URL?
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -198,6 +203,27 @@ struct WebViewWithHeight: UIViewRepresentable {
                     }
                 }
             }
+        }
+
+        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            // Allow initial page load
+            if navigationAction.navigationType == .other {
+                decisionHandler(.allow)
+                return
+            }
+
+            // Handle link taps - open in app WebView
+            if navigationAction.navigationType == .linkActivated {
+                if let url = navigationAction.request.url {
+                    DispatchQueue.main.async {
+                        self.parent.selectedURL = url
+                    }
+                }
+                decisionHandler(.cancel)
+                return
+            }
+
+            decisionHandler(.allow)
         }
     }
 
