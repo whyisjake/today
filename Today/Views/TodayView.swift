@@ -84,7 +84,7 @@ struct TodayView: View {
                                         .padding(.vertical, 8)
                                         .background(
                                             selectedCategory == category ?
-                                            Color.blue : Color.gray.opacity(0.2)
+                                            Color.accentColor : Color.gray.opacity(0.2)
                                         )
                                         .foregroundStyle(
                                             selectedCategory == category ?
