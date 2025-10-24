@@ -190,8 +190,11 @@ class RSSParser: NSObject, XMLParserDelegate {
 
     /// Normalize whitespace in text - collapses multiple spaces/newlines into single space and trims
     private func normalizeWhitespace(_ text: String) -> String {
+        // First, convert non-breaking spaces to regular spaces
+        var normalized = text.replacingOccurrences(of: "\u{00A0}", with: " ")
+
         // Replace all sequences of whitespace (spaces, tabs, newlines) with a single space
-        let normalized = text.components(separatedBy: .whitespacesAndNewlines)
+        normalized = normalized.components(separatedBy: .whitespacesAndNewlines)
             .filter { !$0.isEmpty }
             .joined(separator: " ")
         return normalized.trimmingCharacters(in: .whitespacesAndNewlines)
