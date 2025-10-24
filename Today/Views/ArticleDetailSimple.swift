@@ -211,6 +211,7 @@ struct WebViewWithHeight: UIViewRepresentable {
     let htmlContent: String
     @Binding var height: CGFloat
     @Binding var selectedURL: URL?
+    @Environment(\.colorScheme) var colorScheme
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -231,7 +232,7 @@ struct WebViewWithHeight: UIViewRepresentable {
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
-        let styledHTML = createStyledHTML(from: htmlContent)
+        let styledHTML = createStyledHTML(from: htmlContent, colorScheme: colorScheme)
         context.coordinator.parent = self
         webView.loadHTMLString(styledHTML, baseURL: nil)
     }
@@ -276,7 +277,13 @@ struct WebViewWithHeight: UIViewRepresentable {
         }
     }
 
-    func createStyledHTML(from html: String) -> String {
+    func createStyledHTML(from html: String, colorScheme: ColorScheme) -> String {
+        // Dynamic colors based on color scheme
+        let textColor = colorScheme == .dark ? "#FFFFFF" : "#000000"
+        let backgroundColor = colorScheme == .dark ? "#1C1C1E" : "#FFFFFF"
+        let secondaryBg = colorScheme == .dark ? "#2C2C2E" : "#F2F2F7"
+        let borderColor = colorScheme == .dark ? "#3A3A3C" : "#E5E5EA"
+        let linkColor = colorScheme == .dark ? "#0A84FF" : "#007AFF"
         // Clean up WordPress emoji images and CDATA
         let cleanedHTML = html
             .replacingOccurrences(of: "<img[^>]*class=\"wp-smiley\"[^>]*>", with: "", options: .regularExpression)
@@ -295,7 +302,8 @@ struct WebViewWithHeight: UIViewRepresentable {
                     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
                     font-size: 17px;
                     line-height: 1.6;
-                    color: #000000;
+                    color: \(textColor);
+                    background-color: \(backgroundColor);
                     margin: 0;
                     padding: 0;
                 }
@@ -330,13 +338,13 @@ struct WebViewWithHeight: UIViewRepresentable {
                 blockquote {
                     margin: 16px 0;
                     padding: 12px 16px;
-                    border-left: 4px solid #007AFF;
-                    background-color: #F2F2F7;
+                    border-left: 4px solid \(linkColor);
+                    background-color: \(secondaryBg);
                     font-style: italic;
                 }
 
                 pre {
-                    background-color: #F2F2F7;
+                    background-color: \(secondaryBg);
                     padding: 12px;
                     border-radius: 6px;
                     overflow-x: auto;
@@ -346,7 +354,7 @@ struct WebViewWithHeight: UIViewRepresentable {
                 code {
                     font-family: 'SF Mono', Menlo, Monaco, monospace;
                     font-size: 14px;
-                    background-color: #F2F2F7;
+                    background-color: \(secondaryBg);
                     padding: 2px 6px;
                     border-radius: 3px;
                 }
@@ -357,7 +365,7 @@ struct WebViewWithHeight: UIViewRepresentable {
                 }
 
                 a {
-                    color: #007AFF;
+                    color: \(linkColor);
                     text-decoration: none;
                 }
 
@@ -370,7 +378,7 @@ struct WebViewWithHeight: UIViewRepresentable {
 
                 hr {
                     border: none;
-                    border-top: 1px solid #E5E5EA;
+                    border-top: 1px solid \(borderColor);
                     margin: 24px 0;
                 }
 
