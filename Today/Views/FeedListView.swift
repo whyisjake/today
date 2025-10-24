@@ -16,6 +16,8 @@ struct FeedListView: View {
     @State private var showingAddFeed = false
     @State private var newFeedURL = ""
     @State private var newFeedCategory = "general"
+    @State private var customCategory = ""
+    @State private var useCustomCategory = false
     @State private var isAddingFeed = false
     @State private var addFeedError: String?
 
@@ -133,14 +135,31 @@ struct FeedListView: View {
                             TextField("RSS Feed URL", text: $newFeedURL)
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
+                        }
 
-                            Picker("Category", selection: $newFeedCategory) {
-                                Text("General").tag("general")
-                                Text("Work").tag("work")
-                                Text("Social").tag("social")
-                                Text("Tech").tag("tech")
-                                Text("News").tag("news")
-                                Text("Politics").tag("politics")
+                        Section {
+                            Toggle("Use Custom Category", isOn: $useCustomCategory)
+
+                            if useCustomCategory {
+                                TextField("Custom Category Name", text: $customCategory)
+                                    .textInputAutocapitalization(.never)
+                            } else {
+                                Picker("Category", selection: $newFeedCategory) {
+                                    Text("General").tag("general")
+                                    Text("Work").tag("work")
+                                    Text("Social").tag("social")
+                                    Text("Tech").tag("tech")
+                                    Text("News").tag("news")
+                                    Text("Politics").tag("politics")
+                                }
+                            }
+                        } header: {
+                            Text("Category")
+                        } footer: {
+                            if useCustomCategory {
+                                Text("Enter a custom category name for this feed")
+                            } else {
+                                Text("Select from predefined categories")
                             }
                         }
 
@@ -166,7 +185,7 @@ struct FeedListView: View {
                             Button("Add") {
                                 addFeed()
                             }
-                            .disabled(newFeedURL.isEmpty || isAddingFeed)
+                            .disabled(newFeedURL.isEmpty || isAddingFeed || (useCustomCategory && customCategory.isEmpty))
                         }
                     }
                     .overlay {
@@ -239,7 +258,8 @@ struct FeedListView: View {
 
         Task {
             do {
-                _ = try await feedManager.addFeed(url: newFeedURL, category: newFeedCategory)
+                let category = useCustomCategory ? customCategory : newFeedCategory
+                _ = try await feedManager.addFeed(url: newFeedURL, category: category)
                 showingAddFeed = false
                 resetAddFeedForm()
             } catch {
@@ -260,6 +280,8 @@ struct FeedListView: View {
     private func resetAddFeedForm() {
         newFeedURL = ""
         newFeedCategory = "general"
+        customCategory = ""
+        useCustomCategory = false
         addFeedError = nil
     }
 
@@ -410,6 +432,8 @@ struct EditFeedView: View {
     @State private var title: String
     @State private var url: String
     @State private var category: String
+    @State private var useCustomCategory: Bool
+    @State private var predefinedCategories = ["general", "work", "social", "tech", "news", "politics"]
 
     init(feed: Feed, modelContext: ModelContext) {
         self.feed = feed
@@ -417,6 +441,9 @@ struct EditFeedView: View {
         _title = State(initialValue: feed.title)
         _url = State(initialValue: feed.url)
         _category = State(initialValue: feed.category)
+        // Check if current category is a predefined one
+        let isPredefined = ["general", "work", "social", "tech", "news", "politics"].contains(feed.category)
+        _useCustomCategory = State(initialValue: !isPredefined)
     }
 
     var body: some View {
@@ -427,14 +454,31 @@ struct EditFeedView: View {
                 TextField("RSS Feed URL", text: $url)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+            }
 
-                Picker("Category", selection: $category) {
-                    Text("General").tag("general")
-                    Text("Work").tag("work")
-                    Text("Social").tag("social")
-                    Text("Tech").tag("tech")
-                    Text("News").tag("news")
-                    Text("Politics").tag("politics")
+            Section {
+                Toggle("Use Custom Category", isOn: $useCustomCategory)
+
+                if useCustomCategory {
+                    TextField("Custom Category Name", text: $category)
+                        .textInputAutocapitalization(.never)
+                } else {
+                    Picker("Category", selection: $category) {
+                        Text("General").tag("general")
+                        Text("Work").tag("work")
+                        Text("Social").tag("social")
+                        Text("Tech").tag("tech")
+                        Text("News").tag("news")
+                        Text("Politics").tag("politics")
+                    }
+                }
+            } header: {
+                Text("Category")
+            } footer: {
+                if useCustomCategory {
+                    Text("Enter a custom category name for this feed")
+                } else {
+                    Text("Select from predefined categories")
                 }
             }
         }
@@ -445,7 +489,7 @@ struct EditFeedView: View {
                 Button("Save") {
                     saveFeed()
                 }
-                .disabled(title.isEmpty || url.isEmpty)
+                .disabled(title.isEmpty || url.isEmpty || category.isEmpty)
             }
         }
     }
