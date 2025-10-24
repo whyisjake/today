@@ -55,7 +55,7 @@ struct AIChatView: View {
                     VStack(spacing: 20) {
                         Image(systemName: "sparkles")
                             .font(.system(size: 60))
-                            .foregroundStyle(.blue)
+                            .foregroundStyle(Color.accentColor)
 
                         Text("AI Summary Assistant")
                             .font(.title2)
@@ -85,7 +85,7 @@ struct AIChatView: View {
                             }
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(Color.blue)
+                            .background(Color.accentColor)
                             .foregroundStyle(.white)
                             .cornerRadius(12)
                         }
@@ -146,7 +146,7 @@ struct AIChatView: View {
                     } label: {
                         Image(systemName: isProcessing ? "hourglass" : "arrow.up.circle.fill")
                             .font(.title2)
-                            .foregroundStyle(inputText.isEmpty ? .gray : .blue)
+                            .foregroundStyle(inputText.isEmpty ? .gray : Color.accentColor)
                     }
                     .disabled(inputText.isEmpty || isProcessing)
                 }
@@ -242,7 +242,7 @@ struct MessageBubble: View {
                 // Show header text
                 Text(parseMarkdown(message.content))
                     .padding(12)
-                    .background(message.isUser ? Color.blue : Color.gray.opacity(0.2))
+                    .background(message.isUser ? Color.accentColor : Color.gray.opacity(0.2))
                     .foregroundStyle(message.isUser ? .white : .primary)
                     .cornerRadius(16)
                     .textSelection(.enabled)
@@ -252,7 +252,7 @@ struct MessageBubble: View {
                     VStack(alignment: .leading, spacing: 12) {
                         ForEach(items) { item in
                             NavigationLink {
-                                ArticleDetailSimple(article: item.article, nextArticleID: nil, onNavigateToNext: { _ in })
+                                ArticleDetailSimple(article: item.article, previousArticleID: nil, nextArticleID: nil, onNavigateToPrevious: { _ in }, onNavigateToNext: { _ in })
                             } label: {
                                 VStack(alignment: .leading, spacing: 8) {
                                     // Summary text
@@ -267,7 +267,7 @@ struct MessageBubble: View {
                                     HStack(spacing: 8) {
                                         Image(systemName: "arrow.right.circle.fill")
                                             .font(.subheadline)
-                                            .foregroundStyle(.blue)
+                                            .foregroundStyle(Color.accentColor)
 
                                         VStack(alignment: .leading, spacing: 2) {
                                             Text("Read full article")
@@ -287,7 +287,7 @@ struct MessageBubble: View {
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                     }
-                                    .foregroundStyle(.blue)
+                                    .foregroundStyle(Color.accentColor)
                                 }
                                 .padding(12)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -305,12 +305,12 @@ struct MessageBubble: View {
                     VStack(alignment: .leading, spacing: 8) {
                         ForEach(articles) { article in
                             NavigationLink {
-                                ArticleDetailSimple(article: article, nextArticleID: nil, onNavigateToNext: { _ in })
+                                ArticleDetailSimple(article: article, previousArticleID: nil, nextArticleID: nil, onNavigateToPrevious: { _ in }, onNavigateToNext: { _ in })
                             } label: {
                                 HStack(spacing: 12) {
                                     Image(systemName: "doc.text.fill")
                                         .font(.caption)
-                                        .foregroundStyle(.blue)
+                                        .foregroundStyle(Color.accentColor)
 
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(article.title)
@@ -335,7 +335,7 @@ struct MessageBubble: View {
                                         .foregroundStyle(.secondary)
                                 }
                                 .padding(10)
-                                .background(Color.blue.opacity(0.1))
+                                .background(Color.accentColor.opacity(0.1))
                                 .cornerRadius(8)
                             }
                         }
@@ -374,8 +374,8 @@ struct SuggestionButton: View {
                     .font(.caption)
             }
             .padding()
-            .background(Color.blue.opacity(0.1))
-            .foregroundStyle(.blue)
+            .background(Color.accentColor.opacity(0.1))
+            .foregroundStyle(Color.accentColor)
             .cornerRadius(10)
         }
     }

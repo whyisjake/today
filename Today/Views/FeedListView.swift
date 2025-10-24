@@ -50,7 +50,7 @@ struct FeedListView: View {
                                     .font(.caption)
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 2)
-                                    .background(Color.blue.opacity(0.2))
+                                    .background(Color.accentColor.opacity(0.2))
                                     .cornerRadius(4)
 
                                 if let lastFetched = feed.lastFetched {

@@ -98,7 +98,7 @@ struct ArticleDetailViewEnhanced: View {
                             }
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(Color.blue)
+                            .background(Color.accentColor)
                             .foregroundStyle(.white)
                             .cornerRadius(10)
                             .buttonStyle(.plain)

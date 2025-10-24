@@ -147,7 +147,7 @@ struct TodayView: View {
                                         systemImage: article.isRead ? "envelope.badge" : "envelope.open"
                                     )
                                 }
-                                .tint(.blue)
+                                .tint(.accentColor)
                             }
                             .swipeActions(edge: .trailing) {
                                 Button {
@@ -172,18 +172,38 @@ struct TodayView: View {
             .searchable(text: $searchText, prompt: "Search articles")
             .navigationDestination(item: $selectedArticleID) { articleID in
                 if let article = modelContext.model(for: articleID) as? Article {
-                    // Find next article in filtered list
+                    // Find previous and next articles in filtered list
                     if let currentIndex = filteredArticles.firstIndex(where: { $0.persistentModelID == articleID }) {
+                        let previousIndex = currentIndex - 1
                         let nextIndex = currentIndex + 1
+                        let previousArticleID = previousIndex >= 0 ? filteredArticles[previousIndex].persistentModelID : nil
                         let nextArticleID = nextIndex < filteredArticles.count ? filteredArticles[nextIndex].persistentModelID : nil
-                        ArticleDetailSimple(article: article, nextArticleID: nextArticleID, onNavigateToNext: { nextID in
-                            Task { @MainActor in
-                                try? await Task.sleep(nanoseconds: 50_000_000)
-                                selectedArticleID = nextID
+
+                        ArticleDetailSimple(
+                            article: article,
+                            previousArticleID: previousArticleID,
+                            nextArticleID: nextArticleID,
+                            onNavigateToPrevious: { prevID in
+                                Task { @MainActor in
+                                    try? await Task.sleep(nanoseconds: 50_000_000)
+                                    selectedArticleID = prevID
+                                }
+                            },
+                            onNavigateToNext: { nextID in
+                                Task { @MainActor in
+                                    try? await Task.sleep(nanoseconds: 50_000_000)
+                                    selectedArticleID = nextID
+                                }
                             }
-                        })
+                        )
                     } else {
-                        ArticleDetailSimple(article: article, nextArticleID: nil, onNavigateToNext: { _ in })
+                        ArticleDetailSimple(
+                            article: article,
+                            previousArticleID: nil,
+                            nextArticleID: nil,
+                            onNavigateToPrevious: { _ in },
+                            onNavigateToNext: { _ in }
+                        )
                     }
                 }
             }
@@ -365,7 +385,7 @@ struct ArticleRowView: View {
                     if article.isRead {
                         Image(systemName: "envelope.open.fill")
                             .font(.caption2)
-                            .foregroundStyle(.blue)
+                            .foregroundStyle(Color.accentColor)
                     }
                     if article.isFavorite {
                         Image(systemName: "star.fill")
@@ -442,7 +462,7 @@ struct ArticleDetailView: View {
                     Label("Read Full Article", systemImage: "safari")
                         .frame(maxWidth: .infinity)
                         .padding()
-                        .background(Color.blue)
+                        .background(Color.accentColor)
                         .foregroundStyle(.white)
                         .cornerRadius(10)
                 }
