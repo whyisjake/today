@@ -27,6 +27,7 @@ struct FeedListView: View {
     @State private var opmlText = ""
     @State private var isImporting = false
     @State private var importError: String?
+    @State private var showingExportConfirmation = false
 
     init(modelContext: ModelContext) {
         _feedManager = StateObject(wrappedValue: FeedManager(modelContext: modelContext))
@@ -249,6 +250,11 @@ struct FeedListView: View {
                     }
                 }
             }
+            .alert("OPML Exported", isPresented: $showingExportConfirmation) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("Your OPML feed list has been copied to the clipboard.")
+            }
         }
     }
 
@@ -296,9 +302,7 @@ struct FeedListView: View {
     private func exportOPML() {
         let opml = generateOPML(from: feeds)
         UIPasteboard.general.string = opml
-
-        // Show a toast or alert (simplified version - just print for now)
-        print("OPML exported to clipboard!")
+        showingExportConfirmation = true
     }
 
     private func generateOPML(from feeds: [Feed]) -> String {
