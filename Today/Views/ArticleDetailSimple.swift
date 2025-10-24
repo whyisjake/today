@@ -16,8 +16,7 @@ class WebViewPool {
     private let sharedConfiguration: WKWebViewConfiguration = {
         let config = WKWebViewConfiguration()
         config.dataDetectorTypes = [.link, .phoneNumber]
-        // Pre-warm the process pool
-        config.processPool = WKProcessPool()
+        // iOS 15+ automatically shares process pools, no need to set manually
         return config
     }()
 
