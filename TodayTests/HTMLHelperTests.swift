@@ -59,20 +59,22 @@ final class HTMLHelperTests: XCTestCase {
     func testCurlyQuotes() {
         let input = "&#8220;Hello&#8221; &#8216;World&#8217;"
         let result = input.htmlToPlainText
+        let expected = "\u{201C}Hello\u{201D} \u{2018}World\u{2019}"
 
-        XCTAssertEqual(result, ""Hello" 'World'", "Should decode numeric entities to curly quotes")
+        XCTAssertEqual(result, expected, "Should decode numeric entities to curly quotes")
     }
 
     func testEmDashAndEnDash() {
         let input = "Em&mdash;dash and En&ndash;dash"
         let result = input.htmlToPlainText
+        let expected = "Em\u{2014}dash and En\u{2013}dash"
 
-        XCTAssertEqual(result, "Em—dash and En–dash", "Should decode dash entities")
+        XCTAssertEqual(result, expected, "Should decode dash entities")
     }
 
     func testCDATAWithHTMLEntities() {
         let input = "<title type=\"html\"><![CDATA[ &#8216;I get to do whatever I want in the moment&#8217;: why more... ]]></title>"
-        let expected = "'I get to do whatever I want in the moment': why more..."
+        let expected = "\u{2018}I get to do whatever I want in the moment\u{2019}: why more..."
         let result = input.htmlToPlainText
 
         XCTAssertEqual(result, expected, "Should strip CDATA, HTML tags, and decode entities")
@@ -80,7 +82,7 @@ final class HTMLHelperTests: XCTestCase {
 
     func testCDATAWithMultipleEntities() {
         let input = "<![CDATA[ &#8220;Quote&#8221; &amp; &#8216;Single&#8217; ]]>"
-        let expected = "\"Quote\" & 'Single'"
+        let expected = "\u{201C}Quote\u{201D} & \u{2018}Single\u{2019}"
         let result = input.htmlToPlainText
 
         XCTAssertEqual(result, expected, "Should handle CDATA with multiple entity types")
