@@ -51,7 +51,6 @@ struct ArticleDetailSimple: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Text(article.feed)
                     Text(article.publishedDate, style: .date)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -71,6 +70,7 @@ struct ArticleDetailSimple: View {
             .padding()
         }
         }
+        .navigationTitle(article.feed?.title ?? "Article")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .bottomBar) {
