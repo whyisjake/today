@@ -41,16 +41,13 @@ struct ArticleDetailSimple: View {
                 Divider()
 
                 // Show full content if available, otherwise show description
-                Group {
-                    if let contentEncoded = article.contentEncoded {
-                        ArticleContentText(htmlContent: contentEncoded)
-                    } else if let content = article.content {
-                        ArticleContentText(htmlContent: content)
-                    } else if let description = article.articleDescription {
-                        ArticleContentText(htmlContent: description)
-                    }
+                if let contentEncoded = article.contentEncoded {
+                    ArticleContentWebView(htmlContent: contentEncoded)
+                } else if let content = article.content {
+                    ArticleContentWebView(htmlContent: content)
+                } else if let description = article.articleDescription {
+                    ArticleContentWebView(htmlContent: description)
                 }
-                .textSelection(.enabled)
 
                 // Pull-up indicator for next article
                 if nextArticleID != nil {
@@ -133,41 +130,6 @@ struct ArticleDetailSimple: View {
         article.isRead = false
         try? modelContext.save()
         dismiss()
-    }
-}
-
-// Safe wrapper for article content rendering
-struct ArticleContentText: View {
-    let htmlContent: String
-    @State private var attributedText: AttributedString?
-    @State private var isLoading = true
-
-    var body: some View {
-        Group {
-            if isLoading {
-                ProgressView()
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding()
-            } else if let attributedText = attributedText {
-                Text(attributedText)
-            } else {
-                // Fallback to plain text if HTML parsing fails
-                Text(htmlContent.htmlToPlainText)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .task {
-            await loadContent()
-        }
-    }
-
-    private func loadContent() async {
-        // Parse HTML on main actor (required for NSAttributedString)
-        // but use Task to yield control and not block UI
-        await Task { @MainActor in
-            self.attributedText = htmlContent.htmlToAttributedString
-            self.isLoading = false
-        }.value
     }
 }
 
