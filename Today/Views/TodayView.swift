@@ -129,10 +129,7 @@ struct TodayView: View {
                     List {
                         ForEach(displayedArticles, id: \.id) { article in
                             Button {
-                                Task { @MainActor in
-                                    try? await Task.sleep(nanoseconds: 50_000_000)
-                                    selectedArticleID = article.persistentModelID
-                                }
+                                selectedArticleID = article.persistentModelID
                             } label: {
                                 HStack {
                                     ArticleRowView(article: article)

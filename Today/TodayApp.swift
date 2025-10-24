@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import WebKit
 
 @main
 struct TodayApp: App {
@@ -27,6 +28,16 @@ struct TodayApp: App {
     init() {
         // Register background tasks
         BackgroundSyncManager.shared.registerBackgroundTasks()
+
+        // Pre-warm WebView process pool to reduce first-load latency
+        // This initializes the WebKit processes in the background
+        Task.detached(priority: .utility) {
+            // Create a temporary WKWebView to initialize the process pool
+            let config = WKWebViewConfiguration()
+            let webView = WKWebView(frame: .zero, configuration: config)
+            // Load a simple string to start the WebKit processes
+            webView.loadHTMLString("<html></html>", baseURL: nil)
+        }
     }
 
     var body: some Scene {
@@ -65,7 +76,7 @@ struct TodayApp: App {
             ("Ars Technica", "https://feeds.arstechnica.com/arstechnica/index", "technology"),
             ("Daring Fireball", "https://daringfireball.net/feeds/main", "technology"),
             ("The New York Times", "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml", "news"),
-            ("BBC News", "http://feeds.bbci.co.uk/news/rss.xml", "news"),
+            ("BBC News", "https://feeds.bbci.co.uk/news/rss.xml", "news"),
             ("NPR", "https://feeds.npr.org/1001/rss.xml", "news"),
         ]
 
