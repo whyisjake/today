@@ -27,7 +27,9 @@ class WebViewPool {
 
 struct ArticleDetailSimple: View {
     let article: Article
+    let previousArticleID: PersistentIdentifier?
     let nextArticleID: PersistentIdentifier?
+    let onNavigateToPrevious: (PersistentIdentifier) -> Void
     let onNavigateToNext: (PersistentIdentifier) -> Void
 
     @Environment(\.openURL) private var openURL
@@ -64,78 +66,68 @@ struct ArticleDetailSimple: View {
                 } else if let description = article.articleDescription {
                     ArticleContentWebView(htmlContent: description)
                 }
-
-                // Pull-up indicator for next article
-                if nextArticleID != nil {
-                    VStack(spacing: 8) {
-                        Divider()
-                            .padding(.vertical)
-
-                        Button {
-                            if let nextID = nextArticleID {
-                                onNavigateToNext(nextID)
-                            }
-                        } label: {
-                            HStack {
-                                Spacer()
-                                VStack(spacing: 4) {
-                                    Image(systemName: "chevron.up")
-                                        .font(.title2)
-                                        .foregroundStyle(.secondary)
-                                    Text("Tap for next article")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                            }
-                            .padding(.vertical, 40)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
             }
             .padding()
         }
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                HStack(spacing: 16) {
-                    ShareLink(item: URL(string: article.link)!, subject: Text(article.title)) {
-                        Label("Share", systemImage: "square.and.arrow.up")
-                    }
-
-                    Button {
-                        markAsUnreadAndGoBack()
-                    } label: {
-                        Label("Mark as Unread", systemImage: "envelope.badge")
-                    }
-                }
-            }
-
             ToolbarItem(placement: .bottomBar) {
                 HStack(spacing: 20) {
-                    // Read in App button
-                    NavigationLink {
-                        ArticleWebViewSimple(url: URL(string: article.link)!)
-                    } label: {
-                        Label("Read in App", systemImage: "doc.text")
-                    }
-
-                    Spacer()
-
-                    // Open in Safari button
+                    // Previous article button
                     Button {
-                        if let url = URL(string: article.link) {
-                            openURL(url)
+                        if let prevID = previousArticleID {
+                            onNavigateToPrevious(prevID)
                         }
                     } label: {
-                        Label("Open in Safari", systemImage: "safari")
+                        Label("Previous", systemImage: "chevron.left")
                     }
+                    .disabled(previousArticleID == nil)
+
+                    // Open menu with Read in App, Safari, Share, and Mark as Unread options
+                    Menu {
+                        NavigationLink {
+                            ArticleWebViewSimple(url: URL(string: article.link)!)
+                        } label: {
+                            Label("Read in App", systemImage: "doc.text")
+                        }
+
+                        Button {
+                            if let url = URL(string: article.link) {
+                                openURL(url)
+                            }
+                        } label: {
+                            Label("Open in Safari", systemImage: "safari")
+                        }
+
+                        ShareLink(item: URL(string: article.link)!, subject: Text(article.title)) {
+                            Label("Share", systemImage: "square.and.arrow.up")
+                        }
+
+                        Divider()
+
+                        Button {
+                            markAsUnreadAndGoBack()
+                        } label: {
+                            Label("Mark as Unread", systemImage: "envelope.badge")
+                        }
+                    } label: {
+                        Label("Open", systemImage: "arrow.up.forward.square")
+                    }
+
+                    // Next article button
+                    Button {
+                        if let nextID = nextArticleID {
+                            onNavigateToNext(nextID)
+                        }
+                    } label: {
+                        Label("Next", systemImage: "chevron.right")
+                    }
+                    .disabled(nextArticleID == nil)
                 }
             }
         }
+        .toolbar(.hidden, for: .tabBar)
         .onAppear {
             markAsRead()
         }
@@ -212,6 +204,7 @@ struct WebViewWithHeight: UIViewRepresentable {
     @Binding var height: CGFloat
     @Binding var selectedURL: URL?
     @Environment(\.colorScheme) var colorScheme
+    @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -235,7 +228,7 @@ struct WebViewWithHeight: UIViewRepresentable {
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
-        let styledHTML = createStyledHTML(from: htmlContent, colorScheme: colorScheme)
+        let styledHTML = createStyledHTML(from: htmlContent, colorScheme: colorScheme, accentColor: accentColor.color)
         context.coordinator.parent = self
         webView.loadHTMLString(styledHTML, baseURL: nil)
     }
@@ -280,12 +273,14 @@ struct WebViewWithHeight: UIViewRepresentable {
         }
     }
 
-    func createStyledHTML(from html: String, colorScheme: ColorScheme) -> String {
+    func createStyledHTML(from html: String, colorScheme: ColorScheme, accentColor: Color) -> String {
         // Dynamic colors based on color scheme
         let textColor = colorScheme == .dark ? "#FFFFFF" : "#000000"
         let secondaryBg = colorScheme == .dark ? "#2C2C2E" : "#F2F2F7"
         let borderColor = colorScheme == .dark ? "#3A3A3C" : "#E5E5EA"
-        let accentColor = "#FF4F00" // International Orange (Aerospace)
+
+        // Convert SwiftUI Color to hex string
+        let accentColorHex = accentColor.toHex()
         // Clean up WordPress emoji images and CDATA
         let cleanedHTML = html
             .replacingOccurrences(of: "<img[^>]*class=\"wp-smiley\"[^>]*>", with: "", options: .regularExpression)
@@ -340,7 +335,7 @@ struct WebViewWithHeight: UIViewRepresentable {
                 blockquote {
                     margin: 16px 0;
                     padding: 12px 16px;
-                    border-left: 4px solid \(accentColor);
+                    border-left: 4px solid \(accentColorHex);
                     background-color: \(secondaryBg);
                     font-style: italic;
                 }
@@ -367,7 +362,7 @@ struct WebViewWithHeight: UIViewRepresentable {
                 }
 
                 a {
-                    color: \(accentColor);
+                    color: \(accentColorHex);
                     text-decoration: none;
                 }
 
@@ -398,5 +393,23 @@ struct WebViewWithHeight: UIViewRepresentable {
         </body>
         </html>
         """
+    }
+}
+
+// Extension to convert SwiftUI Color to hex string
+extension Color {
+    func toHex() -> String {
+        guard let components = UIColor(self).cgColor.components else {
+            return "#FF4F00" // Fallback to International Orange
+        }
+
+        let r = components[0]
+        let g = components[1]
+        let b = components[2]
+
+        return String(format: "#%02X%02X%02X",
+                     Int(r * 255),
+                     Int(g * 255),
+                     Int(b * 255))
     }
 }
