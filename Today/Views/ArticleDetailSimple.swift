@@ -41,17 +41,16 @@ struct ArticleDetailSimple: View {
                 Divider()
 
                 // Show full content if available, otherwise show description
-                // Use native Text rendering for better performance
-                if let contentEncoded = article.contentEncoded {
-                    Text(contentEncoded.htmlToAttributedString)
-                        .textSelection(.enabled)
-                } else if let content = article.content {
-                    Text(content.htmlToAttributedString)
-                        .textSelection(.enabled)
-                } else if let description = article.articleDescription {
-                    Text(description.htmlToAttributedString)
-                        .textSelection(.enabled)
+                Group {
+                    if let contentEncoded = article.contentEncoded {
+                        ArticleContentText(htmlContent: contentEncoded)
+                    } else if let content = article.content {
+                        ArticleContentText(htmlContent: content)
+                    } else if let description = article.articleDescription {
+                        ArticleContentText(htmlContent: description)
+                    }
                 }
+                .textSelection(.enabled)
 
                 // Pull-up indicator for next article
                 if nextArticleID != nil {
@@ -134,6 +133,44 @@ struct ArticleDetailSimple: View {
         article.isRead = false
         try? modelContext.save()
         dismiss()
+    }
+}
+
+// Safe wrapper for article content rendering
+struct ArticleContentText: View {
+    let htmlContent: String
+    @State private var attributedText: AttributedString?
+    @State private var isLoading = true
+
+    var body: some View {
+        Group {
+            if isLoading {
+                ProgressView()
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding()
+            } else if let attributedText = attributedText {
+                Text(attributedText)
+            } else {
+                // Fallback to plain text if HTML parsing fails
+                Text(htmlContent.htmlToPlainText)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .task {
+            await loadContent()
+        }
+    }
+
+    private func loadContent() async {
+        // Parse HTML in background to avoid blocking main thread
+        let result = await Task.detached(priority: .userInitiated) {
+            htmlContent.htmlToAttributedString
+        }.value
+
+        await MainActor.run {
+            self.attributedText = result
+            self.isLoading = false
+        }
     }
 }
 
