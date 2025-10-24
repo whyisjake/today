@@ -21,8 +21,37 @@ enum AppearanceMode: String, CaseIterable {
     }
 }
 
+enum AccentColorOption: String, CaseIterable, Identifiable {
+    case red = "Red"
+    case orange = "International Orange"
+    case green = "Green"
+    case blue = "Blue"
+    case pink = "Pink"
+    case purple = "Purple"
+
+    var id: String { rawValue }
+
+    var color: Color {
+        switch self {
+        case .red:
+            return Color(red: 1.0, green: 0.231, blue: 0.188)
+        case .orange:
+            return Color(red: 1.0, green: 0.31, blue: 0.0) // International Orange (Aerospace)
+        case .green:
+            return Color(red: 0.196, green: 0.843, blue: 0.294)
+        case .blue:
+            return Color(red: 0.0, green: 0.478, blue: 1.0)
+        case .pink:
+            return Color(red: 1.0, green: 0.176, blue: 0.333)
+        case .purple:
+            return Color(red: 0.686, green: 0.322, blue: 0.871)
+        }
+    }
+}
+
 struct SettingsView: View {
     @AppStorage("appearanceMode") private var appearanceMode: AppearanceMode = .system
+    @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -35,6 +64,34 @@ struct SettingsView: View {
                         }
                     }
                     .pickerStyle(.segmented)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Accent Color")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+
+                        HStack(spacing: 16) {
+                            ForEach(AccentColorOption.allCases) { option in
+                                Button {
+                                    accentColor = option
+                                } label: {
+                                    ZStack {
+                                        Circle()
+                                            .fill(option.color)
+                                            .frame(width: 44, height: 44)
+
+                                        if accentColor == option {
+                                            Image(systemName: "checkmark")
+                                                .font(.body.bold())
+                                                .foregroundStyle(.white)
+                                        }
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 8)
                 }
 
                 Section("About") {
@@ -79,7 +136,7 @@ struct SettingsView: View {
                             openURL(url)
                         }
                     } label: {
-                        Label("Twitter/X", systemImage: "at")
+                        Label("Twitter", systemImage: "at")
                     }
 
                     Button {
@@ -94,7 +151,7 @@ struct SettingsView: View {
                 Section {
                     HStack {
                         Spacer()
-                        Text("Made with ♥️ in San Francisco")
+                        Text("Made with ♥️ in California")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Spacer()

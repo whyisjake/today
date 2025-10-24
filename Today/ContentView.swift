@@ -11,6 +11,7 @@ import SwiftData
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @AppStorage("appearanceMode") private var appearanceMode: AppearanceMode = .system
+    @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
 
     var body: some View {
         TabView {
@@ -35,6 +36,7 @@ struct ContentView: View {
                 }
         }
         .preferredColorScheme(appearanceMode.colorScheme)
+        .tint(accentColor.color)
         .onAppear {
             // Pre-warm WebView pool for faster article loading
             _ = WebViewPool.shared
