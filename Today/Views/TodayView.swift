@@ -18,6 +18,7 @@ struct TodayView: View {
     @State private var showFavoritesOnly = false
     @State private var selectedArticleID: PersistentIdentifier?
     @State private var isRefreshing = false
+    @State private var showMarkAllReadConfirmation = false
 
     private var categories: [String] {
         let feedCategories = Set(allArticles.compactMap { $0.feed?.category })
@@ -218,6 +219,14 @@ struct TodayView: View {
 
                         Divider()
 
+                        Button(role: .destructive) {
+                            showMarkAllReadConfirmation = true
+                        } label: {
+                            Label("Mark All as Read", systemImage: "checkmark.circle.fill")
+                        }
+
+                        Divider()
+
                         Text("\(unreadCount) unread • \(favoritesCount) favorites")
                             .foregroundStyle(.secondary)
                     } label: {
@@ -234,7 +243,37 @@ struct TodayView: View {
                     }
                 }
             }
+            .confirmationDialog(
+                selectedCategory == "all"
+                    ? "Mark all \(unreadCount) articles as read?"
+                    : "Mark all \(unreadCount) articles in \(selectedCategory) as read?",
+                isPresented: $showMarkAllReadConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Mark All as Read", role: .destructive) {
+                    markAllAsRead()
+                }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("This cannot be undone.")
+            }
         }
+    }
+
+    private func markAllAsRead() {
+        var articlesToMark = allArticles.filter { !$0.isRead }
+
+        // Filter by category if not "all"
+        if selectedCategory != "all" {
+            articlesToMark = articlesToMark.filter { $0.feed?.category == selectedCategory }
+        }
+
+        // Mark articles as read
+        for article in articlesToMark {
+            article.isRead = true
+        }
+
+        try? modelContext.save()
     }
 
     private func toggleRead(_ article: Article) {
