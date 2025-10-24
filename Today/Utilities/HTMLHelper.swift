@@ -223,12 +223,47 @@ extension String {
         result = result.replacingOccurrences(of: "&ndash;", with: "\u{2013}") // En dash
         result = result.replacingOccurrences(of: "&hellip;", with: "\u{2026}") // Ellipsis
 
-        // Decode numeric entities (&#xxx;)
-        result = result.replacingOccurrences(
-            of: "&#(\\d+);",
-            with: "",
-            options: .regularExpression
-        )
+        // Decode numeric entities (&#xxx; and &#xxxxx;)
+        let numericEntityPattern = "&#(\\d+);"
+        if let regex = try? NSRegularExpression(pattern: numericEntityPattern, options: []) {
+            let nsString = result as NSString
+            let matches = regex.matches(in: result, options: [], range: NSRange(location: 0, length: nsString.length))
+
+            // Process matches in reverse to avoid index shifting
+            for match in matches.reversed() {
+                if match.numberOfRanges == 2 {
+                    let numberRange = match.range(at: 1)
+                    if let numberString = nsString.substring(with: numberRange) as String?,
+                       let codePoint = Int(numberString),
+                       let scalar = UnicodeScalar(codePoint) {
+                        let character = String(scalar)
+                        let fullRange = match.range
+                        result = (result as NSString).replacingCharacters(in: fullRange, with: character)
+                    }
+                }
+            }
+        }
+
+        // Decode hexadecimal entities (&#xHHHH;)
+        let hexEntityPattern = "&#[xX]([0-9A-Fa-f]+);"
+        if let regex = try? NSRegularExpression(pattern: hexEntityPattern, options: []) {
+            let nsString = result as NSString
+            let matches = regex.matches(in: result, options: [], range: NSRange(location: 0, length: nsString.length))
+
+            // Process matches in reverse to avoid index shifting
+            for match in matches.reversed() {
+                if match.numberOfRanges == 2 {
+                    let hexRange = match.range(at: 1)
+                    if let hexString = nsString.substring(with: hexRange) as String?,
+                       let codePoint = Int(hexString, radix: 16),
+                       let scalar = UnicodeScalar(codePoint) {
+                        let character = String(scalar)
+                        let fullRange = match.range
+                        result = (result as NSString).replacingCharacters(in: fullRange, with: character)
+                    }
+                }
+            }
+        }
 
         // Clean up multiple spaces and newlines
         result = result.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
