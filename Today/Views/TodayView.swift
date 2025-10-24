@@ -171,7 +171,19 @@ struct TodayView: View {
             .searchable(text: $searchText, prompt: "Search articles")
             .navigationDestination(item: $selectedArticleID) { articleID in
                 if let article = modelContext.model(for: articleID) as? Article {
-                    ArticleDetailSimple(article: article)
+                    // Find next article in filtered list
+                    if let currentIndex = filteredArticles.firstIndex(where: { $0.persistentModelID == articleID }) {
+                        let nextIndex = currentIndex + 1
+                        let nextArticleID = nextIndex < filteredArticles.count ? filteredArticles[nextIndex].persistentModelID : nil
+                        ArticleDetailSimple(article: article, nextArticleID: nextArticleID, onNavigateToNext: { nextID in
+                            Task { @MainActor in
+                                try? await Task.sleep(nanoseconds: 50_000_000)
+                                selectedArticleID = nextID
+                            }
+                        })
+                    } else {
+                        ArticleDetailSimple(article: article, nextArticleID: nil, onNavigateToNext: { _ in })
+                    }
                 }
             }
             .toolbar {

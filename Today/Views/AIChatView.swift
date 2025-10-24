@@ -252,7 +252,7 @@ struct MessageBubble: View {
                     VStack(alignment: .leading, spacing: 12) {
                         ForEach(items) { item in
                             NavigationLink {
-                                ArticleDetailSimple(article: item.article)
+                                ArticleDetailSimple(article: item.article, nextArticleID: nil, onNavigateToNext: { _ in })
                             } label: {
                                 VStack(alignment: .leading, spacing: 8) {
                                     // Summary text
@@ -305,7 +305,7 @@ struct MessageBubble: View {
                     VStack(alignment: .leading, spacing: 8) {
                         ForEach(articles) { article in
                             NavigationLink {
-                                ArticleDetailSimple(article: article)
+                                ArticleDetailSimple(article: article, nextArticleID: nil, onNavigateToNext: { _ in })
                             } label: {
                                 HStack(spacing: 12) {
                                     Image(systemName: "doc.text.fill")

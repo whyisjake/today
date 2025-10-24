@@ -11,12 +11,16 @@ import WebKit
 
 struct ArticleDetailSimple: View {
     let article: Article
+    let nextArticleID: PersistentIdentifier?
+    let onNavigateToNext: (PersistentIdentifier) -> Void
+
     @Environment(\.openURL) private var openURL
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        ScrollView {
+        GeometryReader { geometry in
+            ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Text(article.title)
                     .font(.title2)
@@ -45,38 +49,38 @@ struct ArticleDetailSimple: View {
                     ArticleContentWebView(htmlContent: description)
                 }
 
-                VStack(spacing: 12) {
-                    // Navigate to web view
-                    NavigationLink {
-                        ArticleWebViewSimple(url: URL(string: article.link)!)
-                    } label: {
-                        Label("Read in App", systemImage: "doc.text")
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.blue)
-                            .foregroundStyle(.white)
-                            .cornerRadius(10)
-                    }
-                    .buttonStyle(.plain)
+                // Pull-up indicator for next article
+                if nextArticleID != nil {
+                    VStack(spacing: 8) {
+                        Divider()
+                            .padding(.vertical)
 
-                    // Open in Safari
-                    Button {
-                        if let url = URL(string: article.link) {
-                            openURL(url)
+                        Button {
+                            if let nextID = nextArticleID {
+                                onNavigateToNext(nextID)
+                            }
+                        } label: {
+                            HStack {
+                                Spacer()
+                                VStack(spacing: 4) {
+                                    Image(systemName: "chevron.up")
+                                        .font(.title2)
+                                        .foregroundStyle(.secondary)
+                                    Text("Tap for next article")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                            }
+                            .padding(.vertical, 40)
+                            .contentShape(Rectangle())
                         }
-                    } label: {
-                        Label("Open in Safari", systemImage: "safari")
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.gray.opacity(0.2))
-                            .foregroundStyle(.primary)
-                            .cornerRadius(10)
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
-                .padding(.top)
             }
             .padding()
+        }
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -85,6 +89,28 @@ struct ArticleDetailSimple: View {
                     markAsUnreadAndGoBack()
                 } label: {
                     Label("Mark as Unread", systemImage: "envelope.badge")
+                }
+            }
+
+            ToolbarItem(placement: .bottomBar) {
+                HStack(spacing: 20) {
+                    // Read in App button
+                    NavigationLink {
+                        ArticleWebViewSimple(url: URL(string: article.link)!)
+                    } label: {
+                        Label("Read in App", systemImage: "doc.text")
+                    }
+
+                    Spacer()
+
+                    // Open in Safari button
+                    Button {
+                        if let url = URL(string: article.link) {
+                            openURL(url)
+                        }
+                    } label: {
+                        Label("Open in Safari", systemImage: "safari")
+                    }
                 }
             }
         }
@@ -151,7 +177,8 @@ struct ArticleContentWebView: View {
 
     var body: some View {
         WebViewWithHeight(htmlContent: htmlContent, height: $contentHeight, selectedURL: $selectedURL)
-            .frame(height: max(300, contentHeight))
+            .frame(height: contentHeight > 0 ? contentHeight : 200)
+            .animation(.easeInOut(duration: 0.3), value: contentHeight)
             .navigationDestination(item: $selectedURL) { url in
                 ArticleWebViewSimple(url: url)
             }
