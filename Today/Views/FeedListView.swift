@@ -140,6 +140,7 @@ struct FeedListView: View {
                                 Text("Social").tag("social")
                                 Text("Tech").tag("tech")
                                 Text("News").tag("news")
+                                Text("Politics").tag("politics")
                             }
                         }
 
@@ -433,6 +434,7 @@ struct EditFeedView: View {
                     Text("Social").tag("social")
                     Text("Tech").tag("tech")
                     Text("News").tag("news")
+                    Text("Politics").tag("politics")
                 }
             }
         }
