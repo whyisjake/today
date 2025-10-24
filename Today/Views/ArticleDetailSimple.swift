@@ -51,6 +51,7 @@ struct ArticleDetailSimple: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
+                    Text(article.feed)
                     Text(article.publishedDate, style: .date)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -191,8 +192,7 @@ struct ArticleContentWebView: View {
 
     var body: some View {
         WebViewWithHeight(htmlContent: htmlContent, height: $contentHeight, selectedURL: $selectedURL)
-            .frame(height: contentHeight > 0 ? contentHeight : 200)
-            .animation(.easeInOut(duration: 0.3), value: contentHeight)
+            .frame(height: max(contentHeight, 200))
             .navigationDestination(item: $selectedURL) { url in
                 ArticleWebViewSimple(url: url)
             }
@@ -242,11 +242,14 @@ struct WebViewWithHeight: UIViewRepresentable {
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             // Get content height after page finishes loading
-            webView.evaluateJavaScript("document.body.scrollHeight") { height, error in
+            // Use Math.max to ensure we get the full height
+            webView.evaluateJavaScript("Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)") { height, error in
                 if let height = height as? CGFloat {
                     DispatchQueue.main.async {
                         self.parent.height = height
                     }
+                } else if let error = error {
+                    print("Error calculating height: \(error)")
                 }
             }
         }
