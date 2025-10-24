@@ -48,7 +48,8 @@ class RSSParser: NSObject, XMLParserDelegate {
     func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String : String] = [:]) {
         currentElement = elementName
 
-        if elementName == "item" {
+        // Support both RSS <item> and Atom <entry>
+        if elementName == "item" || elementName == "entry" {
             insideItem = true
             currentTitle = ""
             currentLink = ""
@@ -59,6 +60,19 @@ class RSSParser: NSObject, XMLParserDelegate {
             currentPubDate = ""
             currentAuthor = ""
             currentGuid = ""
+        }
+
+        // Handle Atom <link> tags which use attributes instead of text content
+        if insideItem && elementName == "link" {
+            // Atom feeds have: <link rel="alternate" type="text/html" href="..." />
+            if let href = attributeDict["href"], let rel = attributeDict["rel"], rel == "alternate" {
+                currentLink = href
+            } else if let href = attributeDict["href"], attributeDict["rel"] == nil {
+                // Some Atom feeds don't specify rel, just use href
+                if currentLink.isEmpty {
+                    currentLink = href
+                }
+            }
         }
 
         // Check for image in attributes (media:content, enclosure, etc.)
@@ -93,18 +107,28 @@ class RSSParser: NSObject, XMLParserDelegate {
             case "title":
                 currentTitle += trimmed
             case "link":
-                currentLink += trimmed
-            case "description":
+                // RSS feeds use text content for link, Atom uses attributes (handled in didStartElement)
+                if currentLink.isEmpty {
+                    currentLink += trimmed
+                }
+            case "description", "summary": // Atom uses <summary>, RSS uses <description>
                 currentDescription += trimmed
             case "content":
                 currentContent += trimmed
             case "content:encoded", "encoded":
                 currentContentEncoded += trimmed
-            case "pubDate":
-                currentPubDate += trimmed
+            case "pubDate", "published", "updated": // Atom uses <published> or <updated>
+                if currentPubDate.isEmpty { // Prefer published over updated
+                    currentPubDate += trimmed
+                }
             case "author", "dc:creator":
                 currentAuthor += trimmed
-            case "guid":
+            case "name": // Atom feeds have <author><name>...</name></author>
+                if !currentAuthor.isEmpty {
+                    currentAuthor += " "
+                }
+                currentAuthor += trimmed
+            case "guid", "id": // Atom uses <id>
                 currentGuid += trimmed
             default:
                 break
@@ -125,7 +149,8 @@ class RSSParser: NSObject, XMLParserDelegate {
     }
 
     func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?) {
-        if elementName == "item" {
+        // Support both RSS <item> and Atom <entry>
+        if elementName == "item" || elementName == "entry" {
             insideItem = false
 
             // Use link as guid if guid is not provided
@@ -192,6 +217,20 @@ class RSSParser: NSObject, XMLParserDelegate {
     }
 
     private func parseDate(_ dateString: String) -> Date? {
+        // Try ISO 8601 decoder first (Atom feeds) - handles various formats
+        if #available(iOS 15.0, *) {
+            let isoFormatter = ISO8601DateFormatter()
+            isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = isoFormatter.date(from: dateString) {
+                return date
+            }
+            // Try without fractional seconds
+            isoFormatter.formatOptions = [.withInternetDateTime]
+            if let date = isoFormatter.date(from: dateString) {
+                return date
+            }
+        }
+
         let dateFormatters = [
             // RFC 822 format (common in RSS)
             { () -> DateFormatter in
@@ -200,10 +239,16 @@ class RSSParser: NSObject, XMLParserDelegate {
                 formatter.locale = Locale(identifier: "en_US_POSIX")
                 return formatter
             }(),
-            // ISO 8601 format (Atom feeds)
+            // ISO 8601 format variations (Atom feeds)
             { () -> DateFormatter in
                 let formatter = DateFormatter()
                 formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+                formatter.locale = Locale(identifier: "en_US_POSIX")
+                return formatter
+            }(),
+            { () -> DateFormatter in
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
                 formatter.locale = Locale(identifier: "en_US_POSIX")
                 return formatter
             }()

@@ -62,10 +62,6 @@ struct TodayView: View {
             articles = articles.filter { $0.isFavorite }
         }
 
-        // Show only articles from the last 7 days
-        let sevenDaysAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
-        articles = articles.filter { $0.publishedDate >= sevenDaysAgo }
-
         return articles
     }
 
