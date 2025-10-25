@@ -41,18 +41,18 @@ struct ArticleDetailSimple: View {
             ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Text(article.title)
-                    .font(.title2)
-                    .fontWeight(.bold)
+                    .font(.custom("NewYork-Semibold", size: 28, relativeTo: .title2))
+                    .fontWeight(.semibold)
 
                 HStack {
                     if let author = article.author {
                         Text("By \(author)")
-                            .font(.subheadline)
+                            .font(.custom("NewYork-Regular", size: 15, relativeTo: .subheadline))
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
                     Text(article.publishedDate, style: .date)
-                        .font(.subheadline)
+                        .font(.custom("NewYork-Regular", size: 15, relativeTo: .subheadline))
                         .foregroundStyle(.secondary)
                 }
 

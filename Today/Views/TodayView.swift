@@ -390,13 +390,13 @@ struct ArticleRowView: View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(article.title)
-                    .font(.headline)
+                    .font(.custom("NewYork-Medium", size: 17, relativeTo: .headline))
                     .fontWeight(article.isRead ? .regular : .semibold)
 
                 // Use cached plain text if available, otherwise compute on-the-fly
                 if let plainText = article.plainTextDescription ?? article.articleDescription?.htmlToPlainText {
                     Text(plainText)
-                        .font(.subheadline)
+                        .font(.custom("NewYork-Regular", size: 15, relativeTo: .subheadline))
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
