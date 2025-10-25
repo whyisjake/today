@@ -58,7 +58,7 @@ struct TodayApp: App {
         let defaultFeeds = [
             ("Jake Spurlock", "https://jakespurlock.com/feed/", "personal"),
             ("Matt Mullenweg", "https://ma.tt/feed/", "personal"),
-            ("Pearls Before Swine", "https://www.gocomics.com/rss/pearlsbeforeswine", "comics"),
+            ("XKCD", "https://xkcd.com/rss.xml", "comics"),
             ("TechCrunch", "https://techcrunch.com/feed/", "technology"),
             ("The Verge", "https://www.theverge.com/rss/index.xml", "technology"),
             ("Hacker News", "https://news.ycombinator.com/rss", "technology"),
