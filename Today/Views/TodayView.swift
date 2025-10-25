@@ -10,6 +10,7 @@ import SwiftData
 
 struct TodayView: View {
     @Environment(\.modelContext) private var modelContext
+
     @Query(sort: \Article.publishedDate, order: .reverse) private var allArticles: [Article]
 
     @State private var selectedCategory: String = "all"
@@ -19,7 +20,7 @@ struct TodayView: View {
     @State private var selectedArticleID: PersistentIdentifier?
     @State private var isRefreshing = false
     @State private var showMarkAllReadConfirmation = false
-    @State private var displayedArticleCount = 30 // Start with 30 articles
+    @State private var daysToLoad = 1 // Start with 1 day (today)
     @AppStorage("fontOption") private var fontOption: FontOption = .serif
 
     // Cache expensive computations
@@ -42,6 +43,13 @@ struct TodayView: View {
 
     private var filteredArticles: [Article] {
         var articles = allArticles
+
+        // Filter by date range based on daysToLoad
+        let now = Date.now
+        let startOfToday = Calendar.current.startOfDay(for: now)
+        let cutoffDate = Calendar.current.date(byAdding: .day, value: -daysToLoad, to: startOfToday)!
+
+        articles = articles.filter { $0.publishedDate >= cutoffDate }
 
         // Filter by category
         if selectedCategory != "all" {
@@ -69,9 +77,26 @@ struct TodayView: View {
         return articles
     }
 
-    // Only show a limited number of articles for performance
-    private var displayedArticles: [Article] {
-        Array(filteredArticles.prefix(displayedArticleCount))
+    // Computed property for the dynamic title
+    private var viewTitle: String {
+        if daysToLoad == 1 {
+            return "Today"
+        } else if daysToLoad == 2 {
+            return "Yesterday"
+        } else {
+            return "\(daysToLoad - 1) Days Ago"
+        }
+    }
+
+    // Label for the next day to load
+    private var previousDayLabel: String {
+        if daysToLoad == 1 {
+            return "Yesterday"
+        } else if daysToLoad == 2 {
+            return "2 days ago"
+        } else {
+            return "\(daysToLoad) days ago"
+        }
     }
 
     var body: some View {
@@ -128,7 +153,20 @@ struct TodayView: View {
                     }
                 } else {
                     List {
-                        ForEach(displayedArticles, id: \.id) { article in
+                        // Invisible element at the top to detect when user scrolls back to top
+                        Color.clear
+                            .frame(height: 1)
+                            .id("topMarker")
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .onAppear {
+                                // User scrolled back to top - reset to today
+                                if daysToLoad > 1 {
+                                    resetToToday()
+                                }
+                            }
+
+                        ForEach(filteredArticles, id: \.id) { article in
                             Button {
                                 selectedArticleID = article.persistentModelID
                             } label: {
@@ -166,21 +204,25 @@ struct TodayView: View {
                             }
                         }
 
-                        // Load more button if there are more articles
-                        if displayedArticleCount < filteredArticles.count {
-                            Button {
-                                loadMoreArticles()
-                            } label: {
-                                HStack {
-                                    Spacer()
-                                    Text("Load More (\(filteredArticles.count - displayedArticleCount) remaining)")
+                        // Load more days button at the bottom
+                        Button {
+                            loadMoreDays()
+                        } label: {
+                            HStack {
+                                Spacer()
+                                VStack(spacing: 8) {
+                                    Text("Load Previous Day")
                                         .font(.subheadline)
                                         .foregroundStyle(.secondary)
-                                    Spacer()
+                                    Text(previousDayLabel)
+                                        .font(.caption)
+                                        .foregroundStyle(.tertiary)
                                 }
-                                .padding()
+                                Spacer()
                             }
+                            .padding()
                         }
+                        .listRowBackground(Color.clear)
                     }
                     .listStyle(.plain)
                     .refreshable {
@@ -188,19 +230,19 @@ struct TodayView: View {
                     }
                 }
             }
-            .navigationTitle("Today")
+            .navigationTitle(viewTitle)
             .searchable(text: $searchText, prompt: "Search articles")
             .onChange(of: selectedCategory) { _, _ in
-                displayedArticleCount = 30 // Reset to initial count when filter changes
+                resetToToday()
             }
             .onChange(of: searchText) { _, _ in
-                displayedArticleCount = 30
+                resetToToday()
             }
             .onChange(of: hideReadArticles) { _, _ in
-                displayedArticleCount = 30
+                resetToToday()
             }
             .onChange(of: showFavoritesOnly) { _, _ in
-                displayedArticleCount = 30
+                resetToToday()
             }
             .navigationDestination(item: $selectedArticleID) { articleID in
                 if let article = modelContext.model(for: articleID) as? Article {
@@ -378,9 +420,12 @@ struct TodayView: View {
         isRefreshing = false
     }
 
-    private func loadMoreArticles() {
-        // Load 30 more articles at a time
-        displayedArticleCount = min(displayedArticleCount + 30, filteredArticles.count)
+    private func loadMoreDays() {
+        daysToLoad += 1
+    }
+
+    private func resetToToday() {
+        daysToLoad = 1
     }
 }
 
