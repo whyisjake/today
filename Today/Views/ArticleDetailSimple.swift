@@ -35,24 +35,30 @@ struct ArticleDetailSimple: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("fontOption") private var fontOption: FontOption = .serif
 
     var body: some View {
         GeometryReader { geometry in
             ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Text(article.title)
-                    .font(.title2)
-                    .fontWeight(.bold)
+                    .font(fontOption == .serif ?
+                        .system(.title2, design: .serif, weight: .bold) :
+                        .system(.title2, design: .default, weight: .bold))
 
                 HStack {
                     if let author = article.author {
                         Text("By \(author)")
-                            .font(.subheadline)
+                            .font(fontOption == .serif ?
+                                .system(.subheadline, design: .serif) :
+                                .system(.subheadline, design: .default))
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
                     Text(article.publishedDate, style: .date)
-                        .font(.subheadline)
+                        .font(fontOption == .serif ?
+                            .system(.subheadline, design: .serif) :
+                            .system(.subheadline, design: .default))
                         .foregroundStyle(.secondary)
                 }
 
@@ -205,6 +211,7 @@ struct WebViewWithHeight: UIViewRepresentable {
     @Binding var selectedURL: URL?
     @Environment(\.colorScheme) var colorScheme
     @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
+    @AppStorage("fontOption") private var fontOption: FontOption = .serif
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -228,7 +235,7 @@ struct WebViewWithHeight: UIViewRepresentable {
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
-        let styledHTML = createStyledHTML(from: htmlContent, colorScheme: colorScheme, accentColor: accentColor.color)
+        let styledHTML = createStyledHTML(from: htmlContent, colorScheme: colorScheme, accentColor: accentColor.color, fontOption: fontOption)
         context.coordinator.parent = self
         webView.loadHTMLString(styledHTML, baseURL: nil)
     }
@@ -276,7 +283,7 @@ struct WebViewWithHeight: UIViewRepresentable {
         }
     }
 
-    func createStyledHTML(from html: String, colorScheme: ColorScheme, accentColor: Color) -> String {
+    func createStyledHTML(from html: String, colorScheme: ColorScheme, accentColor: Color, fontOption: FontOption) -> String {
         // Dynamic colors based on color scheme
         let textColor = colorScheme == .dark ? "#FFFFFF" : "#000000"
         let secondaryBg = colorScheme == .dark ? "#2C2C2E" : "#F2F2F7"
@@ -299,9 +306,9 @@ struct WebViewWithHeight: UIViewRepresentable {
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
             <style>
                 body {
-                    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
-                    font-size: 17px;
-                    line-height: 1.6;
+                    font-family: \(fontOption.fontFamily);
+                    font-size: 18px;
+                    line-height: 1.7;
                     color: \(textColor);
                     background-color: transparent;
                     margin: 0;

@@ -30,9 +30,9 @@ extension String {
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <style>
                 body {
-                    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif;
-                    font-size: 17px;
-                    line-height: 1.6;
+                    font-family: Georgia, 'Times New Roman', serif;
+                    font-size: 18px;
+                    line-height: 1.7;
                     color: #000000;
                     margin: 0;
                     padding: 0;
@@ -281,6 +281,7 @@ extension String {
 struct HTMLText: View {
     let html: String
     let fontSize: CGFloat
+    @AppStorage("fontOption") private var fontOption: FontOption = .serif
 
     init(_ html: String, fontSize: CGFloat = 15) {
         self.html = html
@@ -289,6 +290,8 @@ struct HTMLText: View {
 
     var body: some View {
         Text(html.htmlToAttributedString)
-            .font(.system(size: fontSize))
+            .font(fontOption == .serif ?
+                .system(size: fontSize, design: .serif) :
+                .system(size: fontSize, design: .default))
     }
 }

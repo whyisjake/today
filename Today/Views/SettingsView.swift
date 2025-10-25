@@ -21,6 +21,22 @@ enum AppearanceMode: String, CaseIterable {
     }
 }
 
+enum FontOption: String, CaseIterable, Identifiable {
+    case serif = "Serif"
+    case sansSerif = "Sans Serif"
+
+    var id: String { rawValue }
+
+    var fontFamily: String {
+        switch self {
+        case .serif:
+            return "-apple-system-ui-serif, ui-serif, 'New York', Georgia, 'Times New Roman', serif"
+        case .sansSerif:
+            return "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif"
+        }
+    }
+}
+
 enum AccentColorOption: String, CaseIterable, Identifiable {
     case red = "Red"
     case orange = "International Orange"
@@ -52,6 +68,7 @@ enum AccentColorOption: String, CaseIterable, Identifiable {
 struct SettingsView: View {
     @AppStorage("appearanceMode") private var appearanceMode: AppearanceMode = .system
     @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
+    @AppStorage("fontOption") private var fontOption: FontOption = .serif
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -61,6 +78,13 @@ struct SettingsView: View {
                     Picker("Theme", selection: $appearanceMode) {
                         ForEach(AppearanceMode.allCases, id: \.self) { mode in
                             Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    Picker("Font", selection: $fontOption) {
+                        ForEach(FontOption.allCases) { option in
+                            Text(option.rawValue).tag(option)
                         }
                     }
                     .pickerStyle(.segmented)

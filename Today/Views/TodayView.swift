@@ -20,6 +20,7 @@ struct TodayView: View {
     @State private var isRefreshing = false
     @State private var showMarkAllReadConfirmation = false
     @State private var displayedArticleCount = 30 // Start with 30 articles
+    @AppStorage("fontOption") private var fontOption: FontOption = .serif
 
     // Cache expensive computations
     private var categories: [String] {
@@ -132,7 +133,7 @@ struct TodayView: View {
                                 selectedArticleID = article.persistentModelID
                             } label: {
                                 HStack {
-                                    ArticleRowView(article: article)
+                                    ArticleRowView(article: article, fontOption: fontOption)
                                     Spacer()
                                     Image(systemName: "chevron.right")
                                         .font(.caption)
@@ -385,18 +386,23 @@ struct TodayView: View {
 
 struct ArticleRowView: View {
     let article: Article
+    let fontOption: FontOption
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(article.title)
-                    .font(.headline)
+                    .font(fontOption == .serif ?
+                        .system(.headline, design: .serif) :
+                        .system(.headline, design: .default))
                     .fontWeight(article.isRead ? .regular : .semibold)
 
                 // Use cached plain text if available, otherwise compute on-the-fly
                 if let plainText = article.plainTextDescription ?? article.articleDescription?.htmlToPlainText {
                     Text(plainText)
-                        .font(.subheadline)
+                        .font(fontOption == .serif ?
+                            .system(.subheadline, design: .serif) :
+                            .system(.subheadline, design: .default))
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
