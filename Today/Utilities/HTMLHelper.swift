@@ -281,6 +281,7 @@ extension String {
 struct HTMLText: View {
     let html: String
     let fontSize: CGFloat
+    @AppStorage("fontOption") private var fontOption: FontOption = .serif
 
     init(_ html: String, fontSize: CGFloat = 15) {
         self.html = html
@@ -289,6 +290,8 @@ struct HTMLText: View {
 
     var body: some View {
         Text(html.htmlToAttributedString)
-            .font(.system(size: fontSize))
+            .font(fontOption == .serif ?
+                .system(size: fontSize, design: .serif) :
+                .system(size: fontSize, design: .default))
     }
 }
