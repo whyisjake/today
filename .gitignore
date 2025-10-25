@@ -92,3 +92,8 @@ iOSInjectionProject/
 
 # macOS
 .DS_Store
+
+# Code Coverage Reports
+coverage-report.json
+coverage-summary.txt
+*.xcresult
