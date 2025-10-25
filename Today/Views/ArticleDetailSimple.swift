@@ -79,6 +79,12 @@ struct ArticleDetailSimple: View {
         .navigationTitle(article.feed?.title ?? "Article")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                ShareLink(item: URL(string: article.link)!, subject: Text(article.title)) {
+                    Image(systemName: "square.and.arrow.up")
+                }
+            }
+
             ToolbarItem(placement: .bottomBar) {
                 HStack(spacing: 20) {
                     // Previous article button
