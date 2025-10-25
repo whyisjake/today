@@ -118,7 +118,7 @@ class AIService {
         """
 
         let response = try await session.respond(to: prompt)
-        return response
+        return response.content
     }
     #endif
 
@@ -148,7 +148,7 @@ class AIService {
         // Try to identify relevant articles based on the query
         let relevantArticles = identifyRelevantArticles(for: query, in: articles)
 
-        return (response, relevantArticles)
+        return (response.content, relevantArticles)
     }
     #endif
 
