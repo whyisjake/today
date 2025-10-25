@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		01B7497AF99111590E838435 /* HTMLHelperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6A65EDC5B85BC1A1DD0A543 /* HTMLHelperTests.swift */; };
+		0A810201FA9D4EBEBBDC94A7 /* RSSParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B453519E659449A8117A54C /* RSSParserTests.swift */; };
+		C29AB72AB8D4FBBB6DB2D8A3 /* TodayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22D7D03FBA667C69848C3AAC /* TodayTests.swift */; };
 		F52BB6272EAC23870054AEC5 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F52BB6262EAC23870054AEC5 /* XCTest.framework */; platformFilter = ios; };
 /* End PBXBuildFile section */
 
@@ -21,6 +24,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		22D7D03FBA667C69848C3AAC /* TodayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayTests.swift; sourceTree = "<group>"; };
+		D6A65EDC5B85BC1A1DD0A543 /* HTMLHelperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLHelperTests.swift; sourceTree = "<group>"; };
+		0B453519E659449A8117A54C /* RSSParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RSSParserTests.swift; sourceTree = "<group>"; };
 		F52BB61A2EAC22F60054AEC5 /* TodayTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TodayTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F52BB6262EAC23870054AEC5 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Platforms/iPhoneOS.platform/Developer/Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
 		F54DF4022EA9AB9F00FBDC60 /* Today.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Today.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -37,11 +43,6 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		F52BB61B2EAC22F60054AEC5 /* TodayTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = TodayTests;
-			sourceTree = "<group>";
-		};
 		F54DF4042EA9AB9F00FBDC60 /* Today */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -71,6 +72,16 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		878278F0B28C44CFDEFF1539 /* TodayTests */ = {
+			isa = PBXGroup;
+			children = (
+				22D7D03FBA667C69848C3AAC /* TodayTests.swift */,
+				D6A65EDC5B85BC1A1DD0A543 /* HTMLHelperTests.swift */,
+				0B453519E659449A8117A54C /* RSSParserTests.swift */,
+			);
+			path = TodayTests;
+			sourceTree = "<group>";
+		};
 		F52BB6252EAC23860054AEC5 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
@@ -83,7 +94,7 @@
 			isa = PBXGroup;
 			children = (
 				F54DF4042EA9AB9F00FBDC60 /* Today */,
-				F52BB61B2EAC22F60054AEC5 /* TodayTests */,
+				878278F0B28C44CFDEFF1539 /* TodayTests */,
 				F52BB6252EAC23860054AEC5 /* Frameworks */,
 				F54DF4032EA9AB9F00FBDC60 /* Products */,
 			);
@@ -113,9 +124,6 @@
 			);
 			dependencies = (
 				F52BB61F2EAC22F60054AEC5 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				F52BB61B2EAC22F60054AEC5 /* TodayTests */,
 			);
 			name = TodayTests;
 			packageProductDependencies = (
@@ -207,6 +215,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C29AB72AB8D4FBBB6DB2D8A3 /* TodayTests.swift in Sources */,
+				01B7497AF99111590E838435 /* HTMLHelperTests.swift in Sources */,
+				0A810201FA9D4EBEBBDC94A7 /* RSSParserTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
