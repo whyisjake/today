@@ -126,7 +126,8 @@ struct TodayView: View {
                                 }
                             }
                         }
-                        .padding()
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
                     }
                 }
 
@@ -225,6 +226,7 @@ struct TodayView: View {
                         .listRowBackground(Color.clear)
                     }
                     .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
                     .refreshable {
                         await refreshFeeds()
                     }
