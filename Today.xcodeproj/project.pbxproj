@@ -11,6 +11,7 @@
 		0A810201FA9D4EBEBBDC94A7 /* RSSParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B453519E659449A8117A54C /* RSSParserTests.swift */; };
 		C29AB72AB8D4FBBB6DB2D8A3 /* TodayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22D7D03FBA667C69848C3AAC /* TodayTests.swift */; };
 		D9A31F69824C4B1599F79A6D /* AtomFeedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40F844A250A040FC9CD2DB04 /* AtomFeedTests.swift */; };
+		E2B9928D773744DDAD4001C4 /* TexturizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAA190B649774E47AAB39B5D /* TexturizerTests.swift */; };
 		F52BB6272EAC23870054AEC5 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F52BB6262EAC23870054AEC5 /* XCTest.framework */; platformFilter = ios; };
 /* End PBXBuildFile section */
 
@@ -25,10 +26,11 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		0B453519E659449A8117A54C /* RSSParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RSSParserTests.swift; sourceTree = "<group>"; };
 		22D7D03FBA667C69848C3AAC /* TodayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayTests.swift; sourceTree = "<group>"; };
 		40F844A250A040FC9CD2DB04 /* AtomFeedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AtomFeedTests.swift; sourceTree = "<group>"; };
 		D6A65EDC5B85BC1A1DD0A543 /* HTMLHelperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLHelperTests.swift; sourceTree = "<group>"; };
-		0B453519E659449A8117A54C /* RSSParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RSSParserTests.swift; sourceTree = "<group>"; };
+		FAA190B649774E47AAB39B5D /* TexturizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TexturizerTests.swift; sourceTree = "<group>"; };
 		F52BB61A2EAC22F60054AEC5 /* TodayTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TodayTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F52BB6262EAC23870054AEC5 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Platforms/iPhoneOS.platform/Developer/Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
 		F54DF4022EA9AB9F00FBDC60 /* Today.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Today.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -81,6 +83,7 @@
 				D6A65EDC5B85BC1A1DD0A543 /* HTMLHelperTests.swift */,
 				0B453519E659449A8117A54C /* RSSParserTests.swift */,
 				40F844A250A040FC9CD2DB04 /* AtomFeedTests.swift */,
+				FAA190B649774E47AAB39B5D /* TexturizerTests.swift */,
 			);
 			path = TodayTests;
 			sourceTree = "<group>";
@@ -222,6 +225,7 @@
 				01B7497AF99111590E838435 /* HTMLHelperTests.swift in Sources */,
 				0A810201FA9D4EBEBBDC94A7 /* RSSParserTests.swift in Sources */,
 				D9A31F69824C4B1599F79A6D /* AtomFeedTests.swift in Sources */,
+				E2B9928D773744DDAD4001C4 /* TexturizerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
