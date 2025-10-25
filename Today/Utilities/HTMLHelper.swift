@@ -30,7 +30,7 @@ extension String {
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <style>
                 body {
-                    font-family: 'New York', 'Times New Roman', Georgia, serif;
+                    font-family: Georgia, 'Times New Roman', serif;
                     font-size: 18px;
                     line-height: 1.7;
                     color: #000000;

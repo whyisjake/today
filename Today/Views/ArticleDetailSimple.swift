@@ -41,18 +41,17 @@ struct ArticleDetailSimple: View {
             ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Text(article.title)
-                    .font(.custom("NewYork-Semibold", size: 28, relativeTo: .title2))
-                    .fontWeight(.semibold)
+                    .font(.custom("Georgia-Bold", size: 28, relativeTo: .title2))
 
                 HStack {
                     if let author = article.author {
                         Text("By \(author)")
-                            .font(.custom("NewYork-Regular", size: 15, relativeTo: .subheadline))
+                            .font(.custom("Georgia", size: 15, relativeTo: .subheadline))
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
                     Text(article.publishedDate, style: .date)
-                        .font(.custom("NewYork-Regular", size: 15, relativeTo: .subheadline))
+                        .font(.custom("Georgia", size: 15, relativeTo: .subheadline))
                         .foregroundStyle(.secondary)
                 }
 
@@ -299,7 +298,7 @@ struct WebViewWithHeight: UIViewRepresentable {
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
             <style>
                 body {
-                    font-family: 'New York', 'Times New Roman', Georgia, serif;
+                    font-family: Georgia, 'Times New Roman', serif;
                     font-size: 18px;
                     line-height: 1.7;
                     color: \(textColor);
