@@ -156,8 +156,9 @@ struct TodayView: View {
                     List {
                         // Invisible element at the top to detect when user scrolls back to top
                         Color.clear
-                            .frame(height: 1)
+                            .frame(height: 0)
                             .id("topMarker")
+                            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
                             .onAppear {
