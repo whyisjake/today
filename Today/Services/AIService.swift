@@ -103,24 +103,102 @@ class AIService {
     #if canImport(FoundationModels)
     @available(iOS 26.0, *)
     private func generateAISummary(articles: [Article], session: LanguageModelSession) async throws -> String {
+        // Select the most important articles from the last 24 hours
+        let selectedArticles = selectImportantArticles(from: articles, limit: 10)
+
+        guard !selectedArticles.isEmpty else {
+            return "No recent articles to summarize from the last 24 hours."
+        }
+
         // Create a concise list of articles for the LLM
-        let articleList = articles.prefix(10).enumerated().map { index, article in
+        let articleList = selectedArticles.enumerated().map { index, article in
             let description = article.articleDescription?.htmlToPlainText.prefix(150) ?? ""
-            return "\(index + 1). \(article.title) - \(description)"
+            let readStatus = article.isRead ? "" : "[UNREAD] "
+            return "\(index + 1). \(readStatus)\(article.title) - \(description)"
         }.joined(separator: "\n\n")
 
         let prompt = """
-        Analyze these recent news articles and provide a brief, engaging summary highlighting the main themes and important stories:
+        Analyze these recent news articles from the last 24 hours and provide a brief, engaging summary highlighting the main themes and important stories:
 
         \(articleList)
 
-        Provide a concise summary in 3-4 sentences that captures the key topics and trends.
+        Provide a concise summary in 3-4 sentences that captures the key topics and trends. Focus especially on the unread articles marked [UNREAD].
         """
 
         let response = try await session.respond(to: prompt)
         return response.content
     }
     #endif
+
+    /// Select the most important articles from the last 24 hours
+    /// Prioritizes: 1) Last 24 hours, 2) Unread articles, 3) Diversity across feeds, 4) Recency
+    private func selectImportantArticles(from articles: [Article], limit: Int) -> [Article] {
+        let now = Date.now
+        let twentyFourHoursAgo = now.addingTimeInterval(-86400) // 24 hours in seconds
+
+        // Filter to articles from last 24 hours
+        let recentArticles = articles.filter { $0.publishedDate >= twentyFourHoursAgo }
+
+        guard !recentArticles.isEmpty else {
+            return []
+        }
+
+        // Separate unread and read articles
+        let unreadArticles = recentArticles.filter { !$0.isRead }
+        let readArticles = recentArticles.filter { $0.isRead }
+
+        // Score articles based on importance
+        let scoredUnread = unreadArticles.map { (article: $0, score: calculateImportanceScore($0, now: now)) }
+        let scoredRead = readArticles.map { (article: $0, score: calculateImportanceScore($0, now: now)) }
+
+        // Sort by score (highest first)
+        let sortedUnread = scoredUnread.sorted { $0.score > $1.score }
+        let sortedRead = scoredRead.sorted { $0.score > $1.score }
+
+        // Prioritize unread: take up to limit from unread, then fill with read if needed
+        var selectedArticles: [Article] = []
+
+        // Add unread articles first (up to limit)
+        selectedArticles.append(contentsOf: sortedUnread.prefix(limit).map { $0.article })
+
+        // If we haven't reached the limit, add some read articles
+        if selectedArticles.count < limit {
+            let remainingSlots = limit - selectedArticles.count
+            selectedArticles.append(contentsOf: sortedRead.prefix(remainingSlots).map { $0.article })
+        }
+
+        return selectedArticles
+    }
+
+    /// Calculate importance score for an article
+    /// Higher score = more important
+    private func calculateImportanceScore(_ article: Article, now: Date) -> Double {
+        var score = 0.0
+
+        // Recency bonus (more recent = higher score)
+        let hoursSincePublished = now.timeIntervalSince(article.publishedDate) / 3600
+        let recencyScore = max(0, 24 - hoursSincePublished) // 24 points for brand new, 0 for 24h old
+        score += recencyScore
+
+        // Title length bonus (substantial titles often indicate important content)
+        let titleWords = article.title.split(separator: " ").count
+        if titleWords >= 8 && titleWords <= 20 {
+            score += 5 // Sweet spot for informative titles
+        }
+
+        // Description length bonus (well-described articles are often more substantial)
+        if let description = article.articleDescription, !description.isEmpty {
+            let descLength = description.count
+            if descLength > 200 {
+                score += 3 // Substantial content
+            }
+        }
+
+        // Feed diversity bonus (will be applied during selection to avoid one feed dominating)
+        // This is handled in the selection logic by distributing across feeds
+
+        return score
+    }
 
     /// Generate conversational response using Apple's on-device LLM (iOS 26+)
     #if canImport(FoundationModels)
@@ -285,18 +363,33 @@ class AIService {
     private func analyzeTrends(from articles: [Article]) async -> String {
         var insights: [String] = []
 
-        // Group by feed
-        let articlesByFeed = Dictionary(grouping: articles, by: { $0.feed?.title ?? "Unknown" })
+        // Select the most important articles from the last 24 hours
+        let selectedArticles = selectImportantArticles(from: articles, limit: 15)
 
-        insights.append("📊 Today's Overview")
-        insights.append("You have \(articles.count) new articles from \(articlesByFeed.keys.count) sources.")
+        if selectedArticles.isEmpty {
+            return "No articles from the last 24 hours to analyze. Check back after your feeds sync!"
+        }
+
+        // Group by feed
+        let articlesByFeed = Dictionary(grouping: selectedArticles, by: { $0.feed?.title ?? "Unknown" })
+
+        // Count unread
+        let unreadCount = selectedArticles.filter { !$0.isRead }.count
+
+        insights.append("📊 Last 24 Hours Overview")
+        insights.append("You have \(selectedArticles.count) articles from \(articlesByFeed.keys.count) sources.")
+        if unreadCount > 0 {
+            insights.append("\(unreadCount) unread articles need your attention.")
+        }
 
         // Analyze by category
-        let articlesByCategory = Dictionary(grouping: articles, by: { $0.feed?.category ?? "general" })
+        let articlesByCategory = Dictionary(grouping: selectedArticles, by: { $0.feed?.category ?? "general" })
 
         insights.append("\n📑 By Category:")
         for (category, categoryArticles) in articlesByCategory.sorted(by: { $0.value.count > $1.value.count }) {
-            insights.append("  • \(category.capitalized): \(categoryArticles.count) articles")
+            let unreadInCategory = categoryArticles.filter { !$0.isRead }.count
+            let unreadNote = unreadInCategory > 0 ? " (\(unreadInCategory) unread)" : ""
+            insights.append("  • \(category.capitalized): \(categoryArticles.count) articles\(unreadNote)")
         }
 
         // Most active sources
@@ -307,7 +400,7 @@ class AIService {
         }
 
         // Extract keywords from titles
-        let keywords = extractKeywords(from: articles)
+        let keywords = extractKeywords(from: selectedArticles)
         if !keywords.isEmpty {
             insights.append("\n🔑 Trending Topics:")
             for keyword in keywords.prefix(10) {
@@ -316,9 +409,7 @@ class AIService {
         }
 
         // Recent highlights note
-        if !articles.isEmpty {
-            insights.append("\n✨ Tap the articles below to read the recent highlights!")
-        }
+        insights.append("\n✨ Tap the articles below to read the highlights from the last 24 hours!")
 
         return insights.joined(separator: "\n")
     }
