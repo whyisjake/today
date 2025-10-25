@@ -154,21 +154,8 @@ struct TodayView: View {
                     }
                 } else {
                     List {
-                        // Invisible element at the top to detect when user scrolls back to top
-                        Color.clear
-                            .frame(height: 0)
-                            .id("topMarker")
-                            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
-                            .onAppear {
-                                // User scrolled back to top - reset to today
-                                if daysToLoad > 1 {
-                                    resetToToday()
-                                }
-                            }
-
-                        ForEach(filteredArticles, id: \.id) { article in
+                        ForEach(filteredArticles.indices, id: \.self) { index in
+                            let article = filteredArticles[index]
                             Button {
                                 selectedArticleID = article.persistentModelID
                             } label: {
@@ -182,6 +169,12 @@ struct TodayView: View {
                             }
                             .buttonStyle(.plain)
                             .id(article.id)
+                            .onAppear {
+                                // If first article appears and we're viewing multiple days, reset to today
+                                if index == 0 && daysToLoad > 1 {
+                                    resetToToday()
+                                }
+                            }
                             .swipeActions(edge: .leading) {
                                 Button {
                                     toggleRead(article)
