@@ -30,9 +30,9 @@ extension String {
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <style>
                 body {
-                    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif;
-                    font-size: 17px;
-                    line-height: 1.6;
+                    font-family: 'New York', 'Times New Roman', Georgia, serif;
+                    font-size: 18px;
+                    line-height: 1.7;
                     color: #000000;
                     margin: 0;
                     padding: 0;
