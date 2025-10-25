@@ -91,14 +91,13 @@ struct ArticleDetailSimple: View {
                     }
                     .disabled(previousArticleID == nil)
 
-                    // Open menu with Read in App, Safari, Share, and Mark as Unread options
-                    Menu {
-                        NavigationLink {
-                            ArticleWebViewSimple(url: URL(string: article.link)!)
-                        } label: {
-                            Label("Read in App", systemImage: "doc.text")
-                        }
-
+                    // Read in App button with long-press menu
+                    NavigationLink {
+                        ArticleWebViewSimple(url: URL(string: article.link)!)
+                    } label: {
+                        Label("Read in App", systemImage: "doc.text")
+                    }
+                    .contextMenu {
                         Button {
                             if let url = URL(string: article.link) {
                                 openURL(url)
@@ -118,8 +117,6 @@ struct ArticleDetailSimple: View {
                         } label: {
                             Label("Mark as Unread", systemImage: "envelope.badge")
                         }
-                    } label: {
-                        Label("Open", systemImage: "arrow.up.forward.square")
                     }
 
                     // Next article button
