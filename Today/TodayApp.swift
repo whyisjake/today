@@ -38,6 +38,11 @@ struct TodayApp: App {
 
                     // Add default feeds on first launch
                     addDefaultFeedsIfNeeded()
+
+                    // Run database migrations
+                    Task {
+                        await DatabaseMigration.shared.runMigrations(modelContext: sharedModelContainer.mainContext)
+                    }
                 }
         }
         .modelContainer(sharedModelContainer)
