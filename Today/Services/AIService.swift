@@ -8,21 +8,173 @@
 import Foundation
 import NaturalLanguage
 
+// Foundation Models is only available in iOS 26.0+
+#if canImport(FoundationModels)
+import FoundationModels
+#endif
+
 class AIService {
     static let shared = AIService()
 
-    private init() {}
+    #if canImport(FoundationModels)
+    @available(iOS 26.0, *)
+    private var systemModel: SystemLanguageModel?
+    @available(iOS 26.0, *)
+    private var session: LanguageModelSession?
+    #endif
 
-    /// Generate a summary of articles
+    private init() {
+        // Initialize session if Apple Intelligence is available (iOS 26+)
+        if #available(iOS 26.0, *) {
+            #if canImport(FoundationModels)
+            systemModel = SystemLanguageModel.default
+            if systemModel?.isAvailable == true {
+                session = LanguageModelSession()
+            }
+            #endif
+        }
+    }
+
+    /// Check if Apple Intelligence is available on this device
+    var isAppleIntelligenceAvailable: Bool {
+        if #available(iOS 26.0, *) {
+            #if canImport(FoundationModels)
+            return systemModel?.isAvailable ?? false
+            #else
+            return false
+            #endif
+        }
+        return false
+    }
+
+    /// Get detailed availability status
+    var availabilityStatus: String {
+        if #available(iOS 26.0, *) {
+            #if canImport(FoundationModels)
+            guard let systemModel = systemModel else {
+                return "Apple Intelligence not initialized"
+            }
+            switch systemModel.availability {
+            case .available:
+                return "Apple Intelligence is available"
+            case .unavailable(.appleIntelligenceNotEnabled):
+                return "Apple Intelligence is disabled in Settings"
+            case .unavailable(.deviceNotEligible):
+                return "This device doesn't support Apple Intelligence"
+            case .unavailable(.modelNotReady):
+                return "Model is downloading..."
+            case .unavailable(_):
+                return "Apple Intelligence is unavailable"
+            }
+            #else
+            return "Foundation Models not available"
+            #endif
+        }
+        return "Requires iOS 26.0 or later"
+    }
+
+    /// Generate a summary of articles using Apple Intelligence or fallback to basic analysis
     func summarizeArticles(_ articles: [Article]) async -> String {
         guard !articles.isEmpty else {
             return "No articles to summarize."
         }
 
-        // Use NLTagger for basic content analysis
-        let summary = await analyzeTrends(from: articles)
+        // Try Apple Intelligence first if available (iOS 26+)
+        if #available(iOS 26.0, *), isAppleIntelligenceAvailable {
+            #if canImport(FoundationModels)
+            if let session = session {
+                do {
+                    let summary = try await generateAISummary(articles: articles, session: session)
+                    return summary
+                } catch {
+                    print("Apple Intelligence summarization failed: \(error.localizedDescription)")
+                    // Fall through to basic analysis
+                }
+            }
+            #endif
+        }
 
+        // Fallback to NLTagger for basic content analysis
+        let summary = await analyzeTrends(from: articles)
         return summary
+    }
+
+    /// Generate summary using Apple's on-device LLM (iOS 26+)
+    #if canImport(FoundationModels)
+    @available(iOS 26.0, *)
+    private func generateAISummary(articles: [Article], session: LanguageModelSession) async throws -> String {
+        // Create a concise list of articles for the LLM
+        let articleList = articles.prefix(10).enumerated().map { index, article in
+            let description = article.articleDescription?.htmlToPlainText.prefix(150) ?? ""
+            return "\(index + 1). \(article.title) - \(description)"
+        }.joined(separator: "\n\n")
+
+        let prompt = """
+        Analyze these recent news articles and provide a brief, engaging summary highlighting the main themes and important stories:
+
+        \(articleList)
+
+        Provide a concise summary in 3-4 sentences that captures the key topics and trends.
+        """
+
+        let response = try await session.respond(to: prompt)
+        return response
+    }
+    #endif
+
+    /// Generate conversational response using Apple's on-device LLM (iOS 26+)
+    #if canImport(FoundationModels)
+    @available(iOS 26.0, *)
+    private func generateAIResponse(query: String, articles: [Article], session: LanguageModelSession) async throws -> (String, [Article]?) {
+        // Prepare article context (limit to avoid token limits)
+        let articleContext = articles.prefix(15).map { article in
+            "Title: \(article.title)\nRead: \(article.isRead ? "Yes" : "No")\nDate: \(article.publishedDate.formatted())"
+        }.joined(separator: "\n---\n")
+
+        let prompt = """
+        You are a helpful RSS reader assistant. The user has asked: "\(query)"
+
+        Here are their recent articles:
+        \(articleContext)
+
+        Total articles: \(articles.count)
+        Unread: \(articles.filter { !$0.isRead }.count)
+
+        Provide a helpful, conversational response to their question. Keep it brief (2-3 sentences) and friendly.
+        """
+
+        let response = try await session.respond(to: prompt)
+
+        // Try to identify relevant articles based on the query
+        let relevantArticles = identifyRelevantArticles(for: query, in: articles)
+
+        return (response, relevantArticles)
+    }
+    #endif
+
+    /// Identify relevant articles based on query keywords
+    private func identifyRelevantArticles(for query: String, in articles: [Article]) -> [Article]? {
+        let lowercasedQuery = query.lowercased()
+
+        // For recommendation/reading queries, return unread articles
+        if lowercasedQuery.contains("recommend") || lowercasedQuery.contains("read") || lowercasedQuery.contains("suggest") {
+            let unread = articles.filter { !$0.isRead }.sorted { $0.publishedDate > $1.publishedDate }
+            return unread.isEmpty ? nil : Array(unread.prefix(5))
+        }
+
+        // For recent/latest queries
+        if lowercasedQuery.contains("recent") || lowercasedQuery.contains("latest") || lowercasedQuery.contains("new") {
+            return Array(articles.sorted { $0.publishedDate > $1.publishedDate }.prefix(5))
+        }
+
+        // For unread queries
+        if lowercasedQuery.contains("unread") {
+            let unread = articles.filter { !$0.isRead }.sorted { $0.publishedDate > $1.publishedDate }
+            return unread.isEmpty ? nil : Array(unread.prefix(5))
+        }
+
+        // Default: return top articles
+        return Array(articles.prefix(5))
     }
 
     /// Generate a newsletter-style summary with article links (Dave Pell style)
@@ -198,8 +350,24 @@ class AIService {
             .map { $0.key }
     }
 
-    /// Generate a conversational response about articles
+    /// Generate a conversational response about articles using Apple Intelligence when available
     func generateResponse(for query: String, articles: [Article]) async -> (String, [Article]?) {
+        // Try Apple Intelligence for more natural responses (iOS 26+)
+        if #available(iOS 26.0, *), isAppleIntelligenceAvailable {
+            #if canImport(FoundationModels)
+            if let session = session {
+                do {
+                    let result = try await generateAIResponse(query: query, articles: articles, session: session)
+                    return result
+                } catch {
+                    print("Apple Intelligence response failed: \(error.localizedDescription)")
+                    // Fall through to pattern-based responses
+                }
+            }
+            #endif
+        }
+
+        // Fallback to pattern-based responses
         let lowercasedQuery = query.lowercased()
 
         // Count queries
