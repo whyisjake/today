@@ -119,8 +119,9 @@ class Texturizer {
             texturized = texturizeDashes(texturized)
             texturized = texturizeMultiplication(texturized)
 
-            // Replace &'s that aren't already entities
-            texturized = replaceAmpersands(texturized)
+            // Note: We skip replaceAmpersands() for RSS feed titles/descriptions
+            // since they are plain text after HTML entity decoding, not HTML markup
+            // texturized = replaceAmpersands(texturized)
 
             texturizedParts.append(texturized)
         }
@@ -185,33 +186,41 @@ class Texturizer {
             options: .regularExpression
         )
 
-        // Quoted decimal numbers like '0.42'
+        // Quoted decimal numbers like '0.42' - MUST come before primes
         result = result.replacingOccurrences(
             of: "(^|\\s)'(\\d[.,\\d]*)'",
             with: "$1\(openSqFlag)$2\(closingSingleQuote)",
             options: .regularExpression
         )
 
-        // Single quote at start or after specific characters
+        // Handle primes (feet) - convert ' to prime after digit
+        // Use negative lookahead to avoid converting if it's part of a quoted number pattern
         result = result.replacingOccurrences(
-            of: "(^|[(\\[{\"\\-\\s])'",
+            of: "(\\d)'",
+            with: "$1\(prime)",
+            options: .regularExpression
+        )
+
+        // Single quote at start or after specific characters (including after opening double quotes)
+        result = result.replacingOccurrences(
+            of: "(^|[(\\[{\"\\-\\s\u{201C}])'",
             with: "$1\(openSqFlag)",
             options: .regularExpression
         )
 
-        // Apostrophe in contractions/possessives
+        // Apostrophe in contractions/possessives (word boundary on both sides)
         result = result.replacingOccurrences(
-            of: "(?<!\\s)'(?![\\s.,;!?\"'(){}\\[\\]\\-])",
-            with: aposFlag,
+            of: "([a-zA-Z])'([a-zA-Z]*)",
+            with: "$1\(aposFlag)$2",
             options: .regularExpression
         )
+
+        // Closing single quote at end of word
+        result = result.replacingOccurrences(of: "'", with: closingSingleQuote)
 
         // Replace flags with actual characters
         result = result.replacingOccurrences(of: aposFlag, with: apos)
         result = result.replacingOccurrences(of: openSqFlag, with: openingSingleQuote)
-
-        // Handle primes (feet)
-        result = texturizePrimes(result, quoteChar: "'", primeChar: prime, openFlag: openSqFlag, closeQuote: closingSingleQuote)
 
         return result
     }
@@ -220,10 +229,17 @@ class Texturizer {
     private static func texturizeQuotes(_ text: String) -> String {
         var result = text
 
-        // Quoted numbers like "42"
+        // Quoted numbers like "42" - MUST come before primes
         result = result.replacingOccurrences(
             of: "(^|\\s)\"(\\d[.,\\d]*)\"",
             with: "$1\(openQFlag)$2\(closingQuote)",
+            options: .regularExpression
+        )
+
+        // Handle double primes (inches) - convert " to double prime after digit
+        result = result.replacingOccurrences(
+            of: "(\\d)\"",
+            with: "$1\(doublePrime)",
             options: .regularExpression
         )
 
@@ -240,24 +256,6 @@ class Texturizer {
         // Closing quotes (anything not matched above)
         result = result.replacingOccurrences(of: "\"", with: closingQuote)
 
-        // Handle double primes (inches)
-        result = texturizePrimes(result, quoteChar: "\"", primeChar: doublePrime, openFlag: openQFlag, closeQuote: closingQuote)
-
-        return result
-    }
-
-    /// Handle primes (feet/inches markers)
-    private static func texturizePrimes(_ text: String, quoteChar: String, primeChar: String, openFlag: String, closeQuote: String) -> String {
-        var result = text
-
-        // Convert quote to prime after digit
-        let primePattern = "(\\d)\\" + (quoteChar == "\"" ? "\"" : "'")
-        result = result.replacingOccurrences(
-            of: primePattern,
-            with: "$1\(primeChar)",
-            options: .regularExpression
-        )
-
         return result
     }
 
@@ -268,17 +266,24 @@ class Texturizer {
         // Em dash: ---
         result = result.replacingOccurrences(of: "---", with: emDash)
 
-        // Em dash: -- with spaces
+        // Em dash: -- with spaces around it
         result = result.replacingOccurrences(
             of: "(^|\\s)--(\\s|$)",
             with: "$1\(emDash)$2",
             options: .regularExpression
         )
 
-        // En dash: -- (but not xn--)
+        // En dash: -- between digits only (but not xn--)
+        result = result.replacingOccurrences(
+            of: "(\\d)--(?=\\d)",
+            with: "$1\(enDash)",
+            options: .regularExpression
+        )
+
+        // Em dash: any remaining -- (but not xn--)
         result = result.replacingOccurrences(
             of: "(?<!xn)--",
-            with: enDash,
+            with: emDash,
             options: .regularExpression
         )
 
@@ -295,8 +300,9 @@ class Texturizer {
     /// Convert x to multiplication sign between digits
     private static func texturizeMultiplication(_ text: String) -> String {
         // 9x9 (but never 0x9999 for hex)
+        // Use negative lookbehind for 0 and word boundary to avoid matching 0x
         return text.replacingOccurrences(
-            of: "\\b(\\d(?:[\\d.,]+|))x(\\d[\\d.,]*)\\b",
+            of: "\\b([1-9]\\d*(?:[\\d.,]+|))x(\\d[\\d.,]*)\\b",
             with: "$1\(multiply)$2",
             options: .regularExpression
         )

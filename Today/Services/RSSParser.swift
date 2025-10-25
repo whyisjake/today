@@ -170,9 +170,9 @@ class RSSParser: NSObject, XMLParserDelegate {
             }
 
             let article = ParsedArticle(
-                title: decodeHTMLEntities(normalizeWhitespace(currentTitle)),
+                title: decodeHTMLEntities(normalizeWhitespace(currentTitle)).texturize(),
                 link: currentLink,
-                description: currentDescription.isEmpty ? nil : normalizeWhitespace(currentDescription),
+                description: currentDescription.isEmpty ? nil : decodeHTMLEntities(normalizeWhitespace(currentDescription)).texturize(),
                 content: currentContent.isEmpty ? nil : normalizeWhitespace(currentContent),
                 contentEncoded: currentContentEncoded.isEmpty ? nil : normalizeWhitespace(currentContentEncoded),
                 imageUrl: finalImageUrl.isEmpty ? nil : finalImageUrl,
