@@ -169,12 +169,30 @@ class RSSParser: NSObject, XMLParserDelegate {
                 }
             }
 
+            // Debug: log content before texturization
+            let processedTitle = decodeHTMLEntities(normalizeWhitespace(currentTitle)).texturize()
+            let processedDescription = currentDescription.isEmpty ? nil : decodeHTMLEntities(normalizeWhitespace(currentDescription)).texturize()
+
+            var processedContent: String? = nil
+            if !currentContent.isEmpty {
+                let decoded = decodeHTMLEntities(normalizeWhitespace(currentContent))
+                print("🔍 Content before texturize (first 200 chars): '\(decoded.prefix(200))'")
+                processedContent = decoded.texturize()
+            }
+
+            var processedContentEncoded: String? = nil
+            if !currentContentEncoded.isEmpty {
+                let decoded = decodeHTMLEntities(normalizeWhitespace(currentContentEncoded))
+                print("🔍 ContentEncoded before texturize (first 200 chars): '\(decoded.prefix(200))'")
+                processedContentEncoded = decoded.texturize()
+            }
+
             let article = ParsedArticle(
-                title: decodeHTMLEntities(normalizeWhitespace(currentTitle)).texturize(),
+                title: processedTitle,
                 link: currentLink,
-                description: currentDescription.isEmpty ? nil : decodeHTMLEntities(normalizeWhitespace(currentDescription)).texturize(),
-                content: currentContent.isEmpty ? nil : decodeHTMLEntities(normalizeWhitespace(currentContent)).texturize(),
-                contentEncoded: currentContentEncoded.isEmpty ? nil : decodeHTMLEntities(normalizeWhitespace(currentContentEncoded)).texturize(),
+                description: processedDescription,
+                content: processedContent,
+                contentEncoded: processedContentEncoded,
                 imageUrl: finalImageUrl.isEmpty ? nil : finalImageUrl,
                 publishedDate: parseDate(currentPubDate),
                 author: currentAuthor.isEmpty ? nil : normalizeWhitespace(currentAuthor),
