@@ -299,9 +299,9 @@ struct WebViewWithHeight: UIViewRepresentable {
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
             <style>
                 body {
-                    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
-                    font-size: 17px;
-                    line-height: 1.6;
+                    font-family: 'New York', 'Times New Roman', Georgia, serif;
+                    font-size: 18px;
+                    line-height: 1.7;
                     color: \(textColor);
                     background-color: transparent;
                     margin: 0;
