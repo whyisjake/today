@@ -21,6 +21,7 @@ struct TodayView: View {
     @State private var isRefreshing = false
     @State private var showMarkAllReadConfirmation = false
     @State private var daysToLoad = 1 // Start with 1 day (today)
+    @State private var navigationContext: [PersistentIdentifier] = [] // Captured list for navigation
     @AppStorage("fontOption") private var fontOption: FontOption = .serif
 
     // Cache expensive computations
@@ -29,16 +30,53 @@ struct TodayView: View {
         return ["all"] + feedCategories.sorted()
     }
 
+    // Count unread/favorites in the current time window and category
+    // (but not search/hideRead/showFavorites to avoid circular deps)
     private var unreadCount: Int {
-        allArticles.lazy.filter { !$0.isRead }.count
+        var articles = allArticles
+
+        // Apply same time filter as filteredArticles
+        let now = Date.now
+        let startOfToday = Calendar.current.startOfDay(for: now)
+        let cutoffDate = Calendar.current.date(byAdding: .day, value: -daysToLoad, to: startOfToday)!
+        articles = articles.filter { $0.publishedDate >= cutoffDate }
+
+        // Apply same category filter as filteredArticles
+        if selectedCategory != "all" {
+            articles = articles.filter { $0.feed?.category == selectedCategory }
+        }
+
+        return articles.lazy.filter { !$0.isRead }.count
     }
 
     private var favoritesCount: Int {
-        allArticles.lazy.filter { $0.isFavorite }.count
+        var articles = allArticles
+
+        // Apply same time filter as filteredArticles
+        let now = Date.now
+        let startOfToday = Calendar.current.startOfDay(for: now)
+        let cutoffDate = Calendar.current.date(byAdding: .day, value: -daysToLoad, to: startOfToday)!
+        articles = articles.filter { $0.publishedDate >= cutoffDate }
+
+        // Apply same category filter as filteredArticles
+        if selectedCategory != "all" {
+            articles = articles.filter { $0.feed?.category == selectedCategory }
+        }
+
+        return articles.lazy.filter { $0.isFavorite }.count
     }
 
     private var activeFilterCount: Int {
         showFavoritesOnly ? favoritesCount : unreadCount
+    }
+
+    // Total counts across all articles (for reference)
+    private var totalUnreadCount: Int {
+        allArticles.lazy.filter { !$0.isRead }.count
+    }
+
+    private var totalFavoritesCount: Int {
+        allArticles.lazy.filter { $0.isFavorite }.count
     }
 
     private var filteredArticles: [Article] {
@@ -154,9 +192,10 @@ struct TodayView: View {
                     }
                 } else {
                     List {
-                        ForEach(filteredArticles.indices, id: \.self) { index in
-                            let article = filteredArticles[index]
+                        ForEach(filteredArticles, id: \.persistentModelID) { article in
                             Button {
+                                // Capture the navigation context when an article is selected
+                                navigationContext = filteredArticles.map { $0.persistentModelID }
                                 selectedArticleID = article.persistentModelID
                             } label: {
                                 HStack {
@@ -168,10 +207,10 @@ struct TodayView: View {
                                 }
                             }
                             .buttonStyle(.plain)
-                            .id(article.id)
+                            .id(article.persistentModelID)
                             .onAppear {
                                 // If first article appears and we're viewing multiple days, reset to today
-                                if index == 0 && daysToLoad > 1 {
+                                if article.persistentModelID == filteredArticles.first?.persistentModelID && daysToLoad > 1 {
                                     resetToToday()
                                 }
                             }
@@ -242,12 +281,13 @@ struct TodayView: View {
             }
             .navigationDestination(item: $selectedArticleID) { articleID in
                 if let article = modelContext.model(for: articleID) as? Article {
-                    // Find previous and next articles in filtered list
-                    if let currentIndex = filteredArticles.firstIndex(where: { $0.persistentModelID == articleID }) {
+                    // Use the captured navigation context (stable across view updates)
+                    if !navigationContext.isEmpty,
+                       let currentIndex = navigationContext.firstIndex(of: articleID) {
                         let previousIndex = currentIndex - 1
                         let nextIndex = currentIndex + 1
-                        let previousArticleID = previousIndex >= 0 ? filteredArticles[previousIndex].persistentModelID : nil
-                        let nextArticleID = nextIndex < filteredArticles.count ? filteredArticles[nextIndex].persistentModelID : nil
+                        let previousArticleID = previousIndex >= 0 ? navigationContext[previousIndex] : nil
+                        let nextArticleID = nextIndex < navigationContext.count ? navigationContext[nextIndex] : nil
 
                         ArticleDetailSimple(
                             article: article,
@@ -330,8 +370,16 @@ struct TodayView: View {
 
                         Divider()
 
-                        Text("\(unreadCount) unread • \(favoritesCount) favorites")
-                            .foregroundStyle(.secondary)
+                        // Show filtered counts with total in parentheses
+                        if daysToLoad > 1 || selectedCategory != "all" {
+                            Text("\(unreadCount) unread (\(totalUnreadCount) total) • \(favoritesCount) favorites (\(totalFavoritesCount) total)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("\(unreadCount) unread • \(favoritesCount) favorites")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: (hideReadArticles || showFavoritesOnly) ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
