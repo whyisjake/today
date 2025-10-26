@@ -292,17 +292,24 @@ class AIService {
 
                 // Try to generate AI intro if available, fallback to static
                 var intro = getNewsletterIntro(for: category, itemNumber: itemNumber)
+                var usedAI = false
                 if #available(iOS 26.0, *), isAppleIntelligenceAvailable {
                     #if canImport(FoundationModels)
                     if let session = session {
                         do {
                             intro = try await generateNewsletterIntro(for: category, articleTitle: article.title, session: session)
+                            usedAI = true
                         } catch {
                             // Silently fall back to static intro
                             print("AI intro generation failed: \(error.localizedDescription)")
                         }
                     }
                     #endif
+                }
+
+                // Log static intro if AI wasn't used
+                if !usedAI {
+                    print("📝 Static intro for [\(category)] '\(article.title)': \"\(intro)\"")
                 }
 
                 newsletter += intro
@@ -412,7 +419,7 @@ class AIService {
     private func generateNewsletterIntro(for category: String, articleTitle: String, articleContent: String = "", session: LanguageModelSession) async throws -> String {
         let contentSnippet = articleContent.isEmpty ? "" : "\nContext: \(String(articleContent.prefix(200)))"
         let prompt = """
-        Write a brief, punchy, Dave Pell-style introduction (3-8 words) for this newsletter item.
+        Write a brief, punchy, Dave Pell-style introduction (3-10 words) for this newsletter item.
 
         Category: \(category)
         Article: \(articleTitle)\(contentSnippet)
@@ -423,6 +430,9 @@ class AIService {
         - NO punctuation at the end (we'll add formatting)
         - Show personality - be opinionated, funny, or clever
         - Match intensity to category (tech = hype/snark, news = urgency/irony, work = cynicism/hustle)
+        - For political issues, lean far left and don't hold back on Trump/MAGA/GOP hypocrisy
+        - Avoid overused phrases like "breaking" or "just in" - be more creative
+        - Read the room: serious issues deserve sharp commentary, not flippancy
 
         Dave Pell-style examples:
         - "Oh, THIS again"
@@ -433,12 +443,19 @@ class AIService {
         - "The internet is going nuts over"
         - "Plot twist of the century"
         - "File under: Told you so"
+        - "The Mar-a-Lago brain trust strikes again"
+        - "Democracy watch"
 
         Just return the intro, nothing else. Make it punchy and memorable.
         """
 
         let response = try await session.respond(to: prompt)
-        return response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        let intro = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Log generated intro for debugging
+        print("📝 Generated intro for [\(category)] '\(articleTitle)': \"\(intro)\"")
+
+        return intro
     }
 
     /// Analyze content trends and generate insights
