@@ -256,4 +256,27 @@ final class TexturizerTests: XCTestCase {
         let result = input.texturize()
         XCTAssertEqual(result, expected, "Should handle single quotes and apostrophes in title")
     }
+
+    // MARK: - Space Preservation Tests
+
+    func testSpaceBeforeSingleQuote() {
+        let input = "Trump Says Meeting Putin Is a 'Waste of Time'"
+        let expected = "Trump Says Meeting Putin Is a \u{2018}Waste of Time\u{2019}"
+        let result = input.texturize()
+        XCTAssertEqual(result, expected, "Should preserve space before opening single quote")
+    }
+
+    func testSpaceBeforeQuotedPhrase() {
+        let input = "The Talk Show: 'You and Frank Sinatra'"
+        let expected = "The Talk Show: \u{2018}You and Frank Sinatra\u{2019}"
+        let result = input.texturize()
+        XCTAssertEqual(result, expected, "Should preserve space and colon before quoted phrase")
+    }
+
+    func testMultipleSpacesBeforeSingleQuote() {
+        let input = "This is a  'test' case"
+        let expected = "This is a  \u{2018}test\u{2019} case"
+        let result = input.texturize()
+        XCTAssertEqual(result, expected, "Should preserve multiple spaces before quote")
+    }
 }

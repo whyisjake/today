@@ -217,9 +217,10 @@ class Texturizer {
         )
 
         // Single quote at start or after specific characters (including after opening double quotes)
+        // Use positive lookbehind to avoid consuming the preceding character
         result = result.replacingOccurrences(
-            of: "(^|[(\\[{\"\\-\\s\u{201C}])'",
-            with: "$1\(openSqFlag)",
+            of: "(?<=^|[(\\[{\"\\-\\s\u{201C}])'",
+            with: openSqFlag,
             options: .regularExpression
         )
 
@@ -259,9 +260,10 @@ class Texturizer {
         )
 
         // Double quote at start or after specific characters
+        // Use positive lookbehind to avoid consuming the preceding character
         result = result.replacingOccurrences(
-            of: "(^|[(\\[{\\-\\s])\"",
-            with: "$1\(openQFlag)",
+            of: "(?<=^|[(\\[{\\-\\s])\"",
+            with: openQFlag,
             options: .regularExpression
         )
 
