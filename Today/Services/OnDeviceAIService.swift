@@ -313,43 +313,53 @@ class OnDeviceAIService {
         }
     }
 
-    // Keep old function for backward compatibility/fallback
+    // Dave Pell-style intros for fallback/backward compatibility
     private func getContextualIntro(for category: String, itemNumber: Int) -> String {
         let intros: [String: [String]] = [
             "tech": [
-                "In tech news,",
-                "Silicon Valley strikes again:",
-                "From the world of tech,",
-                "Here's what's buzzing in tech:",
-                "Tech news that matters:"
+                "Oh, THIS again:",
+                "Meanwhile, in Silicon Valley:",
+                "The tech bros are at it:",
+                "Because we needed another:",
+                "Your daily tech chaos:",
+                "Plot twist from the Valley:",
+                "In shocking news to no one:"
             ],
             "news": [
-                "Making headlines:",
-                "Worth knowing:",
-                "In case you missed it,",
-                "Here's what's happening:",
-                "From the news desk:"
+                "Making headlines today:",
+                "In case you blinked:",
+                "Your daily dose of chaos:",
+                "Because of course this happened:",
+                "File under: Yikes:",
+                "The world keeps spinning:",
+                "Today's main character:"
             ],
             "work": [
-                "On the work front,",
-                "Career and business news:",
-                "From the professional world,",
-                "In workplace news,",
-                "For your work life:"
+                "Your work life, explained:",
+                "The hustle is real:",
+                "Office politics corner:",
+                "Career advice incoming:",
+                "Meanwhile, at work:",
+                "Boss makes a dollar:",
+                "Another day, another meeting:"
             ],
             "social": [
-                "Social sphere update:",
-                "What people are talking about:",
-                "From the social scene,",
-                "Trending now:",
-                "Social media's buzzing about:"
+                "The internet is melting down over:",
+                "Trending for all the wrong reasons:",
+                "Everyone's talking about:",
+                "Social media's latest obsession:",
+                "File under: Very Online:",
+                "Going viral right now:",
+                "The discourse is discoursing:"
             ],
             "general": [
-                "Interesting read:",
-                "Worth your attention:",
-                "Here's something:",
-                "Don't miss this:",
-                "Check this out:"
+                "Worth knowing about:",
+                "File this one away:",
+                "Interesting development:",
+                "Here's the deal:",
+                "Plot twist:",
+                "This landed on my radar:",
+                "Something to chew on:"
             ]
         ]
 
