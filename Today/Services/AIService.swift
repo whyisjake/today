@@ -337,51 +337,52 @@ class AIService {
     /// Uses Apple Intelligence when available for dynamic intros, falls back to static Dave Pell-style ones
     private func getNewsletterIntro(for category: String, itemNumber: Int) -> String {
         // Static fallback intros in Dave Pell style (snarky, punchy, personality-driven)
+        // No trailing punctuation - we'll add formatting in the output
         let intros: [String: [String]] = [
             "tech": [
-                "Oh, THIS again:",
-                "Meanwhile, in Silicon Valley:",
-                "The tech bros are at it:",
-                "Because we needed another:",
-                "Your daily tech chaos:",
-                "Plot twist from the Valley:",
-                "In shocking news to no one:"
+                "Oh, THIS again",
+                "Meanwhile, in Silicon Valley",
+                "The tech bros are at it",
+                "Because we needed another",
+                "Your daily tech chaos",
+                "Plot twist from the Valley",
+                "In shocking news to no one"
             ],
             "news": [
-                "Making headlines today:",
-                "In case you blinked:",
-                "Your daily dose of chaos:",
-                "Because of course this happened:",
-                "File under: Yikes:",
-                "The world keeps spinning:",
-                "Today's main character:"
+                "Making headlines today",
+                "In case you blinked",
+                "Your daily dose of chaos",
+                "Because of course this happened",
+                "File under: Yikes",
+                "The world keeps spinning",
+                "Today's main character"
             ],
             "work": [
-                "Your work life, explained:",
-                "The hustle is real:",
-                "Office politics corner:",
-                "Career advice incoming:",
-                "Meanwhile, at work:",
-                "Boss makes a dollar:",
-                "Another day, another meeting:"
+                "Your work life, explained",
+                "The hustle is real",
+                "Office politics corner",
+                "Career advice incoming",
+                "Meanwhile, at work",
+                "Boss makes a dollar",
+                "Another day, another meeting"
             ],
             "social": [
-                "The internet is melting down over:",
-                "Trending for all the wrong reasons:",
-                "Everyone's talking about:",
-                "Social media's latest obsession:",
-                "File under: Very Online:",
-                "Going viral right now:",
-                "The discourse is discoursing:"
+                "The internet is melting down over",
+                "Trending for all the wrong reasons",
+                "Everyone's talking about",
+                "Social media's latest obsession",
+                "File under: Very Online",
+                "Going viral right now",
+                "The discourse is discoursing"
             ],
             "general": [
-                "Worth knowing about:",
-                "File this one away:",
-                "Interesting development:",
-                "Here's the deal:",
-                "Plot twist:",
-                "This landed on my radar:",
-                "Something to chew on:"
+                "Worth knowing about",
+                "File this one away",
+                "Interesting development",
+                "Here's the deal",
+                "Plot twist",
+                "This landed on my radar",
+                "Something to chew on"
             ]
         ]
 
@@ -419,19 +420,19 @@ class AIService {
         Style guide:
         - Snarky, witty, and conversational (like Dave Pell's NextDraft)
         - Cultural references, wordplay, or surprising angles welcome
-        - End with a colon (:)
+        - NO punctuation at the end (we'll add formatting)
         - Show personality - be opinionated, funny, or clever
         - Match intensity to category (tech = hype/snark, news = urgency/irony, work = cynicism/hustle)
 
         Dave Pell-style examples:
-        - "Oh, THIS again:"
-        - "Meanwhile, in Silicon Valley:"
-        - "In shocking news to no one:"
-        - "Your daily dose of chaos:"
-        - "Because of course this happened:"
-        - "The internet is going nuts over:"
-        - "Plot twist of the century:"
-        - "File under: Told you so:"
+        - "Oh, THIS again"
+        - "Meanwhile, in Silicon Valley"
+        - "In shocking news to no one"
+        - "Your daily dose of chaos"
+        - "Because of course this happened"
+        - "The internet is going nuts over"
+        - "Plot twist of the century"
+        - "File under: Told you so"
 
         Just return the intro, nothing else. Make it punchy and memorable.
         """

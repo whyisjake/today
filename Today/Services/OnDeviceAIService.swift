@@ -90,8 +90,8 @@ class OnDeviceAIService {
         // Generate dynamic, content-aware intro
         let intro = await generateDynamicIntro(title: article.title, content: contentText, category: article.feed?.category ?? "general")
 
-        // Format: Intro + Title (bold) + em dash + summary
-        return "\(intro) **\(article.title)** — \(summary)"
+        // Format: Italic intro + em dash + Title (bold) + em dash + summary
+        return "*\(intro)* — **\(article.title)** — \(summary)"
     }
 
     /// Extract key information using NaturalLanguage framework
@@ -228,12 +228,13 @@ class OnDeviceAIService {
         }
 
         // Fallback to Dave Pell-style static intros when AI isn't available
+        // No trailing punctuation - formatting added in output
         let fallbacks: [String: [String]] = [
-            "tech": ["Oh, THIS again:", "Meanwhile, in Silicon Valley:", "The tech bros are at it:", "Plot twist from the Valley:"],
-            "news": ["Your daily dose of chaos:", "File under: Yikes:", "In case you blinked:", "Making headlines today:"],
-            "work": ["The hustle is real:", "Boss makes a dollar:", "Meanwhile, at work:", "Career advice incoming:"],
-            "social": ["The internet is melting down over:", "File under: Very Online:", "Going viral right now:", "Everyone's talking about:"],
-            "general": ["Plot twist:", "Here's the deal:", "Worth knowing about:", "File this one away:"]
+            "tech": ["Oh, THIS again", "Meanwhile, in Silicon Valley", "The tech bros are at it", "Plot twist from the Valley"],
+            "news": ["Your daily dose of chaos", "File under: Yikes", "In case you blinked", "Making headlines today"],
+            "work": ["The hustle is real", "Boss makes a dollar", "Meanwhile, at work", "Career advice incoming"],
+            "social": ["The internet is melting down over", "File under: Very Online", "Going viral right now", "Everyone's talking about"],
+            "general": ["Plot twist", "Here's the deal", "Worth knowing about", "File this one away"]
         ]
 
         let options = fallbacks[category.lowercased()] ?? fallbacks["general"]!
@@ -241,52 +242,53 @@ class OnDeviceAIService {
     }
 
     // Dave Pell-style intros for fallback/backward compatibility
+    // No trailing punctuation - formatting added in output
     private func getContextualIntro(for category: String, itemNumber: Int) -> String {
         let intros: [String: [String]] = [
             "tech": [
-                "Oh, THIS again:",
-                "Meanwhile, in Silicon Valley:",
-                "The tech bros are at it:",
-                "Because we needed another:",
-                "Your daily tech chaos:",
-                "Plot twist from the Valley:",
-                "In shocking news to no one:"
+                "Oh, THIS again",
+                "Meanwhile, in Silicon Valley",
+                "The tech bros are at it",
+                "Because we needed another",
+                "Your daily tech chaos",
+                "Plot twist from the Valley",
+                "In shocking news to no one"
             ],
             "news": [
-                "Making headlines today:",
-                "In case you blinked:",
-                "Your daily dose of chaos:",
-                "Because of course this happened:",
-                "File under: Yikes:",
-                "The world keeps spinning:",
-                "Today's main character:"
+                "Making headlines today",
+                "In case you blinked",
+                "Your daily dose of chaos",
+                "Because of course this happened",
+                "File under: Yikes",
+                "The world keeps spinning",
+                "Today's main character"
             ],
             "work": [
-                "Your work life, explained:",
-                "The hustle is real:",
-                "Office politics corner:",
-                "Career advice incoming:",
-                "Meanwhile, at work:",
-                "Boss makes a dollar:",
-                "Another day, another meeting:"
+                "Your work life, explained",
+                "The hustle is real",
+                "Office politics corner",
+                "Career advice incoming",
+                "Meanwhile, at work",
+                "Boss makes a dollar",
+                "Another day, another meeting"
             ],
             "social": [
-                "The internet is melting down over:",
-                "Trending for all the wrong reasons:",
-                "Everyone's talking about:",
-                "Social media's latest obsession:",
-                "File under: Very Online:",
-                "Going viral right now:",
-                "The discourse is discoursing:"
+                "The internet is melting down over",
+                "Trending for all the wrong reasons",
+                "Everyone's talking about",
+                "Social media's latest obsession",
+                "File under: Very Online",
+                "Going viral right now",
+                "The discourse is discoursing"
             ],
             "general": [
-                "Worth knowing about:",
-                "File this one away:",
-                "Interesting development:",
-                "Here's the deal:",
-                "Plot twist:",
-                "This landed on my radar:",
-                "Something to chew on:"
+                "Worth knowing about",
+                "File this one away",
+                "Interesting development",
+                "Here's the deal",
+                "Plot twist",
+                "This landed on my radar",
+                "Something to chew on"
             ]
         ]
 
