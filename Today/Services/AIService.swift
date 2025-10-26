@@ -390,15 +390,31 @@ class AIService {
         return categoryIntros[index]
     }
 
+    /// Public wrapper to generate AI-powered intro (for use by other services)
+    @available(iOS 26.0, *)
+    func generateIntro(for category: String, articleTitle: String, articleContent: String = "") async -> String? {
+        guard isAppleIntelligenceAvailable, let session = session else {
+            return nil
+        }
+
+        do {
+            return try await generateNewsletterIntro(for: category, articleTitle: articleTitle, articleContent: articleContent, session: session)
+        } catch {
+            print("AI intro generation failed: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
     /// Generate dynamic newsletter intro using Apple Intelligence (async version)
     /// Inspired by Dave Pell's NextDraft style - punchy, snarky, personality-driven
     @available(iOS 26.0, *)
-    private func generateNewsletterIntro(for category: String, articleTitle: String, session: LanguageModelSession) async throws -> String {
+    private func generateNewsletterIntro(for category: String, articleTitle: String, articleContent: String = "", session: LanguageModelSession) async throws -> String {
+        let contentSnippet = articleContent.isEmpty ? "" : "\nContext: \(String(articleContent.prefix(200)))"
         let prompt = """
         Write a brief, punchy, Dave Pell-style introduction (3-8 words) for this newsletter item.
 
         Category: \(category)
-        Article: \(articleTitle)
+        Article: \(articleTitle)\(contentSnippet)
 
         Style guide:
         - Snarky, witty, and conversational (like Dave Pell's NextDraft)

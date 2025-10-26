@@ -221,13 +221,13 @@ class OnDeviceAIService {
     /// Generate dynamic intro using AI - delegate to AIService which has Apple Intelligence
     private func generateDynamicIntro(title: String, content: String, category: String) async -> String {
         // Try using AIService's Apple Intelligence integration if available (iOS 26+)
-        if #available(iOS 26.0, *), AIService.shared.isAppleIntelligenceAvailable {
-            // AIService has the Apple Intelligence session - use it!
-            // We'll access its generateNewsletterIntro through a summarize call
-            // For now, fall back to static since we'd need to refactor AIService's private method
+        if #available(iOS 26.0, *) {
+            if let aiIntro = await AIService.shared.generateIntro(for: category, articleTitle: title, articleContent: content) {
+                return aiIntro
+            }
         }
 
-        // Fallback to Dave Pell-style static intros (no AI generation in OnDeviceAIService yet)
+        // Fallback to Dave Pell-style static intros when AI isn't available
         let fallbacks: [String: [String]] = [
             "tech": ["Oh, THIS again:", "Meanwhile, in Silicon Valley:", "The tech bros are at it:", "Plot twist from the Valley:"],
             "news": ["Your daily dose of chaos:", "File under: Yikes:", "In case you blinked:", "Making headlines today:"],
