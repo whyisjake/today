@@ -210,7 +210,8 @@ class AIService {
         }.joined(separator: "\n---\n")
 
         let prompt = """
-        You are a helpful RSS reader assistant. The user has asked: "\(query)"
+        You are Dave Pell, the witty curator behind NextDraft — known for blending sharp humor, cultural insight, and brevity.
+        The user has asked: "\(query)"
 
         Here are their recent articles:
         \(articleContext)
@@ -218,7 +219,12 @@ class AIService {
         Total articles: \(articles.count)
         Unread: \(articles.filter { !$0.isRead }.count)
 
-        Provide a helpful, conversational response to their question. Keep it brief (2-3 sentences) and friendly.
+        Respond in Dave Pell’s voice:
+        - Be conversational and clever — like you're writing a newsletter intro.
+        - Keep it tight (2–3 sentences max).
+        - Include one unexpected or humorous observation if it fits.
+        - Avoid sounding robotic or overly polished.
+        - End with a quick punchline or insight — something memorable.
         """
 
         let response = try await session.respond(to: prompt)
@@ -284,8 +290,21 @@ class AIService {
             for article in categoryArticles.prefix(3) {
                 newsletter += "**\(itemNumber).** "
 
-                // Add witty intro based on category
-                let intro = getNewsletterIntro(for: category, itemNumber: itemNumber)
+                // Try to generate AI intro if available, fallback to static
+                var intro = getNewsletterIntro(for: category, itemNumber: itemNumber)
+                if #available(iOS 26.0, *), isAppleIntelligenceAvailable {
+                    #if canImport(FoundationModels)
+                    if let session = session {
+                        do {
+                            intro = try await generateNewsletterIntro(for: category, articleTitle: article.title, session: session)
+                        } catch {
+                            // Silently fall back to static intro
+                            print("AI intro generation failed: \(error.localizedDescription)")
+                        }
+                    }
+                    #endif
+                }
+
                 newsletter += intro
                 newsletter += " "
 
@@ -315,48 +334,94 @@ class AIService {
     }
 
     /// Get witty newsletter intro based on category
+    /// Uses Apple Intelligence when available for dynamic intros, falls back to static Dave Pell-style ones
     private func getNewsletterIntro(for category: String, itemNumber: Int) -> String {
+        // Static fallback intros in Dave Pell style (snarky, punchy, personality-driven)
         let intros: [String: [String]] = [
             "tech": [
-                "In the latest tech news,",
-                "Silicon Valley strikes again:",
-                "From the world of tech,",
-                "Here's what's buzzing in tech:",
-                "Tech news that matters:"
+                "Oh, THIS again:",
+                "Meanwhile, in Silicon Valley:",
+                "The tech bros are at it:",
+                "Because we needed another:",
+                "Your daily tech chaos:",
+                "Plot twist from the Valley:",
+                "In shocking news to no one:"
             ],
             "news": [
-                "Making headlines:",
-                "In case you missed it,",
-                "Here's what's happening:",
-                "From the news desk,",
-                "Worth knowing:"
+                "Making headlines today:",
+                "In case you blinked:",
+                "Your daily dose of chaos:",
+                "Because of course this happened:",
+                "File under: Yikes:",
+                "The world keeps spinning:",
+                "Today's main character:"
             ],
             "work": [
-                "On the work front,",
-                "Career and business news:",
-                "From the professional world,",
-                "In workplace news,",
-                "For your work life:"
+                "Your work life, explained:",
+                "The hustle is real:",
+                "Office politics corner:",
+                "Career advice incoming:",
+                "Meanwhile, at work:",
+                "Boss makes a dollar:",
+                "Another day, another meeting:"
             ],
             "social": [
-                "Social sphere update:",
-                "What people are talking about:",
-                "From the social scene,",
-                "Trending now:",
-                "Social media's buzzing about:"
+                "The internet is melting down over:",
+                "Trending for all the wrong reasons:",
+                "Everyone's talking about:",
+                "Social media's latest obsession:",
+                "File under: Very Online:",
+                "Going viral right now:",
+                "The discourse is discoursing:"
             ],
             "general": [
-                "Interesting read:",
-                "Worth your attention:",
-                "Here's something:",
-                "Don't miss this:",
-                "FYI:"
+                "Worth knowing about:",
+                "File this one away:",
+                "Interesting development:",
+                "Here's the deal:",
+                "Plot twist:",
+                "This landed on my radar:",
+                "Something to chew on:"
             ]
         ]
 
         let categoryIntros = intros[category.lowercased()] ?? intros["general"]!
         let index = (itemNumber - 1) % categoryIntros.count
         return categoryIntros[index]
+    }
+
+    /// Generate dynamic newsletter intro using Apple Intelligence (async version)
+    /// Inspired by Dave Pell's NextDraft style - punchy, snarky, personality-driven
+    @available(iOS 26.0, *)
+    private func generateNewsletterIntro(for category: String, articleTitle: String, session: LanguageModelSession) async throws -> String {
+        let prompt = """
+        Write a brief, punchy, Dave Pell-style introduction (3-8 words) for this newsletter item.
+
+        Category: \(category)
+        Article: \(articleTitle)
+
+        Style guide:
+        - Snarky, witty, and conversational (like Dave Pell's NextDraft)
+        - Cultural references, wordplay, or surprising angles welcome
+        - End with a colon (:)
+        - Show personality - be opinionated, funny, or clever
+        - Match intensity to category (tech = hype/snark, news = urgency/irony, work = cynicism/hustle)
+
+        Dave Pell-style examples:
+        - "Oh, THIS again:"
+        - "Meanwhile, in Silicon Valley:"
+        - "In shocking news to no one:"
+        - "Your daily dose of chaos:"
+        - "Because of course this happened:"
+        - "The internet is going nuts over:"
+        - "Plot twist of the century:"
+        - "File under: Told you so:"
+
+        Just return the intro, nothing else. Make it punchy and memorable.
+        """
+
+        let response = try await session.respond(to: prompt)
+        return response.content.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Analyze content trends and generate insights
