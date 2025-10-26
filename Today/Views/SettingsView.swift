@@ -73,9 +73,8 @@ struct SettingsView: View {
 
     // Get app version dynamically
     private var appVersion: String {
-        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
-        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
-        return "v\(version) (\(build))"
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        return "v\(version)"
     }
 
     var body: some View {
@@ -134,24 +133,6 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                     .padding(.vertical, 4)
-
-                    Button {
-                        // Extract version number for GitHub release URL
-                        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-                        if let url = URL(string: "https://github.com/whyisjake/today/releases/tag/v\(version)") {
-                            openURL(url)
-                        }
-                    } label: {
-                        Label("Release Notes", systemImage: "doc.text")
-                    }
-
-                    Button {
-                        if let url = URL(string: "https://github.com/whyisjake/today") {
-                            openURL(url)
-                        }
-                    } label: {
-                        Label("Source Code", systemImage: "chevron.left.forwardslash.chevron.right")
-                    }
                 }
 
                 Section("Developer") {
