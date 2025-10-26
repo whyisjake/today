@@ -71,6 +71,13 @@ struct SettingsView: View {
     @AppStorage("fontOption") private var fontOption: FontOption = .serif
     @Environment(\.openURL) private var openURL
 
+    // Get app version dynamically
+    private var appVersion: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
+        return "v\(version) (\(build))"
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -120,13 +127,31 @@ struct SettingsView: View {
 
                 Section("About") {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Today v1.0")
+                        Text("Today \(appVersion)")
                             .font(.headline)
                         Text("A modern RSS reader for iOS")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
                     .padding(.vertical, 4)
+
+                    Button {
+                        // Extract version number for GitHub release URL
+                        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+                        if let url = URL(string: "https://github.com/whyisjake/today/releases/tag/v\(version)") {
+                            openURL(url)
+                        }
+                    } label: {
+                        Label("Release Notes", systemImage: "doc.text")
+                    }
+
+                    Button {
+                        if let url = URL(string: "https://github.com/whyisjake/today") {
+                            openURL(url)
+                        }
+                    } label: {
+                        Label("Source Code", systemImage: "chevron.left.forwardslash.chevron.right")
+                    }
                 }
 
                 Section("Developer") {
