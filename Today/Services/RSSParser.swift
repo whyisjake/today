@@ -170,6 +170,10 @@ class RSSParser: NSObject, XMLParserDelegate {
         if elementName == "item" || elementName == "entry" {
             insideItem = false
 
+            // Normalize link and guid (trim whitespace that may have been accumulated from XML)
+            currentLink = normalizeWhitespace(currentLink)
+            currentGuid = normalizeWhitespace(currentGuid)
+
             // Use link as guid if guid is not provided
             let finalGuid = currentGuid.isEmpty ? currentLink : currentGuid
 
