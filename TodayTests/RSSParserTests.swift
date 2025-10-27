@@ -392,8 +392,7 @@ final class RSSParserTests: XCTestCase {
         parser.parse(data: rssXML.data(using: .utf8)!)
 
         let article = parser.articles[0]
-        // XMLParser decodes entities but whitespace normalization may remove spaces
-        // The actual output is "Article&Title with<tags>" due to whitespace handling
-        XCTAssertEqual(article.title, "Article&Title with<tags>")
+        // XMLParser decodes entities and preserves spaces around them
+        XCTAssertEqual(article.title, "Article & Title with <tags>")
     }
 }
