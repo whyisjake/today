@@ -408,7 +408,24 @@ class AIService {
         do {
             return try await generateNewsletterIntro(for: category, articleTitle: articleTitle, articleContent: articleContent, session: session)
         } catch {
-            print("AI intro generation failed: \(error.localizedDescription)")
+            print("⚠️ AI intro generation failed: \(error.localizedDescription)")
+
+            // Log feedback for safety guardrail issues
+            if error.localizedDescription.contains("Safety guardrails") {
+                print("🚨 Safety guardrails triggered for intro generation")
+                print("   Category: \(category)")
+                print("   Article: \(articleTitle)")
+                print("   Content snippet: \(String(articleContent.prefix(100)))")
+
+                // Export feedback attachment
+                let feedbackAttachment = session.logFeedbackAttachment(
+                    sentiment: .negative,
+                    issues: []
+                )
+                print("📎 Feedback attachment created: \(feedbackAttachment)")
+                print("   Please file feedback at https://feedbackassistant.apple.com")
+            }
+
             return nil
         }
     }
@@ -494,7 +511,22 @@ class AIService {
 
             return (fullTitle, intro)
         } catch {
-            print("AI header generation failed: \(error.localizedDescription)")
+            print("⚠️ AI header generation failed: \(error.localizedDescription)")
+
+            // Log feedback for safety guardrail issues
+            if error.localizedDescription.contains("Safety guardrails") {
+                print("🚨 Safety guardrails triggered for newsletter header generation")
+                print("   Articles: \(articles.prefix(3).map { $0.title }.joined(separator: "; "))")
+
+                // Export feedback attachment
+                let feedbackAttachment = session.logFeedbackAttachment(
+                    sentiment: .negative,
+                    issues: []
+                )
+                print("📎 Feedback attachment created: \(feedbackAttachment)")
+                print("   Please file feedback at https://feedbackassistant.apple.com")
+            }
+
             return nil
         }
     }
