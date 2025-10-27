@@ -510,19 +510,17 @@ class AIService {
         Article: \(articleTitle)\(contentSnippet)
 
         Rules:
-        - 3-8 words ONLY
-        - Witty, opinionated, internet-native voice
-        - NO punctuation at end
-        - For politics: progressive voice
+        - Maximum 6 words
+        - No quotes, no punctuation
+        - Conversational, witty tone, feel free to be sarcastic at times. 
 
-        Examples (pick ONE style):
-        - "Oh, THIS again"
-        - "Meanwhile, in Silicon Valley"
-        - "Your daily dose of chaos"
-        - "Plot twist"
-        - "The Mar-a-Lago brain trust strikes"
+        Examples:
+        - Oh THIS again
+        - Meanwhile in Silicon Valley
+        - Your daily dose of chaos
+        - Plot twist
 
-        Return ONLY the intro phrase, nothing else.
+        Just the phrase:
         """
 
         let response = try await session.respond(to: prompt)
