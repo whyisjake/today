@@ -271,13 +271,34 @@ struct MessageBubble: View {
                         .background(Color.gray.opacity(0.2))
                         .cornerRadius(16)
                 } else {
-                    // Show header text
-                    Text(parseMarkdown(message.content))
-                        .padding(12)
-                        .background(message.isUser ? Color.accentColor : Color.gray.opacity(0.2))
-                        .foregroundStyle(message.isUser ? .white : .primary)
+                    // Show header text - style newsletter headers specially
+                    if !message.isUser && message.newsletterItems != nil {
+                        // Newsletter header with accent color and divider
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(parseMarkdown(message.content))
+                                .padding(16)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .textSelection(.enabled)
+
+                            Divider()
+                                .background(Color.accentColor)
+                                .frame(height: 2)
+                        }
+                        .background(Color.accentColor.opacity(0.1))
                         .cornerRadius(16)
-                        .textSelection(.enabled)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(Color.accentColor.opacity(0.3), lineWidth: 1)
+                        )
+                    } else {
+                        // Regular message
+                        Text(parseMarkdown(message.content))
+                            .padding(12)
+                            .background(message.isUser ? Color.accentColor : Color.gray.opacity(0.2))
+                            .foregroundStyle(message.isUser ? .white : .primary)
+                            .cornerRadius(16)
+                            .textSelection(.enabled)
+                    }
                 }
 
                 // Show newsletter items (summary + article link interleaved)
