@@ -27,14 +27,16 @@ class ChatMessage: Identifiable, ObservableObject {
     @Published var recommendedArticles: [Article]?
     @Published var newsletterItems: [NewsletterItem]?
     @Published var isTyping: Bool = false
+    let isNewsletter: Bool  // Track if this is a newsletter message from the start
 
-    init(content: String, isUser: Bool, recommendedArticles: [Article]? = nil, newsletterItems: [NewsletterItem]? = nil, isTyping: Bool = false) {
+    init(content: String, isUser: Bool, recommendedArticles: [Article]? = nil, newsletterItems: [NewsletterItem]? = nil, isTyping: Bool = false, isNewsletter: Bool = false) {
         self.content = content
         self.isUser = isUser
         self.timestamp = Date()
         self.recommendedArticles = recommendedArticles
         self.newsletterItems = newsletterItems
         self.isTyping = isTyping
+        self.isNewsletter = isNewsletter
     }
 }
 
@@ -190,7 +192,7 @@ struct AIChatView: View {
         isProcessing = true
 
         // Create message immediately with typing indicator
-        let message = ChatMessage(content: "", isUser: false, isTyping: true)
+        let message = ChatMessage(content: "", isUser: false, isTyping: true, isNewsletter: true)
         messages.append(message)
 
         Task {
@@ -272,7 +274,7 @@ struct MessageBubble: View {
                         .cornerRadius(16)
                 } else {
                     // Show header text - style newsletter headers specially
-                    if !message.isUser && message.newsletterItems != nil {
+                    if message.isNewsletter {
                         // Newsletter header with accent color and divider
                         VStack(alignment: .leading, spacing: 0) {
                             Text(parseMarkdown(message.content))
