@@ -526,6 +526,11 @@ struct ArticleRowView: View {
                     }
 
                     Spacer()
+                    if article.hasMinimalContent {
+                        Image(systemName: "arrow.up.forward.square")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                     if article.isRead {
                         Image(systemName: "envelope.open.fill")
                             .font(.caption2)
