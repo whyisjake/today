@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import Combine
 
 struct NewsletterItem: Identifiable, Equatable {
     let id = UUID()
@@ -18,24 +19,22 @@ struct NewsletterItem: Identifiable, Equatable {
     }
 }
 
-struct ChatMessage: Identifiable, Equatable {
+class ChatMessage: Identifiable, ObservableObject {
     let id = UUID()
-    let content: String
+    @Published var content: String
     let isUser: Bool
     let timestamp: Date
-    let recommendedArticles: [Article]?
-    let newsletterItems: [NewsletterItem]?
+    @Published var recommendedArticles: [Article]?
+    @Published var newsletterItems: [NewsletterItem]?
+    @Published var isTyping: Bool = false
 
-    init(content: String, isUser: Bool, recommendedArticles: [Article]? = nil, newsletterItems: [NewsletterItem]? = nil) {
+    init(content: String, isUser: Bool, recommendedArticles: [Article]? = nil, newsletterItems: [NewsletterItem]? = nil, isTyping: Bool = false) {
         self.content = content
         self.isUser = isUser
         self.timestamp = Date()
         self.recommendedArticles = recommendedArticles
         self.newsletterItems = newsletterItems
-    }
-
-    static func == (lhs: ChatMessage, rhs: ChatMessage) -> Bool {
-        lhs.id == rhs.id
+        self.isTyping = isTyping
     }
 }
 
@@ -190,31 +189,57 @@ struct AIChatView: View {
     private func generateNewsletterSummary() {
         isProcessing = true
 
-        Task {
-            let newsletter: String
-            let newsletterItems: [NewsletterItem]
+        // Create message immediately with typing indicator
+        let message = ChatMessage(content: "", isUser: false, isTyping: true)
+        messages.append(message)
 
-            // Use on-device AI if available (iOS 18+)
+        Task {
+            // Use streaming on-device AI if available (iOS 18+)
             if #available(iOS 18.0, *), OnDeviceAIService.shared.isAvailable {
                 do {
-                    let (header, items) = try await OnDeviceAIService.shared.generateNewsletterSummary(articles: Array(articles))
-                    newsletter = header
-                    newsletterItems = items.map { NewsletterItem(summary: $0.summary, article: $0.article) }
+                    var items: [NewsletterItem] = []
+
+                    for try await event in OnDeviceAIService.shared.generateNewsletterSummaryStream(articles: Array(articles)) {
+                        await MainActor.run {
+                            switch event {
+                            case .header(let header):
+                                // Show header and stop typing indicator
+                                message.isTyping = false
+                                message.content = header
+
+                            case .item(let itemData):
+                                // Add item as it's generated
+                                items.append(NewsletterItem(summary: itemData.summary, article: itemData.article))
+                                message.newsletterItems = items
+
+                            case .completed:
+                                // All done
+                                break
+                            }
+                        }
+                    }
                 } catch {
                     // Fallback to basic service if on-device AI fails
+                    await MainActor.run {
+                        message.isTyping = false
+                    }
                     let (text, _) = await AIService.shared.generateNewsletterSummary(articles: Array(articles))
-                    newsletter = text
-                    newsletterItems = []
+                    await MainActor.run {
+                        message.content = text
+                        message.newsletterItems = nil
+                    }
                 }
             } else {
                 // Use basic service for older iOS versions
                 let (text, _) = await AIService.shared.generateNewsletterSummary(articles: Array(articles))
-                newsletter = text
-                newsletterItems = []
+                await MainActor.run {
+                    message.isTyping = false
+                    message.content = text
+                    message.newsletterItems = nil
+                }
             }
 
             await MainActor.run {
-                messages.append(ChatMessage(content: newsletter, isUser: false, newsletterItems: newsletterItems.isEmpty ? nil : newsletterItems))
                 isProcessing = false
             }
         }
@@ -222,7 +247,7 @@ struct AIChatView: View {
 }
 
 struct MessageBubble: View {
-    let message: ChatMessage
+    @ObservedObject var message: ChatMessage
 
     private func parseMarkdown(_ text: String) -> AttributedString {
         do {
@@ -239,13 +264,21 @@ struct MessageBubble: View {
             }
 
             VStack(alignment: message.isUser ? .trailing : .leading, spacing: 8) {
-                // Show header text
-                Text(parseMarkdown(message.content))
-                    .padding(12)
-                    .background(message.isUser ? Color.accentColor : Color.gray.opacity(0.2))
-                    .foregroundStyle(message.isUser ? .white : .primary)
-                    .cornerRadius(16)
-                    .textSelection(.enabled)
+                // Show typing indicator or content
+                if message.isTyping {
+                    TypingIndicator()
+                        .padding(12)
+                        .background(Color.gray.opacity(0.2))
+                        .cornerRadius(16)
+                } else {
+                    // Show header text
+                    Text(parseMarkdown(message.content))
+                        .padding(12)
+                        .background(message.isUser ? Color.accentColor : Color.gray.opacity(0.2))
+                        .foregroundStyle(message.isUser ? .white : .primary)
+                        .cornerRadius(16)
+                        .textSelection(.enabled)
+                }
 
                 // Show newsletter items (summary + article link interleaved)
                 if let items = message.newsletterItems, !items.isEmpty {
@@ -392,6 +425,28 @@ struct SuggestionButton: View {
             .background(Color.accentColor.opacity(0.1))
             .foregroundStyle(Color.accentColor)
             .cornerRadius(10)
+        }
+    }
+}
+
+// Typing indicator with animated dots
+struct TypingIndicator: View {
+    @State private var dotCount = 0
+
+    let timer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(0..<3) { index in
+                Circle()
+                    .fill(Color.gray)
+                    .frame(width: 8, height: 8)
+                    .opacity(index < dotCount ? 1.0 : 0.3)
+                    .animation(.easeInOut(duration: 0.3), value: dotCount)
+            }
+        }
+        .onReceive(timer) { _ in
+            dotCount = (dotCount + 1) % 4
         }
     }
 }

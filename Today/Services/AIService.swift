@@ -210,7 +210,7 @@ class AIService {
         }.joined(separator: "\n---\n")
 
         let prompt = """
-        You are Dave Pell, the witty curator behind NextDraft — known for blending sharp humor, cultural insight, and brevity.
+        You are an internet-addicted curator who spends too much time online and loves sharing the best finds with sharp wit and cultural insight.
         The user has asked: "\(query)"
 
         Here are their recent articles:
@@ -219,11 +219,11 @@ class AIService {
         Total articles: \(articles.count)
         Unread: \(articles.filter { !$0.isRead }.count)
 
-        Respond in Dave Pell’s voice:
-        - Be conversational and clever — like you're writing a newsletter intro.
+        Respond in a conversational, witty voice:
+        - Be conversational and clever — like you're sharing cool finds with a friend.
         - Keep it tight (2–3 sentences max).
         - Include one unexpected or humorous observation if it fits.
-        - Avoid sounding robotic or overly polished.
+        - Show you live online and track what matters.
         - End with a quick punchline or insight — something memorable.
         """
 
@@ -261,7 +261,7 @@ class AIService {
         return Array(articles.prefix(5))
     }
 
-    /// Generate a newsletter-style summary with article links (Dave Pell style)
+    /// Generate a newsletter-style summary with article links
     func generateNewsletterSummary(articles: [Article]) async -> (String, [Article]?) {
         guard !articles.isEmpty else {
             return ("No articles to summarize today.", nil)
@@ -341,9 +341,9 @@ class AIService {
     }
 
     /// Get witty newsletter intro based on category
-    /// Uses Apple Intelligence when available for dynamic intros, falls back to static Dave Pell-style ones
+    /// Uses Apple Intelligence when available for dynamic intros, falls back to static ones
     private func getNewsletterIntro(for category: String, itemNumber: Int) -> String {
-        // Static fallback intros in Dave Pell style (snarky, punchy, personality-driven)
+        // Static fallback intros (snarky, punchy, personality-driven)
         // No trailing punctuation - we'll add formatting in the output
         let intros: [String: [String]] = [
             "tech": [
@@ -428,19 +428,20 @@ class AIService {
             let categories = Set(topArticles.compactMap { $0.feed?.category }).joined(separator: ", ")
 
             let prompt = """
-            Write a creative newsletter header as Dave Pell (NextDraft style).
+            You're an internet-addicted curator who lives online and loves sharing the best content. Write a creative newsletter header.
 
             Today's stories: \(articleTitles)
             Categories: \(categories)
 
             Generate:
-            1. Clever title (2-4 words) - examples: "Cyrano Thyself", "Clipped Wing"
-            2. Subtitle with wordplay (3-7 words) - example: "Wordplay is the New Foreplay"
+            1. Clever title (2-4 words) - examples: "Cyrano Thyself", "Clipped Wing", "The Political Cocktail"
+            2. Subtitle with wordplay (3-7 words) - examples: "Wordplay is the New Foreplay", "Where Every Sip's a Story"
             3. Opening paragraph (2-3 sentences):
-               - Personal and conversational
-               - Sharp cultural observation or wordplay
-               - Transition to the news
+               - Personal and conversational, like sharing finds with a friend
+               - Sharp cultural observation or internet-native wordplay
+               - Show you spend too much time online (in a good way)
                - For politics: progressive voice, call out hypocrisy
+               - Transition naturally to the curated content
 
             Format:
             TITLE: [title]
@@ -499,18 +500,18 @@ class AIService {
     }
 
     /// Generate dynamic newsletter intro using Apple Intelligence (async version)
-    /// Inspired by Dave Pell's NextDraft style - punchy, snarky, personality-driven
+    /// Punchy, snarky, personality-driven style
     @available(iOS 26.0, *)
     private func generateNewsletterIntro(for category: String, articleTitle: String, articleContent: String = "", session: LanguageModelSession) async throws -> String {
         let contentSnippet = articleContent.isEmpty ? "" : "\nContext: \(String(articleContent.prefix(150)))"
         let prompt = """
-        Write ONE brief intro phrase (3-8 words max) for this article in Dave Pell's NextDraft style.
+        You're an internet-addicted content curator. Write ONE brief intro phrase (3-8 words max) for this article.
 
         Article: \(articleTitle)\(contentSnippet)
 
         Rules:
         - 3-8 words ONLY
-        - Snarky, witty, opinionated
+        - Witty, opinionated, internet-native voice
         - NO punctuation at end
         - For politics: progressive voice
 

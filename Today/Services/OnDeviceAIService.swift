@@ -26,7 +26,74 @@ class OnDeviceAIService {
         let article: Article?
     }
 
-    /// Generate a newsletter-style summary using on-device AI
+    /// Newsletter event types for streaming
+    enum NewsletterEvent {
+        case header(String)
+        case item(NewsletterItemData)
+        case completed
+    }
+
+    /// Generate a newsletter-style summary using on-device AI (streaming version)
+    func generateNewsletterSummaryStream(articles: [Article]) -> AsyncThrowingStream<NewsletterEvent, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                guard !articles.isEmpty else {
+                    continuation.finish(throwing: AIError.noArticles)
+                    return
+                }
+
+                // Get the most interesting articles
+                let sortedArticles = articles
+                    .sorted { a, b in
+                        if a.isRead != b.isRead {
+                            return !a.isRead
+                        }
+                        return a.publishedDate > b.publishedDate
+                    }
+                    .prefix(10)
+
+                // Generate creative title and intro using AI
+                let (title, intro) = await generateNewsletterTitleAndIntro(articles: Array(sortedArticles))
+
+                var newsletter = "✨ \(title)\n\n"
+                if !intro.isEmpty {
+                    newsletter += "\(intro)"
+                }
+
+                // Yield header immediately
+                continuation.yield(.header(newsletter))
+
+                var itemNumber = 1
+
+                // Process each article and yield as generated
+                for article in sortedArticles {
+                    let itemPrefix = "**\(itemNumber).** "
+
+                    // Use NaturalLanguage to generate summary
+                    let summary: String
+                    if let smartSummary = await generateSmartSummary(for: article, itemNumber: itemNumber) {
+                        summary = itemPrefix + smartSummary
+                    } else {
+                        // Fallback to article title
+                        summary = itemPrefix + "**\(article.title)**"
+                    }
+
+                    // Yield item immediately after generation
+                    continuation.yield(.item(NewsletterItemData(summary: summary, article: article)))
+                    itemNumber += 1
+                }
+
+                // Add closing message
+                let closingMessage = "**That's it for today!** ✌️\n\nTap any article above to read more. See you tomorrow."
+                continuation.yield(.item(NewsletterItemData(summary: closingMessage, article: nil)))
+
+                continuation.yield(.completed)
+                continuation.finish()
+            }
+        }
+    }
+
+    /// Generate a newsletter-style summary using on-device AI (legacy non-streaming)
     func generateNewsletterSummary(articles: [Article]) async throws -> (String, [NewsletterItemData]) {
         guard !articles.isEmpty else {
             throw AIError.noArticles
@@ -234,7 +301,7 @@ class OnDeviceAIService {
             }
         }
 
-        // Fallback to Dave Pell-style static intros when AI isn't available
+        // Fallback to static intros when AI isn't available
         // No trailing punctuation - formatting added in output
         let fallbacks: [String: [String]] = [
             "tech": ["Oh, THIS again", "Meanwhile, in Silicon Valley", "The tech bros are at it", "Plot twist from the Valley"],
@@ -248,7 +315,7 @@ class OnDeviceAIService {
         return options.randomElement()!
     }
 
-    // Dave Pell-style intros for fallback/backward compatibility
+    // Static intros for fallback/backward compatibility
     // No trailing punctuation - formatting added in output
     private func getContextualIntro(for category: String, itemNumber: Int) -> String {
         let intros: [String: [String]] = [
@@ -305,7 +372,7 @@ class OnDeviceAIService {
     }
 
     /// Generate creative newsletter title and intro paragraph using AI
-    /// Inspired by Dave Pell's NextDraft style - clever titles and personality-driven intros
+    /// Clever titles and personality-driven intros
     private func generateNewsletterTitleAndIntro(articles: [Article]) async -> (title: String, intro: String) {
         // Try using AIService's Apple Intelligence integration if available (iOS 26+)
         if #available(iOS 26.0, *) {
