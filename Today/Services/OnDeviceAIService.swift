@@ -23,7 +23,7 @@ class OnDeviceAIService {
     /// Newsletter item structure for returning structured data
     struct NewsletterItemData {
         let summary: String
-        let article: Article
+        let article: Article?
     }
 
     /// Generate a newsletter-style summary using on-device AI
@@ -42,8 +42,13 @@ class OnDeviceAIService {
             }
             .prefix(10)
 
-        var newsletter = "📰 **Today's Brief**\n\n"
-        newsletter += "Here's what you need to know from your feeds today.\n\n"
+        // Generate creative title and intro using AI
+        let (title, intro) = await generateNewsletterTitleAndIntro(articles: Array(sortedArticles))
+
+        var newsletter = "✨ \(title)\n\n"
+        if !intro.isEmpty {
+            newsletter += "\(intro)"
+        }
 
         var newsletterItems: [NewsletterItemData] = []
         var itemNumber = 1
@@ -65,7 +70,9 @@ class OnDeviceAIService {
             itemNumber += 1
         }
 
-        newsletter += "That's it for today! ✌️"
+        // Add closing message as the last newsletter item (without an article link)
+        let closingMessage = "**That's it for today!** ✌️\n\nTap any article above to read more. See you tomorrow."
+        newsletterItems.append(NewsletterItemData(summary: closingMessage, article: nil))
 
         return (newsletter, newsletterItems)
     }
@@ -295,6 +302,35 @@ class OnDeviceAIService {
         let categoryIntros = intros[category.lowercased()] ?? intros["general"]!
         let index = (itemNumber - 1) % categoryIntros.count
         return categoryIntros[index]
+    }
+
+    /// Generate creative newsletter title and intro paragraph using AI
+    /// Inspired by Dave Pell's NextDraft style - clever titles and personality-driven intros
+    private func generateNewsletterTitleAndIntro(articles: [Article]) async -> (title: String, intro: String) {
+        // Try using AIService's Apple Intelligence integration if available (iOS 26+)
+        if #available(iOS 26.0, *) {
+            if let (aiTitle, aiIntro) = await AIService.shared.generateNewsletterHeader(articles: articles) {
+                return (aiTitle, aiIntro)
+            }
+        }
+
+        // Fallback to static title and intro
+        let titles = [
+            "Today's Brief",
+            "The Daily Digest",
+            "Your Morning Read",
+            "What You Need to Know",
+            "The Rundown"
+        ]
+
+        let intros = [
+            "Here's what you need to know from your feeds today. I've curated the highlights with a bit of context.",
+            "Your daily dose of the internet, distilled and served with commentary.",
+            "The news that matters, minus the noise. Let's dive in.",
+            "Another day, another batch of stories worth your time. Here's what's happening."
+        ]
+
+        return (titles.randomElement()!, intros.randomElement()!)
     }
 
     enum AIError: LocalizedError {

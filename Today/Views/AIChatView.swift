@@ -11,7 +11,7 @@ import SwiftData
 struct NewsletterItem: Identifiable, Equatable {
     let id = UUID()
     let summary: String
-    let article: Article
+    let article: Article?
 
     static func == (lhs: NewsletterItem, rhs: NewsletterItem) -> Bool {
         lhs.id == rhs.id
@@ -251,50 +251,65 @@ struct MessageBubble: View {
                 if let items = message.newsletterItems, !items.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
                         ForEach(items) { item in
-                            NavigationLink {
-                                ArticleDetailSimple(article: item.article, previousArticleID: nil, nextArticleID: nil, onNavigateToPrevious: { _ in }, onNavigateToNext: { _ in })
-                            } label: {
+                            if let article = item.article {
+                                // Regular newsletter item with article link
+                                NavigationLink {
+                                    ArticleDetailSimple(article: article, previousArticleID: nil, nextArticleID: nil, onNavigateToPrevious: { _ in }, onNavigateToNext: { _ in })
+                                } label: {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        // Summary text
+                                        Text(parseMarkdown(item.summary))
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .textSelection(.enabled)
+                                            .foregroundStyle(.primary)
+
+                                        Divider()
+
+                                        // Article link inside the same box
+                                        HStack(spacing: 8) {
+                                            Image(systemName: "arrow.right.circle.fill")
+                                                .font(.subheadline)
+                                                .foregroundStyle(Color.accentColor)
+
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text("Read full article")
+                                                    .font(.subheadline)
+                                                    .fontWeight(.medium)
+
+                                                if let feedTitle = article.feed?.title {
+                                                    Text(feedTitle)
+                                                        .font(.caption2)
+                                                        .foregroundStyle(.secondary)
+                                                }
+                                            }
+
+                                            Spacer()
+
+                                            Image(systemName: "chevron.right")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .foregroundStyle(Color.accentColor)
+                                    }
+                                    .padding(12)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(Color.gray.opacity(0.1))
+                                    .cornerRadius(12)
+                                }
+                                .buttonStyle(.plain)
+                            } else {
+                                // Closing message or other non-article content
                                 VStack(alignment: .leading, spacing: 8) {
-                                    // Summary text
                                     Text(parseMarkdown(item.summary))
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                         .textSelection(.enabled)
                                         .foregroundStyle(.primary)
-
-                                    Divider()
-
-                                    // Article link inside the same box
-                                    HStack(spacing: 8) {
-                                        Image(systemName: "arrow.right.circle.fill")
-                                            .font(.subheadline)
-                                            .foregroundStyle(Color.accentColor)
-
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text("Read full article")
-                                                .font(.subheadline)
-                                                .fontWeight(.medium)
-
-                                            if let feedTitle = item.article.feed?.title {
-                                                Text(feedTitle)
-                                                    .font(.caption2)
-                                                    .foregroundStyle(.secondary)
-                                            }
-                                        }
-
-                                        Spacer()
-
-                                        Image(systemName: "chevron.right")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    .foregroundStyle(Color.accentColor)
                                 }
                                 .padding(12)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .background(Color.gray.opacity(0.1))
                                 .cornerRadius(12)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                     .padding(.horizontal, 4)

@@ -413,40 +413,115 @@ class AIService {
         }
     }
 
+    /// Generate creative newsletter title and intro paragraph using Apple Intelligence
+    /// Returns (title, intro) tuple or nil if AI is unavailable
+    @available(iOS 26.0, *)
+    func generateNewsletterHeader(articles: [Article]) async -> (String, String)? {
+        guard isAppleIntelligenceAvailable, let session = session else {
+            return nil
+        }
+
+        do {
+            // Extract themes from top articles for context (limit to avoid token overflow)
+            let topArticles = articles.prefix(3)
+            let articleTitles = topArticles.map { $0.title }.joined(separator: "; ")
+            let categories = Set(topArticles.compactMap { $0.feed?.category }).joined(separator: ", ")
+
+            let prompt = """
+            Write a creative newsletter header as Dave Pell (NextDraft style).
+
+            Today's stories: \(articleTitles)
+            Categories: \(categories)
+
+            Generate:
+            1. Clever title (2-4 words) - examples: "Cyrano Thyself", "Clipped Wing"
+            2. Subtitle with wordplay (3-7 words) - example: "Wordplay is the New Foreplay"
+            3. Opening paragraph (2-3 sentences):
+               - Personal and conversational
+               - Sharp cultural observation or wordplay
+               - Transition to the news
+               - For politics: progressive voice, call out hypocrisy
+
+            Format:
+            TITLE: [title]
+            SUBTITLE: [subtitle]
+            INTRO: [paragraph]
+            """
+
+            let response = try await session.respond(to: prompt)
+            var content = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            print("📰 AI Response for header:\n\(content)")
+
+            // Strip ALL markdown formatting before parsing (AI keeps adding it)
+            content = content.replacingOccurrences(of: "**", with: "")
+                .replacingOccurrences(of: "*", with: "")
+                .replacingOccurrences(of: "\"", with: "")
+
+            // Parse the response - handle multi-line intro
+            var title = "Today's Brief"
+            var subtitle = ""
+            var intro = ""
+
+            // Split into sections (already cleaned of markdown)
+            if let titleRange = content.range(of: "TITLE:", options: .caseInsensitive) {
+                let afterTitle = content[titleRange.upperBound...]
+                if let nextLineRange = afterTitle.range(of: "\n") {
+                    title = String(afterTitle[..<nextLineRange.lowerBound])
+                        .trimmingCharacters(in: .whitespaces)
+                }
+            }
+
+            if let subtitleRange = content.range(of: "SUBTITLE:", options: .caseInsensitive) {
+                let afterSubtitle = content[subtitleRange.upperBound...]
+                if let nextLineRange = afterSubtitle.range(of: "\n") {
+                    subtitle = String(afterSubtitle[..<nextLineRange.lowerBound])
+                        .trimmingCharacters(in: .whitespaces)
+                }
+            }
+
+            if let introRange = content.range(of: "INTRO:", options: .caseInsensitive) {
+                // Get everything after "INTRO:" - can be multiple lines
+                intro = String(content[introRange.upperBound...])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+
+            // Combine title (bold) and subtitle (italic only)
+            let fullTitle = subtitle.isEmpty ? "**\(title)**" : "**\(title)**\n*\(subtitle)*"
+
+            print("📰 Generated newsletter header - Title: '\(title)', Subtitle: '\(subtitle)', Intro: '\(intro.prefix(50))...'")
+
+            return (fullTitle, intro)
+        } catch {
+            print("AI header generation failed: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
     /// Generate dynamic newsletter intro using Apple Intelligence (async version)
     /// Inspired by Dave Pell's NextDraft style - punchy, snarky, personality-driven
     @available(iOS 26.0, *)
     private func generateNewsletterIntro(for category: String, articleTitle: String, articleContent: String = "", session: LanguageModelSession) async throws -> String {
-        let contentSnippet = articleContent.isEmpty ? "" : "\nContext: \(String(articleContent.prefix(200)))"
+        let contentSnippet = articleContent.isEmpty ? "" : "\nContext: \(String(articleContent.prefix(150)))"
         let prompt = """
-        Write a brief, punchy, Dave Pell-style introduction (3-10 words) for this newsletter item.
+        Write ONE brief intro phrase (3-8 words max) for this article in Dave Pell's NextDraft style.
 
-        Category: \(category)
         Article: \(articleTitle)\(contentSnippet)
 
-        Style guide:
-        - Snarky, witty, and conversational (like Dave Pell's NextDraft)
-        - Cultural references, wordplay, or surprising angles welcome
-        - NO punctuation at the end (we'll add formatting)
-        - Show personality - be opinionated, funny, or clever
-        - Match intensity to category (tech = hype/snark, news = urgency/irony, work = cynicism/hustle)
-        - For political issues, lean far left and don't hold back on Trump/MAGA/GOP hypocrisy
-        - Avoid overused phrases like "breaking" or "just in" - be more creative
-        - Read the room: serious issues deserve sharp commentary, not flippancy
+        Rules:
+        - 3-8 words ONLY
+        - Snarky, witty, opinionated
+        - NO punctuation at end
+        - For politics: progressive voice
 
-        Dave Pell-style examples:
+        Examples (pick ONE style):
         - "Oh, THIS again"
         - "Meanwhile, in Silicon Valley"
-        - "In shocking news to no one"
         - "Your daily dose of chaos"
-        - "Because of course this happened"
-        - "The internet is going nuts over"
-        - "Plot twist of the century"
-        - "File under: Told you so"
-        - "The Mar-a-Lago brain trust strikes again"
-        - "Democracy watch"
+        - "Plot twist"
+        - "The Mar-a-Lago brain trust strikes"
 
-        Just return the intro, nothing else. Make it punchy and memorable.
+        Return ONLY the intro phrase, nothing else.
         """
 
         let response = try await session.respond(to: prompt)
