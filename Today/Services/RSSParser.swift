@@ -99,37 +99,46 @@ class RSSParser: NSObject, XMLParserDelegate {
     }
 
     func parser(_ parser: XMLParser, foundCharacters string: String) {
-        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        // Don't trim whitespace here! XMLParser calls this method multiple times for text
+        // containing HTML entities. Trimming would strip spaces around entities like &#8216;
+        // We'll normalize whitespace later in the processing pipeline.
+        //
+        // Example: "<title>Biden &#8216;Dark Days&#8217; Trump</title>" triggers:
+        //   1. foundCharacters("Biden ")
+        //   2. foundCharacters("&#8216;")
+        //   3. foundCharacters("Dark Days")
+        //   4. foundCharacters("&#8217;")
+        //   5. foundCharacters(" Trump")
+        // If we trim each, we lose the spaces!
 
         if insideItem {
             switch currentElement {
             case "title":
-                currentTitle += trimmed
+                currentTitle += string
             case "link":
                 // RSS feeds use text content for link, Atom uses attributes (handled in didStartElement)
                 if currentLink.isEmpty {
-                    currentLink += trimmed
+                    currentLink += string
                 }
             case "description", "summary": // Atom uses <summary>, RSS uses <description>
-                currentDescription += trimmed
+                currentDescription += string
             case "content":
-                currentContent += trimmed
+                currentContent += string
             case "content:encoded", "encoded":
-                currentContentEncoded += trimmed
+                currentContentEncoded += string
             case "pubDate", "published", "updated": // Atom uses <published> or <updated>
                 if currentPubDate.isEmpty { // Prefer published over updated
-                    currentPubDate += trimmed
+                    currentPubDate += string
                 }
             case "author", "dc:creator":
-                currentAuthor += trimmed
+                currentAuthor += string
             case "name": // Atom feeds have <author><name>...</name></author>
                 if !currentAuthor.isEmpty {
                     currentAuthor += " "
                 }
-                currentAuthor += trimmed
+                currentAuthor += string
             case "guid", "id": // Atom uses <id>
-                currentGuid += trimmed
+                currentGuid += string
             default:
                 break
             }
@@ -138,10 +147,10 @@ class RSSParser: NSObject, XMLParserDelegate {
             switch currentElement {
             case "title":
                 if !feedTitleParsed {
-                    feedTitle += trimmed
+                    feedTitle += string
                 }
             case "description", "subtitle": // Atom uses <subtitle>, RSS uses <description>
-                feedDescription += trimmed
+                feedDescription += string
             default:
                 break
             }
@@ -169,8 +178,18 @@ class RSSParser: NSObject, XMLParserDelegate {
                 }
             }
 
-            // Debug: log content before texturization
-            let processedTitle = decodeHTMLEntities(normalizeWhitespace(currentTitle)).texturize()
+            // Debug: log title processing steps
+            let normalizedTitle = normalizeWhitespace(currentTitle)
+            let decodedTitle = decodeHTMLEntities(normalizedTitle)
+            let processedTitle = decodedTitle.texturize()
+
+            if currentTitle.contains("&#") || currentTitle.contains("Dark Days") {
+                print("🔍 Title processing:")
+                print("   Raw:        '\(currentTitle)'")
+                print("   Normalized: '\(normalizedTitle)'")
+                print("   Decoded:    '\(decodedTitle)'")
+                print("   Texturized: '\(processedTitle)'")
+            }
             let processedDescription = currentDescription.isEmpty ? nil : decodeHTMLEntities(normalizeWhitespace(currentDescription)).texturize()
 
             var processedContent: String? = nil

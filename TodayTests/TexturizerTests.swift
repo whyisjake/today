@@ -279,4 +279,12 @@ final class TexturizerTests: XCTestCase {
         let result = input.texturize()
         XCTAssertEqual(result, expected, "Should preserve multiple spaces before quote")
     }
+
+    func testPreservesSpacesWithExistingSmartQuotes() {
+        // Test with text that already has smart quotes (like from decoded HTML entities &#8216; and &#8217;)
+        let input = "Biden Decries \u{2018}Dark Days\u{2019} Under Trump"
+        let expected = "Biden Decries \u{2018}Dark Days\u{2019} Under Trump"
+        let result = input.texturize()
+        XCTAssertEqual(result, expected, "Should preserve spaces when smart quotes already exist")
+    }
 }
