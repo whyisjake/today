@@ -43,4 +43,29 @@ final class Article {
         self.aiSummary = nil
         self.feed = feed
     }
+
+    /// Returns true if the article has minimal content (short summary only)
+    /// These articles should open directly in web view for full content
+    var hasMinimalContent: Bool {
+        // If we have contentEncoded or substantial content, it's not minimal
+        if let encoded = contentEncoded?.htmlToPlainText, !encoded.isEmpty, encoded.count > 300 {
+            return false
+        }
+
+        if let fullContent = content?.htmlToPlainText, !fullContent.isEmpty, fullContent.count > 300 {
+            return false
+        }
+
+        // If we only have description and it's short, or no content at all, it's minimal
+        if contentEncoded == nil && content == nil {
+            return true
+        }
+
+        // Check if total available content is less than 300 characters
+        let totalContent = [contentEncoded, content, articleDescription]
+            .compactMap { $0?.htmlToPlainText }
+            .joined()
+
+        return totalContent.count < 300
+    }
 }

@@ -281,39 +281,52 @@ struct TodayView: View {
             }
             .navigationDestination(item: $selectedArticleID) { articleID in
                 if let article = modelContext.model(for: articleID) as? Article {
-                    // Use the captured navigation context (stable across view updates)
-                    if !navigationContext.isEmpty,
-                       let currentIndex = navigationContext.firstIndex(of: articleID) {
-                        let previousIndex = currentIndex - 1
-                        let nextIndex = currentIndex + 1
-                        let previousArticleID = previousIndex >= 0 ? navigationContext[previousIndex] : nil
-                        let nextArticleID = nextIndex < navigationContext.count ? navigationContext[nextIndex] : nil
-
-                        ArticleDetailSimple(
-                            article: article,
-                            previousArticleID: previousArticleID,
-                            nextArticleID: nextArticleID,
-                            onNavigateToPrevious: { prevID in
-                                Task { @MainActor in
-                                    try? await Task.sleep(nanoseconds: 50_000_000)
-                                    selectedArticleID = prevID
-                                }
-                            },
-                            onNavigateToNext: { nextID in
-                                Task { @MainActor in
-                                    try? await Task.sleep(nanoseconds: 50_000_000)
-                                    selectedArticleID = nextID
+                    // For articles with minimal content, go directly to web view
+                    if article.hasMinimalContent, let url = URL(string: article.link) {
+                        ArticleWebViewSimple(url: url)
+                            .onAppear {
+                                // Mark as read
+                                if !article.isRead {
+                                    article.isRead = true
+                                    try? modelContext.save()
                                 }
                             }
-                        )
                     } else {
-                        ArticleDetailSimple(
-                            article: article,
-                            previousArticleID: nil,
-                            nextArticleID: nil,
-                            onNavigateToPrevious: { _ in },
-                            onNavigateToNext: { _ in }
-                        )
+                        // Show in-app article detail for articles with substantial content
+                        // Use the captured navigation context (stable across view updates)
+                        if !navigationContext.isEmpty,
+                           let currentIndex = navigationContext.firstIndex(of: articleID) {
+                            let previousIndex = currentIndex - 1
+                            let nextIndex = currentIndex + 1
+                            let previousArticleID = previousIndex >= 0 ? navigationContext[previousIndex] : nil
+                            let nextArticleID = nextIndex < navigationContext.count ? navigationContext[nextIndex] : nil
+
+                            ArticleDetailSimple(
+                                article: article,
+                                previousArticleID: previousArticleID,
+                                nextArticleID: nextArticleID,
+                                onNavigateToPrevious: { prevID in
+                                    Task { @MainActor in
+                                        try? await Task.sleep(nanoseconds: 50_000_000)
+                                        selectedArticleID = prevID
+                                    }
+                                },
+                                onNavigateToNext: { nextID in
+                                    Task { @MainActor in
+                                        try? await Task.sleep(nanoseconds: 50_000_000)
+                                        selectedArticleID = nextID
+                                    }
+                                }
+                            )
+                        } else {
+                            ArticleDetailSimple(
+                                article: article,
+                                previousArticleID: nil,
+                                nextArticleID: nil,
+                                onNavigateToPrevious: { _ in },
+                                onNavigateToNext: { _ in }
+                            )
+                        }
                     }
                 }
             }
