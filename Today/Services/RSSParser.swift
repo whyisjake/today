@@ -40,7 +40,15 @@ class RSSParser: NSObject, XMLParserDelegate {
     func parse(data: Data) -> Bool {
         let parser = XMLParser(data: data)
         parser.delegate = self
-        return parser.parse()
+        let success = parser.parse()
+
+        // Normalize feed-level fields after parsing completes
+        if success {
+            feedTitle = normalizeWhitespace(feedTitle)
+            feedDescription = normalizeWhitespace(feedDescription)
+        }
+
+        return success
     }
 
     // MARK: - XMLParserDelegate
