@@ -16,26 +16,44 @@ import FoundationModels
 class AIService {
     static let shared = AIService()
 
-    #if canImport(FoundationModels)
+    // Store as Any to avoid availability issues with stored properties
+    private var systemModelStorage: Any?
+    private var sessionStorage: Any?
+
+    // Computed properties to safely cast from storage
     @available(iOS 26.0, *)
-    private var systemModel: SystemLanguageModel?
+    private var systemModel: SystemLanguageModel? {
+        #if canImport(FoundationModels)
+        return systemModelStorage as? SystemLanguageModel
+        #else
+        return nil
+        #endif
+    }
+
     @available(iOS 26.0, *)
-    private var session: LanguageModelSession?
-    #endif
+    private var session: LanguageModelSession? {
+        #if canImport(FoundationModels)
+        return sessionStorage as? LanguageModelSession
+        #else
+        return nil
+        #endif
+    }
 
     private init() {
         // Initialize session if Apple Intelligence is available (iOS 26+)
         if #available(iOS 26.0, *) {
             #if canImport(FoundationModels)
             print("🧠 AIService: FoundationModels can be imported")
-            systemModel = SystemLanguageModel.default
-            print("🧠 AIService: SystemLanguageModel.default = \(String(describing: systemModel))")
-            print("🧠 AIService: isAvailable = \(systemModel?.isAvailable ?? false)")
-            if systemModel?.isAvailable == true {
-                session = LanguageModelSession()
+            let model = SystemLanguageModel.default
+            systemModelStorage = model
+            print("🧠 AIService: SystemLanguageModel.default = \(String(describing: model))")
+            print("🧠 AIService: isAvailable = \(model.isAvailable)")
+            if model.isAvailable {
+                let newSession = LanguageModelSession()
+                sessionStorage = newSession
                 print("🧠 AIService: LanguageModelSession created successfully")
             } else {
-                print("⚠️ AIService: SystemLanguageModel not available - \(systemModel?.availability ?? .unavailable(.unexpectedError))")
+                print("⚠️ AIService: SystemLanguageModel not available - \(model.availability)")
             }
             #else
             print("⚠️ AIService: FoundationModels cannot be imported")
@@ -49,9 +67,9 @@ class AIService {
     var isAppleIntelligenceAvailable: Bool {
         if #available(iOS 26.0, *) {
             #if canImport(FoundationModels)
-            return systemModel?.isAvailable ?? false
-            #else
-            return false
+            if let model = systemModelStorage as? SystemLanguageModel {
+                return model.isAvailable
+            }
             #endif
         }
         return false
