@@ -27,11 +27,21 @@ class AIService {
         // Initialize session if Apple Intelligence is available (iOS 26+)
         if #available(iOS 26.0, *) {
             #if canImport(FoundationModels)
+            print("🧠 AIService: FoundationModels can be imported")
             systemModel = SystemLanguageModel.default
+            print("🧠 AIService: SystemLanguageModel.default = \(String(describing: systemModel))")
+            print("🧠 AIService: isAvailable = \(systemModel?.isAvailable ?? false)")
             if systemModel?.isAvailable == true {
                 session = LanguageModelSession()
+                print("🧠 AIService: LanguageModelSession created successfully")
+            } else {
+                print("⚠️ AIService: SystemLanguageModel not available - \(systemModel?.availability ?? .unavailable(.unexpectedError))")
             }
+            #else
+            print("⚠️ AIService: FoundationModels cannot be imported")
             #endif
+        } else {
+            print("⚠️ AIService: iOS version < 26.0")
         }
     }
 
@@ -459,6 +469,13 @@ class AIService {
                - Show you spend too much time online (in a good way)
                - For politics: progressive voice, call out hypocrisy
                - Transition naturally to the curated content
+
+            IMPORTANT RULES:
+            - Provide a complete, standalone newsletter intro
+            - Do NOT ask questions or request user interaction
+            - Do NOT say things like "Would you like help writing the rest?"
+            - End with a natural transition to the article list, not a question
+            - Just deliver the content - no follow-up prompts
 
             Format:
             TITLE: [title]

@@ -8,7 +8,48 @@
 import SwiftUI
 import SwiftData
 import WebKit
+import SafariServices
 
+// Safari View Controller wrapper with full WebAuthn/passkey support
+struct SafariView: UIViewControllerRepresentable {
+    let url: URL
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> SFSafariViewController {
+        let config = SFSafariViewController.Configuration()
+        config.entersReaderIfAvailable = false
+        config.barCollapsingEnabled = true
+
+        let safari = SFSafariViewController(url: url, configuration: config)
+        safari.delegate = context.coordinator
+        safari.preferredControlTintColor = .systemBlue
+        safari.dismissButtonStyle = .done
+
+        return safari
+    }
+
+    func updateUIViewController(_ safari: SFSafariViewController, context: Context) {
+        // No updates needed
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    class Coordinator: NSObject, SFSafariViewControllerDelegate {
+        var parent: SafariView
+
+        init(_ parent: SafariView) {
+            self.parent = parent
+        }
+
+        func safariViewControllerDidFinish(_ controller: SFSafariViewController) {
+            parent.dismiss()
+        }
+    }
+}
+
+// Legacy WKWebView for basic viewing (does NOT support WebAuthn)
 struct ArticleWebView: UIViewRepresentable {
     let url: URL
 
@@ -34,32 +75,17 @@ struct ArticleWebView: UIViewRepresentable {
 // Enhanced article detail view with in-app browser option
 struct ArticleDetailViewEnhanced: View {
     let article: Article
-    @State private var showWebView = false
+    @State private var showSafariView = false
     @Environment(\.openURL) private var openURL
     @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         ZStack {
-            if showWebView {
+            if showSafariView {
                 if let url = URL(string: article.link) {
-                    ArticleWebView(url: url)
-                        .navigationBarTitleDisplayMode(.inline)
-                        .toolbar {
-                            ToolbarItem(placement: .topBarTrailing) {
-                                Button("Close") {
-                                    showWebView = false
-                                }
-                            }
-                            ToolbarItem(placement: .topBarTrailing) {
-                                Button {
-                                    if let url = URL(string: article.link) {
-                                        openURL(url)
-                                    }
-                                } label: {
-                                    Image(systemName: "safari")
-                                }
-                            }
-                        }
+                    // Use SafariView for full WebAuthn/passkey support
+                    SafariView(url: url)
+                        .ignoresSafeArea()
                 } else {
                     Text("Invalid URL: \(article.link)")
                         .foregroundStyle(.red)
@@ -92,7 +118,7 @@ struct ArticleDetailViewEnhanced: View {
 
                         VStack(spacing: 12) {
                             Button {
-                                showWebView = true
+                                showSafariView = true
                             } label: {
                                 Label("Read in App", systemImage: "doc.text")
                             }
@@ -126,7 +152,7 @@ struct ArticleDetailViewEnhanced: View {
         .onAppear {
             markAsRead()
         }
-        .animation(.default, value: showWebView)
+        .animation(.default, value: showSafariView)
     }
 
     private func markAsRead() {

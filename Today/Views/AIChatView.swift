@@ -51,6 +51,20 @@ struct AIChatView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                // DEBUG: Show AI availability status
+                if #available(iOS 26.0, *) {
+                    HStack {
+                        Image(systemName: AIService.shared.isAppleIntelligenceAvailable ? "checkmark.circle.fill" : "xmark.circle.fill")
+                            .foregroundStyle(AIService.shared.isAppleIntelligenceAvailable ? .green : .orange)
+                        Text(AIService.shared.availabilityStatus)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+                    .background(Color.secondary.opacity(0.1))
+                }
+
                 if messages.isEmpty {
                     // Welcome screen
                     VStack(spacing: 20) {
