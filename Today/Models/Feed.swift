@@ -29,4 +29,23 @@ final class Feed {
         self.lastFetched = nil
         self.articles = []
     }
+    
+    /// Returns true if this feed is from Reddit
+    var isRedditFeed: Bool {
+        return url.contains("reddit.com/r/") && url.hasSuffix(".rss")
+    }
+    
+    /// Extracts the subreddit name from the feed URL if it's a Reddit feed
+    var redditSubreddit: String? {
+        guard isRedditFeed else { return nil }
+        let pattern = "reddit\\.com/r/([^/\\.]+)"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []),
+              let match = regex.firstMatch(in: url, options: [], range: NSRange(location: 0, length: url.utf16.count)),
+              match.numberOfRanges > 1 else {
+            return nil
+        }
+        let range = match.range(at: 1)
+        guard let swiftRange = Range(range, in: url) else { return nil }
+        return String(url[swiftRange])
+    }
 }
