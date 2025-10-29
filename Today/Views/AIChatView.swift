@@ -423,6 +423,7 @@ struct MessageBubble: View {
                 Text(message.timestamp, style: .time)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                    .opacity(contentOpacity)
             }
 
             if !message.isUser {
