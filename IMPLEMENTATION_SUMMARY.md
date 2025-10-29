@@ -64,6 +64,10 @@ This implementation adds comprehensive Reddit RSS feed support to the Today app,
 
 **Implementation:**
 ```swift
+// Shows: "2h ago • /r/baseball • 🗨️ r/baseball"
+// Where:
+// - First "r/baseball" is the feed title
+// - Second "r/baseball" is the Reddit badge in orange
 if article.isRedditPost, let subreddit = article.redditSubreddit {
     HStack(spacing: 2) {
         Image(systemName: "bubble.left.and.bubble.right.fill")
@@ -95,13 +99,13 @@ if article.isRedditPost, let commentsUrl = article.redditCommentsUrl {
 
 #### RedditRSSTests.swift (New File)
 **Test Coverage:**
-1. `testRedditFeedDetection` - Verifies Reddit feed parsing and metadata extraction
-2. `testRedditSubredditExtraction` - Tests subreddit name extraction
-3. `testNonRedditFeedHasNoMetadata` - Ensures non-Reddit feeds unaffected
-4. `testMultipleRedditPosts` - Validates batch processing
-5. `testRedditPostIdExtractionFromLink` - Tests post ID extraction from URLs
+1. `testRedditFeedDetection()` - Verifies Reddit feed parsing and metadata extraction
+2. `testRedditSubredditExtraction()` - Tests subreddit name extraction
+3. `testNonRedditFeedHasNoMetadata()` - Ensures non-Reddit feeds unaffected
+4. `testMultipleRedditPosts()` - Validates batch processing
+5. `testRedditPostIdExtractionFromLink()` - Tests post ID extraction from URLs
 
-**Coverage:** 5 comprehensive test cases covering all Reddit-specific functionality
+**Coverage:** 5 comprehensive test methods covering all Reddit-specific functionality
 
 ### 5. Documentation
 
@@ -116,9 +120,9 @@ if article.isRedditPost, let commentsUrl = article.redditCommentsUrl {
 - Future enhancement ideas
 
 #### REDDIT_FEATURE_DEMO.md (New File)
-- Visual architecture diagrams
-- Before/after UI comparisons
-- User journey flowcharts
+- Visual architecture diagrams (ASCII art)
+- UI layout examples showing Reddit features
+- User journey documentation
 - Technical implementation details
 - Testing coverage overview
 
@@ -261,10 +265,10 @@ if article.isRedditPost, let commentsUrl = article.redditCommentsUrl {
 - ✅ UI updates conditional on content type
 
 ### Testing
-- ✅ 5 comprehensive unit tests
-- ✅ All tests passing
-- ✅ Edge cases covered
-- ✅ Integration verified
+- ✅ 5 comprehensive unit test methods
+- ✅ Test structure created and ready to run
+- ✅ Edge cases covered (non-Reddit feeds, malformed data)
+- ✅ Integration logic verified with standalone tests
 
 ### Documentation
 - ✅ User guide complete
