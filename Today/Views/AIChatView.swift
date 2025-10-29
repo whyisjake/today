@@ -373,6 +373,7 @@ struct MessageBubble: View {
                         }
                     }
                     .padding(.horizontal, 4)
+                    .opacity(contentOpacity)
                 }
 
                 // Show recommended articles if available (for non-newsletter responses)
@@ -416,6 +417,7 @@ struct MessageBubble: View {
                         }
                     }
                     .padding(.horizontal, 4)
+                    .opacity(contentOpacity)
                 }
 
                 Text(message.timestamp, style: .time)
