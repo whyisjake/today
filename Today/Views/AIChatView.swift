@@ -250,6 +250,7 @@ struct AIChatView: View {
 
 struct MessageBubble: View {
     @ObservedObject var message: ChatMessage
+    @State private var isVisible: Bool = false
 
     private func parseMarkdown(_ text: String) -> AttributedString {
         do {
@@ -421,6 +422,18 @@ struct MessageBubble: View {
 
             if !message.isUser {
                 Spacer()
+            }
+        }
+        .opacity(isVisible ? 1 : 0)
+        .onAppear {
+            // Only animate AI messages (non-user messages)
+            if !message.isUser {
+                withAnimation(.easeIn(duration: 0.5)) {
+                    isVisible = true
+                }
+            } else {
+                // User messages appear immediately
+                isVisible = true
             }
         }
     }
