@@ -121,11 +121,9 @@ struct FeedListView: View {
             }
             .overlay(alignment: .top) {
                 if feedManager.isSyncing {
-                    VStack(spacing: 0) {
-                        ProgressView()
-                            .progressViewStyle(.linear)
-                            .tint(.accentColor)
-                    }
+                    ProgressView()
+                        .progressViewStyle(.linear)
+                        .tint(.accentColor)
                 }
             }
             .sheet(isPresented: $showingAddFeed) {
@@ -190,11 +188,9 @@ struct FeedListView: View {
                     }
                     .overlay(alignment: .top) {
                         if isAddingFeed {
-                            VStack(spacing: 0) {
-                                ProgressView()
-                                    .progressViewStyle(.linear)
-                                    .tint(.accentColor)
-                            }
+                            ProgressView()
+                                .progressViewStyle(.linear)
+                                .tint(.accentColor)
                         }
                     }
                 }
@@ -242,11 +238,9 @@ struct FeedListView: View {
                     }
                     .overlay(alignment: .top) {
                         if isImporting {
-                            VStack(spacing: 0) {
-                                ProgressView()
-                                    .progressViewStyle(.linear)
-                                    .tint(.accentColor)
-                            }
+                            ProgressView()
+                                .progressViewStyle(.linear)
+                                .tint(.accentColor)
                         }
                     }
                 }
