@@ -224,6 +224,14 @@ Today respects your privacy:
 
 ## Version History
 
+### v1.2.1 (Build 5) - October 28, 2025 🎉
+**Official App Store Launch**
+- 🚀 Public release on App Store
+- 🔧 Fixed iOS deployment target (18.0+ for wide compatibility)
+- 🤖 Apple Intelligence properly available on iOS 26+ devices
+- 🐛 Resolved availability checks for stored properties
+- 📢 Marketing launch across social platforms
+
 ### v1.2 (Build 3) - October 2025
 - 🎉 Apple Intelligence integration for smart summaries
 - 📅 Day-based article navigation (Today/Yesterday/Older)
