@@ -250,10 +250,17 @@ struct AIChatView: View {
 
 struct MessageBubble: View {
     @ObservedObject var message: ChatMessage
-    @State private var isVisible: Bool = false
-    @State private var contentOpacity: Double = 0
-    
+    @State private var isVisible: Bool
+    @State private var contentOpacity: Double
+
     private let fadeInDuration: TimeInterval = 0.5
+
+    init(message: ChatMessage) {
+        self.message = message
+        // User messages appear immediately, AI messages start invisible
+        _isVisible = State(initialValue: message.isUser)
+        _contentOpacity = State(initialValue: message.isUser ? 1 : 0)
+    }
 
     private func parseMarkdown(_ text: String) -> AttributedString {
         do {
@@ -433,22 +440,20 @@ struct MessageBubble: View {
             }
         }
         .opacity(isVisible ? 1 : 0)
-        .onAppear {
+        .task(id: message.id) {
             // Only animate AI messages (non-user messages)
-            if !message.isUser {
-                withAnimation(.easeIn(duration: fadeInDuration)) {
-                    isVisible = true
-                }
-                // If message starts without typing indicator, animate content immediately
-                if !message.isTyping {
-                    withAnimation(.easeIn(duration: fadeInDuration)) {
-                        contentOpacity = 1
-                    }
-                }
-            } else {
-                // User messages appear immediately
+            guard !message.isUser else { return }
+
+            // Animate bubble appearance
+            withAnimation(.easeIn(duration: fadeInDuration)) {
                 isVisible = true
-                contentOpacity = 1
+            }
+
+            // If message starts without typing indicator, animate content immediately
+            if !message.isTyping {
+                withAnimation(.easeIn(duration: fadeInDuration)) {
+                    contentOpacity = 1
+                }
             }
         }
         .onChange(of: message.isTyping) { _, newValue in
