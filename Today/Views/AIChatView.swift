@@ -252,6 +252,8 @@ struct MessageBubble: View {
     @ObservedObject var message: ChatMessage
     @State private var isVisible: Bool = false
     @State private var contentOpacity: Double = 0
+    
+    private let fadeInDuration: TimeInterval = 0.5
 
     private func parseMarkdown(_ text: String) -> AttributedString {
         do {
@@ -434,12 +436,12 @@ struct MessageBubble: View {
         .onAppear {
             // Only animate AI messages (non-user messages)
             if !message.isUser {
-                withAnimation(.easeIn(duration: 0.5)) {
+                withAnimation(.easeIn(duration: fadeInDuration)) {
                     isVisible = true
                 }
                 // If message starts without typing indicator, animate content immediately
                 if !message.isTyping {
-                    withAnimation(.easeIn(duration: 0.5)) {
+                    withAnimation(.easeIn(duration: fadeInDuration)) {
                         contentOpacity = 1
                     }
                 }
@@ -452,7 +454,7 @@ struct MessageBubble: View {
         .onChange(of: message.isTyping) { _, newValue in
             // When typing stops and content appears, animate the content
             if !message.isUser && !newValue {
-                withAnimation(.easeIn(duration: 0.5)) {
+                withAnimation(.easeIn(duration: fadeInDuration)) {
                     contentOpacity = 1
                 }
             }
