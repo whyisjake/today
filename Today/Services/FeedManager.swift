@@ -62,7 +62,10 @@ class FeedManager: ObservableObject {
                     publishedDate: parsedArticle.publishedDate ?? Date(),
                     author: parsedArticle.author,
                     guid: parsedArticle.guid,
-                    feed: feed
+                    feed: feed,
+                    redditSubreddit: parsedArticle.redditSubreddit,
+                    redditCommentsUrl: parsedArticle.redditCommentsUrl,
+                    redditPostId: parsedArticle.redditPostId
                 )
 
                 modelContext.insert(article)

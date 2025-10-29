@@ -524,6 +524,22 @@ struct ArticleRowView: View {
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
+                    
+                    // Show Reddit badge for Reddit posts
+                    if article.isRedditPost, let subreddit = article.redditSubreddit {
+                        Text("•")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 4)
+                        
+                        HStack(spacing: 2) {
+                            Image(systemName: "bubble.left.and.bubble.right.fill")
+                                .font(.caption2)
+                            Text("r/\(subreddit)")
+                                .font(.caption2)
+                        }
+                        .foregroundStyle(.orange)
+                    }
 
                     Spacer()
                     if article.hasMinimalContent {

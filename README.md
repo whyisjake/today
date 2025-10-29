@@ -16,6 +16,7 @@ A modern, privacy-focused RSS reader for iOS with AI-powered content summarizati
 - 🔍 **Smart Filtering** - Filter by category, search articles, and mark as read/unread
 - ⭐ **Favorites** - Save important articles for later
 - 🎨 **Typography** - WordPress-style smart quotes and em/en dashes for beautiful text rendering
+- 🔴 **Reddit RSS Support** - Special handling for Reddit feeds with direct comment links and subreddit badges
 
 ### User Experience
 - 🌓 **Dark Mode Support** - Automatic light/dark theme with manual override
