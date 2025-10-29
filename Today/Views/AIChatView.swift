@@ -251,6 +251,7 @@ struct AIChatView: View {
 struct MessageBubble: View {
     @ObservedObject var message: ChatMessage
     @State private var isVisible: Bool = false
+    @State private var contentOpacity: Double = 0
 
     private func parseMarkdown(_ text: String) -> AttributedString {
         do {
@@ -293,6 +294,7 @@ struct MessageBubble: View {
                             RoundedRectangle(cornerRadius: 16)
                                 .stroke(Color.accentColor.opacity(0.3), lineWidth: 1)
                         )
+                        .opacity(contentOpacity)
                     } else {
                         // Regular message
                         Text(parseMarkdown(message.content))
@@ -301,6 +303,7 @@ struct MessageBubble: View {
                             .foregroundStyle(message.isUser ? .white : .primary)
                             .cornerRadius(16)
                             .textSelection(.enabled)
+                            .opacity(contentOpacity)
                     }
                 }
 
@@ -431,9 +434,24 @@ struct MessageBubble: View {
                 withAnimation(.easeIn(duration: 0.5)) {
                     isVisible = true
                 }
+                // If message starts without typing indicator, animate content immediately
+                if !message.isTyping {
+                    withAnimation(.easeIn(duration: 0.5)) {
+                        contentOpacity = 1
+                    }
+                }
             } else {
                 // User messages appear immediately
                 isVisible = true
+                contentOpacity = 1
+            }
+        }
+        .onChange(of: message.isTyping) { _, newValue in
+            // When typing stops and content appears, animate the content
+            if !message.isUser && !newValue {
+                withAnimation(.easeIn(duration: 0.5)) {
+                    contentOpacity = 1
+                }
             }
         }
     }
