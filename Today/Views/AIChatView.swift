@@ -250,13 +250,15 @@ struct AIChatView: View {
 
 struct MessageBubble: View {
     @ObservedObject var message: ChatMessage
+    @State private var isVisible: Bool
     @State private var contentOpacity: Double
 
-    private let fadeInDuration: TimeInterval = 0.5
+    private let fadeInDuration: TimeInterval = 1.0
 
     init(message: ChatMessage) {
         self.message = message
         // User messages appear immediately, AI messages start invisible
+        _isVisible = State(initialValue: message.isUser)
         _contentOpacity = State(initialValue: message.isUser ? 1 : 0)
     }
 
@@ -281,7 +283,6 @@ struct MessageBubble: View {
                         .padding(12)
                         .background(Color.gray.opacity(0.2))
                         .cornerRadius(16)
-                        .opacity(contentOpacity)
                 } else {
                     // Show header text - style newsletter headers specially
                     if message.isNewsletter {
@@ -438,13 +439,29 @@ struct MessageBubble: View {
                 Spacer()
             }
         }
+        .opacity(isVisible ? 1 : 0)
         .task(id: message.id) {
             // Only animate AI messages (non-user messages)
             guard !message.isUser else { return }
 
-            // Animate content fade-in
+            // Animate bubble appearance
             withAnimation(.easeIn(duration: fadeInDuration)) {
-                contentOpacity = 1
+                isVisible = true
+            }
+
+            // If message starts without typing indicator, animate content immediately
+            if !message.isTyping {
+                withAnimation(.easeIn(duration: fadeInDuration)) {
+                    contentOpacity = 1
+                }
+            }
+        }
+        .onChange(of: message.isTyping) { _, newValue in
+            // When typing stops and content appears, animate the content
+            if !message.isUser && !newValue {
+                withAnimation(.easeIn(duration: fadeInDuration)) {
+                    contentOpacity = 1
+                }
             }
         }
     }
