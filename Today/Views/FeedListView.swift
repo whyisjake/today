@@ -23,6 +23,13 @@ struct FeedListView: View {
 
     @State private var editingFeedID: PersistentIdentifier?
 
+    private var showingEditFeed: Binding<Bool> {
+        Binding(
+            get: { editingFeedID != nil },
+            set: { if !$0 { editingFeedID = nil } }
+        )
+    }
+
     @State private var showingImportOPML = false
     @State private var opmlText = ""
     @State private var isImporting = false
@@ -38,11 +45,24 @@ struct FeedListView: View {
             List {
                 ForEach(feeds) { feed in
                     NavigationLink {
-                        EditFeedView(feed: feed, modelContext: modelContext)
+                        FeedArticlesView(feed: feed)
                     } label: {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(feed.title)
-                                .font(.headline)
+                            HStack {
+                                Text(feed.title)
+                                    .font(.headline)
+                                Spacer()
+                                if let unreadCount = feed.articles?.filter({ !$0.isRead }).count, unreadCount > 0 {
+                                    Text("\(unreadCount)")
+                                        .font(.caption)
+                                        .fontWeight(.bold)
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 2)
+                                        .background(Color.accentColor)
+                                        .cornerRadius(10)
+                                }
+                            }
                             Text(feed.url)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -63,12 +83,32 @@ struct FeedListView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .contextMenu {
+                        Button {
+                            editingFeedID = feed.id
+                        } label: {
+                            Label("Edit Feed", systemImage: "pencil")
+                        }
+
+                        Button(role: .destructive) {
+                            deleteFeed(feed)
+                        } label: {
+                            Label("Delete Feed", systemImage: "trash")
+                        }
+                    }
                     .swipeActions(edge: .trailing) {
                         Button(role: .destructive) {
                             deleteFeed(feed)
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }
+
+                        Button {
+                            editingFeedID = feed.id
+                        } label: {
+                            Label("Edit", systemImage: "pencil")
+                        }
+                        .tint(.blue)
                     }
                 }
             }
@@ -247,6 +287,14 @@ struct FeedListView: View {
                                 .background(.regularMaterial)
                                 .cornerRadius(10)
                         }
+                    }
+                }
+            }
+            .sheet(isPresented: showingEditFeed) {
+                if let feedID = editingFeedID,
+                   let feed = feeds.first(where: { $0.id == feedID }) {
+                    NavigationStack {
+                        EditFeedView(feed: feed, modelContext: modelContext)
                     }
                 }
             }
@@ -509,5 +557,158 @@ struct EditFeedView: View {
         } catch {
             print("Error saving feed: \(error.localizedDescription)")
         }
+    }
+}
+
+// MARK: - Feed Articles View
+struct FeedArticlesView: View {
+    let feed: Feed
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \Article.publishedDate, order: .reverse) private var allArticles: [Article]
+
+    @State private var showReadArticles = false
+    @State private var selectedArticleID: PersistentIdentifier?
+    @State private var navigationContext: [PersistentIdentifier] = []
+    @AppStorage("fontOption") private var fontOption: FontOption = .serif
+
+    private var filteredArticles: [Article] {
+        var articles = allArticles.filter { $0.feed?.id == feed.id }
+
+        if !showReadArticles {
+            articles = articles.filter { !$0.isRead }
+        }
+
+        return articles
+    }
+
+    private var unreadCount: Int {
+        allArticles.filter { $0.feed?.id == feed.id && !$0.isRead }.count
+    }
+
+    var body: some View {
+        Group {
+            if filteredArticles.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: showReadArticles ? "tray" : "checkmark.circle")
+                        .font(.system(size: 48))
+                        .foregroundStyle(.secondary)
+                    Text(showReadArticles ? "No articles in this feed" : "All caught up!")
+                        .font(.headline)
+                    Text(showReadArticles ? "Try syncing the feed to fetch new articles" : "No unread articles from this feed")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List {
+                    ForEach(filteredArticles, id: \.persistentModelID) { article in
+                        Button {
+                            // Capture navigation context when article is selected
+                            navigationContext = filteredArticles.map { $0.persistentModelID }
+                            selectedArticleID = article.persistentModelID
+                        } label: {
+                            HStack {
+                                ArticleRowView(article: article, fontOption: fontOption)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .swipeActions(edge: .leading) {
+                            Button {
+                                article.isRead.toggle()
+                                try? modelContext.save()
+                            } label: {
+                                Label(
+                                    article.isRead ? "Unread" : "Read",
+                                    systemImage: article.isRead ? "envelope.badge" : "envelope.open"
+                                )
+                            }
+                            .tint(.blue)
+                        }
+                    }
+                }
+                .listStyle(.plain)
+            }
+        }
+        .navigationTitle(feed.title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button {
+                        showReadArticles.toggle()
+                    } label: {
+                        Label(showReadArticles ? "Hide Read" : "Show Read",
+                              systemImage: showReadArticles ? "eye.slash" : "eye")
+                    }
+
+                    if unreadCount > 0 {
+                        Divider()
+                        Button {
+                            markAllAsRead()
+                        } label: {
+                            Label("Mark All as Read", systemImage: "checkmark.circle")
+                        }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+            }
+        }
+        .navigationDestination(item: $selectedArticleID) { articleID in
+            if let article = modelContext.model(for: articleID) as? Article {
+                // Use the captured navigation context
+                if !navigationContext.isEmpty,
+                   let currentIndex = navigationContext.firstIndex(of: articleID) {
+                    let previousIndex = currentIndex - 1
+                    let nextIndex = currentIndex + 1
+                    let previousArticleID = previousIndex >= 0 ? navigationContext[previousIndex] : nil
+                    let nextArticleID = nextIndex < navigationContext.count ? navigationContext[nextIndex] : nil
+
+                    ArticleDetailSimple(
+                        article: article,
+                        previousArticleID: previousArticleID,
+                        nextArticleID: nextArticleID,
+                        onNavigateToPrevious: { prevID in
+                            Task { @MainActor in
+                                try? await Task.sleep(nanoseconds: 50_000_000)
+                                selectedArticleID = prevID
+                            }
+                        },
+                        onNavigateToNext: { nextID in
+                            Task { @MainActor in
+                                try? await Task.sleep(nanoseconds: 50_000_000)
+                                selectedArticleID = nextID
+                            }
+                        }
+                    )
+                } else {
+                    ArticleDetailSimple(
+                        article: article,
+                        previousArticleID: nil,
+                        nextArticleID: nil,
+                        onNavigateToPrevious: { _ in },
+                        onNavigateToNext: { _ in }
+                    )
+                }
+            }
+        }
+        .onAppear {
+            navigationContext = filteredArticles.map { $0.persistentModelID }
+        }
+        .onChange(of: filteredArticles) { _, newArticles in
+            navigationContext = newArticles.map { $0.persistentModelID }
+        }
+    }
+
+    private func markAllAsRead() {
+        for article in filteredArticles where !article.isRead {
+            article.isRead = true
+        }
+        try? modelContext.save()
     }
 }
