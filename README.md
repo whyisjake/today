@@ -44,7 +44,10 @@ A modern, privacy-focused RSS reader for iOS with AI-powered content summarizati
 ## Installation
 
 ### From App Store
-<!-- Add App Store link when available -->
+
+[![Download on the App Store](https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg)](https://apps.apple.com/us/app/today-rss-reader/id6754362337)
+
+Today is available for free on the App Store for iOS 18.0 and later.
 
 ### Building from Source
 
