@@ -444,14 +444,10 @@ struct MessageBubble: View {
             // Only animate AI messages (non-user messages)
             guard !message.isUser else { return }
 
-            // Animate bubble appearance
+            // Animate bubble appearance (and content if not typing) in a single animation block
             withAnimation(.easeIn(duration: fadeInDuration)) {
                 isVisible = true
-            }
-
-            // If message starts without typing indicator, animate content immediately
-            if !message.isTyping {
-                withAnimation(.easeIn(duration: fadeInDuration)) {
+                if !message.isTyping {
                     contentOpacity = 1
                 }
             }
