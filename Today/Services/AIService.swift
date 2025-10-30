@@ -764,24 +764,99 @@ class AIService {
             return (response, topArticles.isEmpty ? nil : topArticles)
         }
 
-        // Search/find queries
-        if lowercasedQuery.contains("about") || lowercasedQuery.contains("related to") || lowercasedQuery.contains("find") {
+        // Topic-based queries - enhanced to search by category and content
+        // Check for topic keywords (tech, news, politics, work, social, etc.)
+        let topicKeywords = [
+            "tech": ["tech", "technology", "software", "app", "code", "programming"],
+            "news": ["news", "current events", "headlines", "breaking"],
+            "politics": ["politics", "political", "election", "government", "policy"],
+            "work": ["work", "career", "job", "business", "productivity"],
+            "social": ["social", "twitter", "facebook", "instagram", "social media"]
+        ]
+
+        // Try to match user query with a topic category
+        var matchedCategory: String?
+        var matchedKeywords: [String] = []
+
+        for (category, keywords) in topicKeywords {
+            for keyword in keywords {
+                if lowercasedQuery.contains(keyword) {
+                    matchedCategory = category
+                    matchedKeywords.append(keyword)
+                    break
+                }
+            }
+            if matchedCategory != nil { break }
+        }
+
+        // If we found a topic category, filter by it
+        if let category = matchedCategory {
+            // First try category filter
+            var categoryArticles = articles.filter { article in
+                article.feed?.category.lowercased() == category
+            }
+
+            // If no category matches, search in content
+            if categoryArticles.isEmpty {
+                for keyword in matchedKeywords {
+                    categoryArticles = articles.filter { article in
+                        article.title.localizedCaseInsensitiveContains(keyword) ||
+                        article.articleDescription?.localizedCaseInsensitiveContains(keyword) == true ||
+                        article.feed?.title.localizedCaseInsensitiveContains(keyword) == true
+                    }
+                    if !categoryArticles.isEmpty { break }
+                }
+            }
+
+            // Sort by date and prioritize unread
+            let sortedArticles = categoryArticles.sorted { a, b in
+                if a.isRead != b.isRead {
+                    return !a.isRead
+                }
+                return a.publishedDate > b.publishedDate
+            }
+
+            if !sortedArticles.isEmpty {
+                let resultArticles = Array(sortedArticles.prefix(5))
+                let unreadCount = sortedArticles.filter { !$0.isRead }.count
+                let readStatus = unreadCount > 0 ? " (\(unreadCount) unread)" : ""
+                return ("I found \(sortedArticles.count) \(category) articles\(readStatus). Here are the top ones:", resultArticles)
+            } else {
+                return ("I couldn't find any \(category) articles in your feeds. Try adding some \(category) RSS feeds!", nil)
+            }
+        }
+
+        // Generic search/find queries
+        if lowercasedQuery.contains("about") || lowercasedQuery.contains("related to") || lowercasedQuery.contains("find") || lowercasedQuery.contains("stories") || lowercasedQuery.contains("articles about") {
             // Extract potential search terms (words after "about", "find", etc.)
             let searchTerms = lowercasedQuery
                 .replacingOccurrences(of: "about", with: "")
                 .replacingOccurrences(of: "related to", with: "")
                 .replacingOccurrences(of: "find", with: "")
+                .replacingOccurrences(of: "give me", with: "")
+                .replacingOccurrences(of: "show me", with: "")
+                .replacingOccurrences(of: "stories", with: "")
                 .replacingOccurrences(of: "articles", with: "")
+                .replacingOccurrences(of: "some", with: "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
 
             if !searchTerms.isEmpty {
                 let matchingArticles = articles.filter { article in
                     article.title.localizedCaseInsensitiveContains(searchTerms) ||
-                    article.articleDescription?.localizedCaseInsensitiveContains(searchTerms) == true
+                    article.articleDescription?.localizedCaseInsensitiveContains(searchTerms) == true ||
+                    article.feed?.title.localizedCaseInsensitiveContains(searchTerms) == true
                 }
 
-                if !matchingArticles.isEmpty {
-                    return ("I found \(matchingArticles.count) articles about \"\(searchTerms)\":", Array(matchingArticles.prefix(5)))
+                // Sort by date and prioritize unread
+                let sortedArticles = matchingArticles.sorted { a, b in
+                    if a.isRead != b.isRead {
+                        return !a.isRead
+                    }
+                    return a.publishedDate > b.publishedDate
+                }
+
+                if !sortedArticles.isEmpty {
+                    return ("I found \(sortedArticles.count) articles about \"\(searchTerms)\":", Array(sortedArticles.prefix(5)))
                 } else {
                     return ("I couldn't find any articles about \"\(searchTerms)\". Try searching for something else or ask me to summarize your articles!", nil)
                 }
