@@ -195,7 +195,7 @@ final class TodayTests: XCTestCase {
         modelContext.insert(nonFavoriteArticle)
 
         // Save the context
-        try? modelContext.save()
+        XCTAssertNoThrow(try modelContext.save())
 
         // Fetch all favorites (should include old articles when showFavoritesOnly is true)
         let descriptor = FetchDescriptor<Article>(
