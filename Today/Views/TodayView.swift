@@ -52,11 +52,14 @@ struct TodayView: View {
     private var favoritesCount: Int {
         var articles = allArticles
 
-        // Apply same time filter as filteredArticles
-        let now = Date.now
-        let startOfToday = Calendar.current.startOfDay(for: now)
-        let cutoffDate = Calendar.current.date(byAdding: .day, value: -daysToLoad, to: startOfToday)!
-        articles = articles.filter { $0.publishedDate >= cutoffDate }
+        // When showing favorites only, don't apply time filter to get total count
+        if !showFavoritesOnly {
+            // Apply same time filter as filteredArticles
+            let now = Date.now
+            let startOfToday = Calendar.current.startOfDay(for: now)
+            let cutoffDate = Calendar.current.date(byAdding: .day, value: -daysToLoad, to: startOfToday)!
+            articles = articles.filter { $0.publishedDate >= cutoffDate }
+        }
 
         // Apply same category filter as filteredArticles
         if selectedCategory != "all" {
@@ -82,12 +85,15 @@ struct TodayView: View {
     private var filteredArticles: [Article] {
         var articles = allArticles
 
-        // Filter by date range based on daysToLoad
-        let now = Date.now
-        let startOfToday = Calendar.current.startOfDay(for: now)
-        let cutoffDate = Calendar.current.date(byAdding: .day, value: -daysToLoad, to: startOfToday)!
+        // When showing favorites only, skip the date filter to show all favorites
+        if !showFavoritesOnly {
+            // Filter by date range based on daysToLoad
+            let now = Date.now
+            let startOfToday = Calendar.current.startOfDay(for: now)
+            let cutoffDate = Calendar.current.date(byAdding: .day, value: -daysToLoad, to: startOfToday)!
 
-        articles = articles.filter { $0.publishedDate >= cutoffDate }
+            articles = articles.filter { $0.publishedDate >= cutoffDate }
+        }
 
         // Filter by category
         if selectedCategory != "all" {
@@ -117,7 +123,9 @@ struct TodayView: View {
 
     // Computed property for the dynamic title
     private var viewTitle: String {
-        if daysToLoad == 1 {
+        if showFavoritesOnly {
+            return "Favorites"
+        } else if daysToLoad == 1 {
             return "Today"
         } else if daysToLoad == 2 {
             return "Yesterday"
@@ -238,25 +246,27 @@ struct TodayView: View {
                             }
                         }
 
-                        // Load more days button at the bottom
-                        Button {
-                            loadMoreDays()
-                        } label: {
-                            HStack {
-                                Spacer()
-                                VStack(spacing: 8) {
-                                    Text("Load Previous Day")
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                    Text(previousDayLabel)
-                                        .font(.caption)
-                                        .foregroundStyle(.tertiary)
+                        // Load more days button at the bottom (hide when showing all favorites)
+                        if !showFavoritesOnly {
+                            Button {
+                                loadMoreDays()
+                            } label: {
+                                HStack {
+                                    Spacer()
+                                    VStack(spacing: 8) {
+                                        Text("Load Previous Day")
+                                            .font(.subheadline)
+                                            .foregroundStyle(.secondary)
+                                        Text(previousDayLabel)
+                                            .font(.caption)
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                    Spacer()
                                 }
-                                Spacer()
+                                .padding()
                             }
-                            .padding()
+                            .listRowBackground(Color.clear)
                         }
-                        .listRowBackground(Color.clear)
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
@@ -331,6 +341,18 @@ struct TodayView: View {
                 }
             }
             .toolbar {
+                // Custom title with long press gesture for quick favorites toggle
+                ToolbarItem(placement: .principal) {
+                    Text(viewTitle)
+                        .font(.headline)
+                        .onLongPressGesture(minimumDuration: 0.5) {
+                            // Long press toggles favorites view
+                            Task { @MainActor in
+                                showFavoritesOnly.toggle()
+                            }
+                        }
+                }
+                
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Section("Read Status") {
@@ -384,7 +406,11 @@ struct TodayView: View {
                         Divider()
 
                         // Show filtered counts with total in parentheses
-                        if daysToLoad > 1 || selectedCategory != "all" {
+                        if showFavoritesOnly {
+                            Text("\(favoritesCount) favorites (all time)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else if daysToLoad > 1 || selectedCategory != "all" {
                             Text("\(unreadCount) unread (\(totalUnreadCount) total) • \(favoritesCount) favorites (\(totalFavoritesCount) total)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
