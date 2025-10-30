@@ -23,6 +23,7 @@ struct TodayView: View {
     @State private var daysToLoad = 1 // Start with 1 day (today)
     @State private var navigationContext: [PersistentIdentifier] = [] // Captured list for navigation
     @AppStorage("fontOption") private var fontOption: FontOption = .serif
+    @AppStorage("openShortArticlesInBrowser") private var openShortArticlesInBrowser: Bool = true
 
     // Cache expensive computations
     private var categories: [String] {
@@ -281,8 +282,8 @@ struct TodayView: View {
             }
             .navigationDestination(item: $selectedArticleID) { articleID in
                 if let article = modelContext.model(for: articleID) as? Article {
-                    // For articles with minimal content, go directly to web view
-                    if article.hasMinimalContent, let url = URL(string: article.link) {
+                    // For articles with minimal content, go directly to web view if setting is enabled
+                    if openShortArticlesInBrowser && article.hasMinimalContent, let url = URL(string: article.link) {
                         ArticleWebViewSimple(url: url)
                             .onAppear {
                                 // Mark as read

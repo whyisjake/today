@@ -69,6 +69,7 @@ struct SettingsView: View {
     @AppStorage("appearanceMode") private var appearanceMode: AppearanceMode = .system
     @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
     @AppStorage("fontOption") private var fontOption: FontOption = .serif
+    @AppStorage("openShortArticlesInBrowser") private var openShortArticlesInBrowser: Bool = true
     @Environment(\.openURL) private var openURL
 
     // Get app version dynamically
@@ -122,6 +123,13 @@ struct SettingsView: View {
                         }
                     }
                     .padding(.vertical, 8)
+                }
+
+                Section("Reading") {
+                    Toggle("Open short articles in browser", isOn: $openShortArticlesInBrowser)
+                    Text("Articles with minimal content will open directly in web view instead of the in-app reader.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 Section("About") {
