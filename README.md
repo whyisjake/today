@@ -224,6 +224,17 @@ Today respects your privacy:
 
 ## Version History
 
+### v1.3.0 (Build 6) - November 1, 2025
+**Feed Navigation & Category Improvements**
+- 🎯 **Tap feed to view articles** - New feed article view with unread filtering
+- 📊 **Unread count badges** on feed list items
+- 🔄 **Swipe/long-press for settings** - Access edit/delete via swipe or context menu
+- 📂 **Smart category filters** - Hide empty categories, show only categories with articles
+- 🔤 **Title-case categories** - Consistent capitalization (General, Work, Tech, etc.)
+- 🔄 **One-time migration** - Automatically updates existing feeds to title-case
+- 🎨 **Preserved custom categories** - Your custom category names stay exactly as set
+- 🐛 **Bug fix:** Category capitalization inconsistencies (thanks @desrosj)
+
 ### v1.2.1 (Build 5) - October 28, 2025 🎉
 **Official App Store Launch**
 - 🚀 Public release on App Store
