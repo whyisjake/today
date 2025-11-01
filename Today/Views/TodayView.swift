@@ -25,8 +25,18 @@ struct TodayView: View {
     @AppStorage("fontOption") private var fontOption: FontOption = .serif
 
     // Cache expensive computations
+    // Only show categories that have articles in the current time window
     private var categories: [String] {
-        let feedCategories = Set(allArticles.compactMap { $0.feed?.category })
+        // Apply time filter (same as filteredArticles)
+        let now = Date.now
+        let startOfToday = Calendar.current.startOfDay(for: now)
+        let cutoffDate = Calendar.current.date(byAdding: .day, value: -daysToLoad, to: startOfToday)!
+        let timeFilteredArticles = allArticles.filter { $0.publishedDate >= cutoffDate }
+
+        // Get all unique categories from articles in the time window
+        // This automatically excludes empty categories
+        let feedCategories = Set(timeFilteredArticles.compactMap { $0.feed?.category })
+
         return ["all"] + feedCategories.sorted()
     }
 
@@ -148,7 +158,7 @@ struct TodayView: View {
                                 Button {
                                     selectedCategory = category
                                 } label: {
-                                    Text(category.capitalized)
+                                    Text(category)
                                         .font(.subheadline)
                                         .padding(.horizontal, 16)
                                         .padding(.vertical, 8)

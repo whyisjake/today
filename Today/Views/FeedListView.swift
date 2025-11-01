@@ -15,7 +15,7 @@ struct FeedListView: View {
 
     @State private var showingAddFeed = false
     @State private var newFeedURL = ""
-    @State private var newFeedCategory = "general"
+    @State private var newFeedCategory = "General"
     @State private var customCategory = ""
     @State private var useCustomCategory = false
     @State private var isAddingFeed = false
@@ -186,12 +186,12 @@ struct FeedListView: View {
                                     .textInputAutocapitalization(.never)
                             } else {
                                 Picker("Category", selection: $newFeedCategory) {
-                                    Text("General").tag("general")
-                                    Text("Work").tag("work")
-                                    Text("Social").tag("social")
-                                    Text("Tech").tag("tech")
-                                    Text("News").tag("news")
-                                    Text("Politics").tag("politics")
+                                    Text("General").tag("General")
+                                    Text("Work").tag("Work")
+                                    Text("Social").tag("Social")
+                                    Text("Tech").tag("Tech")
+                                    Text("News").tag("News")
+                                    Text("Politics").tag("Politics")
                                 }
                             }
                         } header: {
@@ -333,7 +333,7 @@ struct FeedListView: View {
 
     private func resetAddFeedForm() {
         newFeedURL = ""
-        newFeedCategory = "general"
+        newFeedCategory = "General"
         customCategory = ""
         useCustomCategory = false
         addFeedError = nil
@@ -449,7 +449,7 @@ struct FeedListView: View {
 // MARK: - OPML Parser Delegate
 class OPMLParserDelegate: NSObject, XMLParserDelegate {
     var feeds: [(url: String, title: String, category: String)] = []
-    private var currentCategory = "general"
+    private var currentCategory = "General"
     private var categoryStack: [String] = []
 
     func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String : String] = [:]) {
@@ -485,7 +485,7 @@ struct EditFeedView: View {
     @State private var url: String
     @State private var category: String
     @State private var useCustomCategory: Bool
-    @State private var predefinedCategories = ["general", "work", "social", "tech", "news", "politics"]
+    @State private var predefinedCategories = ["General", "Work", "Social", "Tech", "News", "Politics"]
 
     init(feed: Feed, modelContext: ModelContext) {
         self.feed = feed
@@ -494,7 +494,7 @@ struct EditFeedView: View {
         _url = State(initialValue: feed.url)
         _category = State(initialValue: feed.category)
         // Check if current category is a predefined one
-        let isPredefined = ["general", "work", "social", "tech", "news", "politics"].contains(feed.category)
+        let isPredefined = ["General", "Work", "Social", "Tech", "News", "Politics"].contains(feed.category)
         _useCustomCategory = State(initialValue: !isPredefined)
     }
 
@@ -516,12 +516,12 @@ struct EditFeedView: View {
                         .textInputAutocapitalization(.never)
                 } else {
                     Picker("Category", selection: $category) {
-                        Text("General").tag("general")
-                        Text("Work").tag("work")
-                        Text("Social").tag("social")
-                        Text("Tech").tag("tech")
-                        Text("News").tag("news")
-                        Text("Politics").tag("politics")
+                        Text("General").tag("General")
+                        Text("Work").tag("Work")
+                        Text("Social").tag("Social")
+                        Text("Tech").tag("Tech")
+                        Text("News").tag("News")
+                        Text("Politics").tag("Politics")
                     }
                 }
             } header: {
