@@ -48,6 +48,17 @@ struct AIChatView: View {
     @State private var inputText = ""
     @State private var isProcessing = false
 
+    // Computed property for available categories (from articles in last 7 days)
+    private var categories: [String] {
+        let now = Date.now
+        let startOfToday = Calendar.current.startOfDay(for: now)
+        let cutoffDate = Calendar.current.date(byAdding: .day, value: -7, to: startOfToday)!
+        let recentArticles = articles.filter { $0.publishedDate >= cutoffDate }
+
+        let feedCategories = Set(recentArticles.compactMap { $0.feed?.category })
+        return ["All"] + feedCategories.sorted()
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -69,29 +80,66 @@ struct AIChatView: View {
                             .padding(.horizontal)
 
                         // Newsletter-style summary button
-                        Button {
-                            Task { @MainActor in
-                                try? await Task.sleep(nanoseconds: 50_000_000)
-                                generateNewsletterSummary()
+                        VStack(spacing: 12) {
+                            Button {
+                                Task { @MainActor in
+                                    try? await Task.sleep(nanoseconds: 50_000_000)
+                                    generateNewsletterSummary(category: nil)
+                                }
+                            } label: {
+                                VStack(spacing: 8) {
+                                    Image(systemName: "newspaper.fill")
+                                        .font(.title)
+                                    Text("Generate Today's Newsletter")
+                                        .font(.headline)
+                                    Text("Get a curated summary with commentary")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.accentColor)
+                                .foregroundStyle(.white)
+                                .cornerRadius(12)
                             }
-                        } label: {
-                            VStack(spacing: 8) {
-                                Image(systemName: "newspaper.fill")
-                                    .font(.title)
-                                Text("Generate Today's Newsletter")
-                                    .font(.headline)
-                                Text("Get a curated summary with commentary")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                            .disabled(articles.isEmpty || isProcessing)
+
+                            // Category-specific newsletter buttons
+                            if categories.count > 1 {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Or generate by category:")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+
+                                    ScrollView(.horizontal, showsIndicators: false) {
+                                        HStack(spacing: 8) {
+                                            ForEach(categories.filter { $0 != "All" }, id: \.self) { category in
+                                                Button {
+                                                    Task { @MainActor in
+                                                        try? await Task.sleep(nanoseconds: 50_000_000)
+                                                        generateNewsletterSummary(category: category)
+                                                    }
+                                                } label: {
+                                                    HStack(spacing: 6) {
+                                                        Image(systemName: "newspaper")
+                                                            .font(.caption)
+                                                        Text(category)
+                                                            .font(.subheadline)
+                                                    }
+                                                    .padding(.horizontal, 12)
+                                                    .padding(.vertical, 8)
+                                                    .background(Color.accentColor.opacity(0.1))
+                                                    .foregroundStyle(Color.accentColor)
+                                                    .cornerRadius(8)
+                                                }
+                                                .disabled(isProcessing)
+                                            }
+                                        }
+                                    }
+                                }
                             }
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.accentColor)
-                            .foregroundStyle(.white)
-                            .cornerRadius(12)
                         }
                         .padding(.horizontal)
-                        .disabled(articles.isEmpty || isProcessing)
 
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Or try asking:")
@@ -188,8 +236,32 @@ struct AIChatView: View {
         }
     }
 
-    private func generateNewsletterSummary() {
+    private func generateNewsletterSummary(category: String?) {
         isProcessing = true
+
+        // Filter articles by category if specified, with time and count limits
+        let filteredArticles: [Article]
+        if let category = category {
+            // Get recent articles (last 7 days) from this category
+            let now = Date.now
+            let startOfToday = Calendar.current.startOfDay(for: now)
+            let cutoffDate = Calendar.current.date(byAdding: .day, value: -7, to: startOfToday)!
+
+            let categoryArticles = articles.filter { article in
+                article.feed?.category == category && article.publishedDate >= cutoffDate
+            }
+
+            // Limit to most recent 15 articles to avoid context window issues
+            filteredArticles = Array(categoryArticles.prefix(15))
+        } else {
+            // For "All" newsletter, also apply time filter and limit
+            let now = Date.now
+            let startOfToday = Calendar.current.startOfDay(for: now)
+            let cutoffDate = Calendar.current.date(byAdding: .day, value: -7, to: startOfToday)!
+
+            let recentArticles = articles.filter { $0.publishedDate >= cutoffDate }
+            filteredArticles = Array(recentArticles.prefix(15))
+        }
 
         // Create message immediately with typing indicator
         let message = ChatMessage(content: "", isUser: false, isTyping: true, isNewsletter: true)
@@ -201,7 +273,7 @@ struct AIChatView: View {
                 do {
                     var items: [NewsletterItem] = []
 
-                    for try await event in OnDeviceAIService.shared.generateNewsletterSummaryStream(articles: Array(articles)) {
+                    for try await event in OnDeviceAIService.shared.generateNewsletterSummaryStream(articles: filteredArticles) {
                         await MainActor.run {
                             switch event {
                             case .header(let header):
@@ -225,7 +297,7 @@ struct AIChatView: View {
                     await MainActor.run {
                         message.isTyping = false
                     }
-                    let (text, _) = await AIService.shared.generateNewsletterSummary(articles: Array(articles))
+                    let (text, _) = await AIService.shared.generateNewsletterSummary(articles: filteredArticles)
                     await MainActor.run {
                         message.content = text
                         message.newsletterItems = nil
@@ -233,7 +305,7 @@ struct AIChatView: View {
                 }
             } else {
                 // Use basic service for older iOS versions
-                let (text, _) = await AIService.shared.generateNewsletterSummary(articles: Array(articles))
+                let (text, _) = await AIService.shared.generateNewsletterSummary(articles: filteredArticles)
                 await MainActor.run {
                     message.isTyping = false
                     message.content = text
