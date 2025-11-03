@@ -47,6 +47,7 @@ struct AIChatView: View {
     @State private var messages: [ChatMessage] = []
     @State private var inputText = ""
     @State private var isProcessing = false
+    @FocusState private var isInputFocused: Bool
 
     // Computed property for available categories (from articles in last 7 days)
     private var categories: [String] {
@@ -184,6 +185,7 @@ struct AIChatView: View {
                         .textFieldStyle(.roundedBorder)
                         .lineLimit(1...4)
                         .disabled(isProcessing)
+                        .focused($isInputFocused)
                         .onSubmit {
                             if !inputText.isEmpty && !isProcessing {
                                 sendMessage(inputText)
@@ -223,6 +225,7 @@ struct AIChatView: View {
         // Add user message
         messages.append(ChatMessage(content: trimmed, isUser: true))
         inputText = ""
+        isInputFocused = false  // Dismiss keyboard
         isProcessing = true
 
         // Generate AI response
