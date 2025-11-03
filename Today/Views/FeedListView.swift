@@ -176,14 +176,11 @@ struct FeedListView: View {
                     }
                 }
             }
-            .overlay {
+            .overlay(alignment: .top) {
                 if feedManager.isSyncing {
-                    VStack {
-                        ProgressView("Syncing feeds...")
-                            .padding()
-                            .background(.regularMaterial)
-                            .cornerRadius(10)
-                    }
+                    ProgressView()
+                        .progressViewStyle(.linear)
+                        .tint(.accentColor)
                 }
             }
             .sheet(isPresented: $showingAddFeed) {
@@ -246,12 +243,11 @@ struct FeedListView: View {
                             .disabled(newFeedURL.isEmpty || isAddingFeed || (useCustomCategory && customCategory.isEmpty))
                         }
                     }
-                    .overlay {
+                    .overlay(alignment: .top) {
                         if isAddingFeed {
-                            ProgressView("Adding feed...")
-                                .padding()
-                                .background(.regularMaterial)
-                                .cornerRadius(10)
+                            ProgressView()
+                                .progressViewStyle(.linear)
+                                .tint(.accentColor)
                         }
                     }
                 }
@@ -297,12 +293,11 @@ struct FeedListView: View {
                             .disabled(opmlText.isEmpty || isImporting)
                         }
                     }
-                    .overlay {
+                    .overlay(alignment: .top) {
                         if isImporting {
-                            ProgressView("Importing feeds...")
-                                .padding()
-                                .background(.regularMaterial)
-                                .cornerRadius(10)
+                            ProgressView()
+                                .progressViewStyle(.linear)
+                                .tint(.accentColor)
                         }
                     }
                 }
