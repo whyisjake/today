@@ -17,12 +17,17 @@ struct TodayView: View {
     @State private var searchText = ""
     @State private var hideReadArticles = false
     @State private var showFavoritesOnly = false
-    @State private var selectedArticleID: PersistentIdentifier?
+    @State private var navigationState: NavigationState?
     @State private var isRefreshing = false
     @State private var showMarkAllReadConfirmation = false
     @State private var daysToLoad = 1 // Start with 1 day (today)
-    @State private var navigationContext: [PersistentIdentifier] = [] // Captured list for navigation
     @AppStorage("fontOption") private var fontOption: FontOption = .serif
+
+    // Navigation state that bundles article ID with context
+    struct NavigationState: Hashable {
+        let articleID: PersistentIdentifier
+        let context: [PersistentIdentifier]
+    }
 
     // Cache expensive computations
     private var categories: [String] {
@@ -195,8 +200,12 @@ struct TodayView: View {
                         ForEach(filteredArticles, id: \.persistentModelID) { article in
                             Button {
                                 // Capture the navigation context when an article is selected
-                                navigationContext = filteredArticles.map { $0.persistentModelID }
-                                selectedArticleID = article.persistentModelID
+                                let context = filteredArticles.map { $0.persistentModelID }
+                                navigationState = NavigationState(
+                                    articleID: article.persistentModelID,
+                                    context: context
+                                )
+                                print("DEBUG TodayView: Button tapped - created navigationState with \(context.count) articles")
                             } label: {
                                 HStack {
                                     ArticleRowView(article: article, fontOption: fontOption)
@@ -279,35 +288,46 @@ struct TodayView: View {
             .onChange(of: showFavoritesOnly) { _, _ in
                 resetToToday()
             }
-            .navigationDestination(item: $selectedArticleID) { articleID in
-                if let article = modelContext.model(for: articleID) as? Article {
+            .navigationDestination(item: $navigationState) { state in
+                let _ = print("DEBUG TodayView: navigationDestination called")
+                let _ = print("DEBUG TodayView: context count = \(state.context.count)")
+                let _ = print("DEBUG TodayView: articleID = \(state.articleID)")
+
+                if let article = modelContext.model(for: state.articleID) as? Article {
                     // For Reddit posts, show combined post + comments view
                     if article.isRedditPost {
-                        if !navigationContext.isEmpty,
-                           let currentIndex = navigationContext.firstIndex(of: articleID) {
+                        if !state.context.isEmpty,
+                           let currentIndex = state.context.firstIndex(of: state.articleID) {
+                            let _ = print("DEBUG TodayView: Found article at index \(currentIndex)")
                             let previousIndex = currentIndex - 1
                             let nextIndex = currentIndex + 1
-                            let previousArticleID = previousIndex >= 0 ? navigationContext[previousIndex] : nil
-                            let nextArticleID = nextIndex < navigationContext.count ? navigationContext[nextIndex] : nil
+                            let previousArticleID = previousIndex >= 0 ? state.context[previousIndex] : nil
+                            let nextArticleID = nextIndex < state.context.count ? state.context[nextIndex] : nil
 
                             RedditPostView(
                                 article: article,
                                 previousArticleID: previousArticleID,
                                 nextArticleID: nextArticleID,
                                 onNavigateToPrevious: { prevID in
+                                    print("DEBUG TodayView: onNavigateToPrevious callback called with \(prevID)")
                                     Task { @MainActor in
                                         try? await Task.sleep(nanoseconds: 50_000_000)
-                                        selectedArticleID = prevID
+                                        print("DEBUG TodayView: Creating new navigationState for prev article")
+                                        navigationState = NavigationState(articleID: prevID, context: state.context)
                                     }
                                 },
                                 onNavigateToNext: { nextID in
+                                    print("DEBUG TodayView: onNavigateToNext callback called with \(nextID)")
                                     Task { @MainActor in
                                         try? await Task.sleep(nanoseconds: 50_000_000)
-                                        selectedArticleID = nextID
+                                        print("DEBUG TodayView: Creating new navigationState for next article")
+                                        navigationState = NavigationState(articleID: nextID, context: state.context)
                                     }
                                 }
                             )
+                            .id(state.articleID)  // Force view refresh when article changes
                         } else {
+                            let _ = print("DEBUG TodayView: navigationContext check failed - using nil IDs")
                             RedditPostView(
                                 article: article,
                                 previousArticleID: nil,
@@ -317,52 +337,44 @@ struct TodayView: View {
                             )
                         }
                     }
-                    // For articles with minimal content, go directly to web view
-                    else if article.hasMinimalContent, let url = URL(string: article.link) {
-                        ArticleWebViewSimple(url: url)
-                            .onAppear {
-                                // Mark as read
-                                if !article.isRead {
-                                    article.isRead = true
-                                    try? modelContext.save()
+                    // For all other articles, show in-app article detail
+                    // Use the captured navigation context (stable across view updates)
+                    else if !state.context.isEmpty,
+                       let currentIndex = state.context.firstIndex(of: state.articleID) {
+                        let previousIndex = currentIndex - 1
+                        let nextIndex = currentIndex + 1
+                        let previousArticleID = previousIndex >= 0 ? state.context[previousIndex] : nil
+                        let nextArticleID = nextIndex < state.context.count ? state.context[nextIndex] : nil
+
+                        ArticleDetailSimple(
+                            article: article,
+                            previousArticleID: previousArticleID,
+                            nextArticleID: nextArticleID,
+                            onNavigateToPrevious: { prevID in
+                                print("DEBUG TodayView: onNavigateToPrevious callback called with \(prevID)")
+                                Task { @MainActor in
+                                    try? await Task.sleep(nanoseconds: 50_000_000)
+                                    print("DEBUG TodayView: Creating new navigationState for prev article")
+                                    navigationState = NavigationState(articleID: prevID, context: state.context)
+                                }
+                            },
+                            onNavigateToNext: { nextID in
+                                print("DEBUG TodayView: onNavigateToNext callback called with \(nextID)")
+                                Task { @MainActor in
+                                    try? await Task.sleep(nanoseconds: 50_000_000)
+                                    print("DEBUG TodayView: Creating new navigationState for next article")
+                                    navigationState = NavigationState(articleID: nextID, context: state.context)
                                 }
                             }
+                        )
                     } else {
-                        // Show in-app article detail for articles with substantial content
-                        // Use the captured navigation context (stable across view updates)
-                        if !navigationContext.isEmpty,
-                           let currentIndex = navigationContext.firstIndex(of: articleID) {
-                            let previousIndex = currentIndex - 1
-                            let nextIndex = currentIndex + 1
-                            let previousArticleID = previousIndex >= 0 ? navigationContext[previousIndex] : nil
-                            let nextArticleID = nextIndex < navigationContext.count ? navigationContext[nextIndex] : nil
-
-                            ArticleDetailSimple(
-                                article: article,
-                                previousArticleID: previousArticleID,
-                                nextArticleID: nextArticleID,
-                                onNavigateToPrevious: { prevID in
-                                    Task { @MainActor in
-                                        try? await Task.sleep(nanoseconds: 50_000_000)
-                                        selectedArticleID = prevID
-                                    }
-                                },
-                                onNavigateToNext: { nextID in
-                                    Task { @MainActor in
-                                        try? await Task.sleep(nanoseconds: 50_000_000)
-                                        selectedArticleID = nextID
-                                    }
-                                }
-                            )
-                        } else {
-                            ArticleDetailSimple(
-                                article: article,
-                                previousArticleID: nil,
-                                nextArticleID: nil,
-                                onNavigateToPrevious: { _ in },
-                                onNavigateToNext: { _ in }
-                            )
-                        }
+                        ArticleDetailSimple(
+                            article: article,
+                            previousArticleID: nil,
+                            nextArticleID: nil,
+                            onNavigateToPrevious: { _ in },
+                            onNavigateToNext: { _ in }
+                        )
                     }
                 }
             }
@@ -577,7 +589,7 @@ struct ArticleRowView: View {
                     }
 
                     Spacer()
-                    if article.hasMinimalContent {
+                    if article.hasMinimalContent && !article.isRedditPost {
                         Image(systemName: "arrow.up.forward.square")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
@@ -620,7 +632,6 @@ struct ArticleRowView: View {
                 }
             }
         }
-        .padding(.vertical, 4)
     }
 }
 

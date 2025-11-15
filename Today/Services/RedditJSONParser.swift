@@ -101,17 +101,32 @@ class RedditJSONParser {
 
                     // Get the highest resolution image
                     var imageUrl: String? = nil
+                    var videoUrl: String? = nil
                     var width: Int = 0
                     var height: Int = 0
+                    var isAnimated = false
+
+                    // Check if this is an animated image (GIF/video)
+                    let mediaType = metadata["e"] as? String
+                    isAnimated = (mediaType == "AnimatedImage")
 
                     // Try source image first (highest quality)
                     if let source = metadata["s"] as? [String: Any],
-                       let sourceUrl = source["u"] as? String,
                        let sourceWidth = source["x"] as? Int,
                        let sourceHeight = source["y"] as? Int {
-                        imageUrl = sourceUrl.replacingOccurrences(of: "&amp;", with: "&")
                         width = sourceWidth
                         height = sourceHeight
+
+                        // For animated images, prefer MP4 (better support than GIF)
+                        if isAnimated, let mp4Url = source["mp4"] as? String {
+                            videoUrl = mp4Url.replacingOccurrences(of: "&amp;", with: "&")
+                            // Also get the GIF URL as fallback/poster
+                            if let gifUrl = source["gif"] as? String {
+                                imageUrl = gifUrl.replacingOccurrences(of: "&amp;", with: "&")
+                            }
+                        } else if let sourceUrl = source["u"] as? String {
+                            imageUrl = sourceUrl.replacingOccurrences(of: "&amp;", with: "&")
+                        }
                     }
                     // Fallback to largest preview
                     else if let previews = metadata["p"] as? [[String: Any]],
@@ -127,8 +142,10 @@ class RedditJSONParser {
                     if let imageUrl = imageUrl {
                         galleryImages.append(RedditGalleryImage(
                             url: imageUrl,
+                            videoUrl: videoUrl,
                             width: width,
-                            height: height
+                            height: height,
+                            isAnimated: isAnimated
                         ))
                     }
                 }
@@ -149,6 +166,24 @@ class RedditJSONParser {
                let sourceUrl = source["url"] as? String {
                 // Decode HTML entities in URL
                 imageUrl = sourceUrl.replacingOccurrences(of: "&amp;", with: "&")
+
+                // Check if this preview has animated variants (GIF/MP4)
+                if let variants = firstImage["variants"] as? [String: Any],
+                   let mp4Variant = variants["mp4"] as? [String: Any],
+                   let mp4Source = mp4Variant["source"] as? [String: Any],
+                   let mp4Url = mp4Source["url"] as? String,
+                   let width = source["width"] as? Int,
+                   let height = source["height"] as? Int {
+                    // This is an animated GIF - add to gallery as single item
+                    let cleanMp4Url = mp4Url.replacingOccurrences(of: "&amp;", with: "&")
+                    galleryImages.append(RedditGalleryImage(
+                        url: imageUrl!,
+                        videoUrl: cleanMp4Url,
+                        width: width,
+                        height: height,
+                        isAnimated: true
+                    ))
+                }
             }
             // Fallback to thumbnail if no preview available
             else if let thumbnail = data["thumbnail"] as? String,
@@ -159,6 +194,18 @@ class RedditJSONParser {
 
         let postUrl = "https://www.reddit.com\(permalink)"
         let commentsUrl = postUrl
+
+        // Extract media_embed for external embedded content
+        var mediaEmbedHtml: String? = nil
+        var mediaEmbedWidth: Int? = nil
+        var mediaEmbedHeight: Int? = nil
+        if let mediaEmbed = data["media_embed"] as? [String: Any],
+           let content = mediaEmbed["content"] as? String,
+           !content.isEmpty {
+            mediaEmbedHtml = content.decodeHTMLEntities()
+            mediaEmbedWidth = mediaEmbed["width"] as? Int
+            mediaEmbedHeight = mediaEmbed["height"] as? Int
+        }
 
         return ParsedRedditPost(
             id: id,
@@ -174,7 +221,10 @@ class RedditJSONParser {
             numComments: numComments,
             createdUtc: Date(timeIntervalSince1970: createdUtc),
             imageUrl: imageUrl,
-            galleryImages: galleryImages
+            galleryImages: galleryImages,
+            mediaEmbedHtml: mediaEmbedHtml,
+            mediaEmbedWidth: mediaEmbedWidth,
+            mediaEmbedHeight: mediaEmbedHeight
         )
     }
 
@@ -235,8 +285,10 @@ class RedditJSONParser {
 struct RedditGalleryImage: Identifiable {
     let id = UUID()
     let url: String
+    let videoUrl: String?  // MP4 version for animated GIFs
     let width: Int
     let height: Int
+    let isAnimated: Bool  // True if this is an animated GIF/video
 }
 
 struct ParsedRedditPost {
@@ -254,6 +306,9 @@ struct ParsedRedditPost {
     let createdUtc: Date
     let imageUrl: String?
     let galleryImages: [RedditGalleryImage]
+    let mediaEmbedHtml: String? // Embedded media iframe for external video services
+    let mediaEmbedWidth: Int?
+    let mediaEmbedHeight: Int?
 
     /// Convert to RSSParser.ParsedArticle format for compatibility
     func toArticle() -> RSSParser.ParsedArticle {

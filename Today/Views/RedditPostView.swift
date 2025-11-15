@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import AVKit
 
 struct RedditPostView: View {
     let article: Article
@@ -117,7 +118,9 @@ struct RedditPostView: View {
                 HStack(spacing: 20) {
                     // Previous article button
                     Button {
+                        print("DEBUG: Previous button tapped, prevID: \(String(describing: previousArticleID))")
                         if let prevID = previousArticleID {
+                            print("DEBUG: Calling onNavigateToPrevious")
                             onNavigateToPrevious(prevID)
                         }
                     } label: {
@@ -157,7 +160,9 @@ struct RedditPostView: View {
 
                     // Next article button
                     Button {
+                        print("DEBUG: Next button tapped, nextID: \(String(describing: nextArticleID))")
                         if let nextID = nextArticleID {
+                            print("DEBUG: Calling onNavigateToNext")
                             onNavigateToNext(nextID)
                         }
                     } label: {
@@ -169,6 +174,9 @@ struct RedditPostView: View {
         }
         .toolbar(.hidden, for: .tabBar)
         .onAppear {
+            print("DEBUG: RedditPostView appeared")
+            print("DEBUG: previousArticleID = \(String(describing: previousArticleID))")
+            print("DEBUG: nextArticleID = \(String(describing: nextArticleID))")
             markAsRead()
         }
         .task {
@@ -277,7 +285,15 @@ struct PostContentView: View {
             if !post.galleryImages.isEmpty {
                 ImageGalleryView(images: post.galleryImages)
             }
-            // Single post image (if available and no gallery)
+            // Embedded media from external video services
+            else if let mediaEmbedHtml = post.mediaEmbedHtml,
+                    let width = post.mediaEmbedWidth,
+                    let height = post.mediaEmbedHeight {
+                EmbeddedMediaView(html: mediaEmbedHtml, width: width, height: height)
+                    .frame(height: CGFloat(height) * (UIScreen.main.bounds.width / CGFloat(width)))
+                    .cornerRadius(8)
+            }
+            // Single post image (if available and no gallery or embed)
             else if let imageUrl = post.imageUrl, let url = URL(string: imageUrl) {
                 AsyncImage(url: url) { phase in
                     switch phase {
@@ -308,31 +324,6 @@ struct PostContentView: View {
                     .textSelection(.enabled)
             }
 
-            // Link to external content (if it's a link post)
-            if post.url != post.permalink, let url = URL(string: post.url) {
-                Button {
-                    openURL(url)
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("View linked content")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                            Text(url.host ?? post.url)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                        Spacer()
-                        Image(systemName: "arrow.up.forward")
-                            .font(.caption)
-                    }
-                    .padding(12)
-                    .background(Color(.systemGray6))
-                    .cornerRadius(8)
-                }
-                .buttonStyle(.plain)
-            }
         }
         .padding(.horizontal, 16)
         .padding(.top, 16)
@@ -518,36 +509,51 @@ struct ImageGalleryView: View {
             // Image carousel
             TabView(selection: $currentPage) {
                 ForEach(Array(images.enumerated()), id: \.element.id) { index, image in
-                    AsyncImage(url: URL(string: image.url)) { phase in
-                        switch phase {
-                        case .success(let loadedImage):
-                            loadedImage
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
+                    if image.isAnimated, let videoUrl = image.videoUrl {
+                        ZStack {
+                            AnimatedMediaView(videoUrl: videoUrl, posterUrl: image.url)
                                 .cornerRadius(8)
+
+                            // Transparent overlay to capture taps (VideoPlayer intercepts gestures)
+                            Color.clear
+                                .contentShape(Rectangle())
                                 .onTapGesture {
                                     showFullScreen = true
                                 }
-                        case .failure:
-                            VStack {
-                                Image(systemName: "photo")
-                                    .font(.largeTitle)
-                                    .foregroundStyle(.secondary)
-                                Text("Failed to load")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .frame(maxWidth: .infinity, minHeight: 200)
-                            .background(Color(.systemGray6))
-                            .cornerRadius(8)
-                        case .empty:
-                            ProgressView()
-                                .frame(maxWidth: .infinity, minHeight: 200)
-                        @unknown default:
-                            EmptyView()
                         }
+                        .tag(index)
+                    } else {
+                        AsyncImage(url: URL(string: image.url)) { phase in
+                            switch phase {
+                            case .success(let loadedImage):
+                                loadedImage
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .cornerRadius(8)
+                                    .onTapGesture {
+                                        showFullScreen = true
+                                    }
+                            case .failure:
+                                VStack {
+                                    Image(systemName: "photo")
+                                        .font(.largeTitle)
+                                        .foregroundStyle(.secondary)
+                                    Text("Failed to load")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .frame(maxWidth: .infinity, minHeight: 200)
+                                .background(Color(.systemGray6))
+                                .cornerRadius(8)
+                            case .empty:
+                                ProgressView()
+                                    .frame(maxWidth: .infinity, minHeight: 200)
+                            @unknown default:
+                                EmptyView()
+                            }
+                        }
+                        .tag(index)
                     }
-                    .tag(index)
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: images.count > 1 ? .always : .never))
@@ -592,34 +598,38 @@ struct FullScreenImageGallery: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color.black.ignoresSafeArea()
-
-                TabView(selection: $currentIndex) {
-                    ForEach(Array(images.enumerated()), id: \.element.id) { index, image in
+            TabView(selection: $currentIndex) {
+                ForEach(Array(images.enumerated()), id: \.element.id) { index, image in
+                    if image.isAnimated, let videoUrl = image.videoUrl {
+                        AnimatedMediaView(videoUrl: videoUrl, posterUrl: image.url)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background(Color(.systemBackground))
+                            .tag(index)
+                    } else {
                         ZoomableImageView(imageUrl: image.url)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background(Color(.systemBackground))
                             .tag(index)
                     }
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
             }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .background(Color(.systemBackground))
+            .ignoresSafeArea()
             .navigationTitle("\(currentIndex + 1) of \(images.count)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Done") {
                         dismiss()
                     }
-                    .foregroundStyle(.white)
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
                     if let imageUrl = URL(string: images[currentIndex].url) {
                         ShareLink(item: imageUrl) {
                             Image(systemName: "square.and.arrow.up")
-                                .foregroundStyle(.white)
                         }
                     }
                 }
@@ -661,15 +671,14 @@ struct ZoomableImageView: View {
                     VStack {
                         Image(systemName: "photo")
                             .font(.largeTitle)
-                            .foregroundStyle(.white)
+                            .foregroundStyle(.secondary)
                         Text("Failed to load image")
-                            .foregroundStyle(.white)
+                            .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 case .empty:
                     ProgressView()
-                        .tint(.white)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 @unknown default:
@@ -731,7 +740,7 @@ struct ZoomableImageView: View {
     }
 
     private func makeDragGesture(in size: CGSize) -> some Gesture {
-        DragGesture(minimumDistance: 5)
+        DragGesture(minimumDistance: scale > 1.0 ? 5 : 1000)
             .updating($gestureOffset) { value, state, _ in
                 // Only update when zoomed in (including during active zoom gesture)
                 let currentScale = scale * gestureScale
@@ -793,6 +802,166 @@ struct ZoomableImageView: View {
             width: min(max(offset.width, -maxOffsetX), maxOffsetX),
             height: min(max(offset.height, -maxOffsetY), maxOffsetY)
         )
+    }
+}
+
+// MARK: - Animated Media View
+
+struct AnimatedMediaView: View {
+    let videoUrl: String
+    let posterUrl: String?
+
+    @State private var player: AVPlayer?
+
+    var body: some View {
+        ZStack {
+            if let player = player {
+                VideoPlayer(player: player)
+                    .aspectRatio(contentMode: .fit)
+                    .onAppear {
+                        print("DEBUG: VideoPlayer appeared, playing...")
+                        player.play()
+                    }
+            } else {
+                ProgressView()
+                    .onAppear {
+                        print("DEBUG: Still loading player for URL: \(videoUrl)")
+                    }
+            }
+        }
+        .onAppear {
+            print("DEBUG: AnimatedMediaView appeared for URL: \(videoUrl)")
+            if let url = URL(string: videoUrl) {
+                print("DEBUG: Creating AVPlayer with URL: \(url)")
+                let player = AVPlayer(url: url)
+                player.actionAtItemEnd = .none
+
+                // Loop the video when it ends
+                NotificationCenter.default.addObserver(
+                    forName: .AVPlayerItemDidPlayToEndTime,
+                    object: player.currentItem,
+                    queue: .main
+                ) { _ in
+                    print("DEBUG: Video ended, looping...")
+                    player.seek(to: .zero)
+                    player.play()
+                }
+
+                self.player = player
+                print("DEBUG: Player created and set")
+            } else {
+                print("DEBUG: Failed to create URL from: \(videoUrl)")
+            }
+        }
+        .onDisappear {
+            print("DEBUG: AnimatedMediaView disappeared")
+            player?.pause()
+            player = nil
+        }
+    }
+}
+
+// MARK: - Video Player View (UIKit wrapper)
+
+struct VideoPlayerView: UIViewRepresentable {
+    let player: AVPlayer
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+
+        let playerLayer = AVPlayerLayer(player: player)
+        playerLayer.videoGravity = .resizeAspect
+        playerLayer.frame = view.bounds
+        view.layer.addSublayer(playerLayer)
+
+        context.coordinator.playerLayer = playerLayer
+
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        if let playerLayer = context.coordinator.playerLayer {
+            playerLayer.frame = uiView.bounds
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    class Coordinator {
+        var playerLayer: AVPlayerLayer?
+    }
+}
+
+// MARK: - Embedded Media View
+
+struct EmbeddedMediaView: View {
+    let html: String
+    let width: Int
+    let height: Int
+    @Environment(\.colorScheme) var colorScheme
+
+    var body: some View {
+        EmbeddedMediaWebView(html: html, colorScheme: colorScheme)
+    }
+}
+
+struct EmbeddedMediaWebView: UIViewRepresentable {
+    let html: String
+    let colorScheme: ColorScheme
+
+    func makeUIView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        configuration.allowsInlineMediaPlayback = true
+        configuration.mediaTypesRequiringUserActionForPlayback = []
+
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.scrollView.backgroundColor = .clear
+        webView.scrollView.isScrollEnabled = false
+
+        return webView
+    }
+
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        let bgColor = colorScheme == .dark ? "#000000" : "#FFFFFF"
+
+        let wrappedHTML = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+            <style>
+                * {
+                    margin: 0;
+                    padding: 0;
+                    box-sizing: border-box;
+                }
+                body {
+                    background-color: \(bgColor);
+                    overflow: hidden;
+                }
+                iframe {
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    border: none;
+                }
+            </style>
+        </head>
+        <body>
+            \(html)
+        </body>
+        </html>
+        """
+
+        webView.loadHTMLString(wrappedHTML, baseURL: nil)
     }
 }
 

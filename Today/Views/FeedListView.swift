@@ -567,9 +567,14 @@ struct FeedArticlesView: View {
     @Query(sort: \Article.publishedDate, order: .reverse) private var allArticles: [Article]
 
     @State private var showReadArticles = false
-    @State private var selectedArticleID: PersistentIdentifier?
-    @State private var navigationContext: [PersistentIdentifier] = []
+    @State private var navigationState: NavigationState?
     @AppStorage("fontOption") private var fontOption: FontOption = .serif
+
+    // Navigation state that bundles article ID with context
+    struct NavigationState: Hashable {
+        let articleID: PersistentIdentifier
+        let context: [PersistentIdentifier]
+    }
 
     private var filteredArticles: [Article] {
         var articles = allArticles.filter { $0.feed?.id == feed.id }
@@ -617,8 +622,12 @@ struct FeedArticlesView: View {
                         ForEach(filteredArticles, id: \.persistentModelID) { article in
                         Button {
                             // Capture navigation context when article is selected
-                            navigationContext = filteredArticles.map { $0.persistentModelID }
-                            selectedArticleID = article.persistentModelID
+                            let context = filteredArticles.map { $0.persistentModelID }
+                            navigationState = NavigationState(
+                                articleID: article.persistentModelID,
+                                context: context
+                            )
+                            print("DEBUG FeedArticlesView: Button tapped - created navigationState with \(context.count) articles")
                         } label: {
                             HStack {
                                 ArticleRowView(article: article, fontOption: fontOption)
@@ -672,16 +681,19 @@ struct FeedArticlesView: View {
                 }
             }
         }
-        .navigationDestination(item: $selectedArticleID) { articleID in
-            if let article = modelContext.model(for: articleID) as? Article {
+        .navigationDestination(item: $navigationState) { state in
+            let _ = print("DEBUG FeedArticlesView: navigationDestination called")
+            let _ = print("DEBUG FeedArticlesView: context count = \(state.context.count)")
+
+            if let article = modelContext.model(for: state.articleID) as? Article {
                 // For Reddit posts, show combined post + comments view
                 if article.isRedditPost {
-                    if !navigationContext.isEmpty,
-                       let currentIndex = navigationContext.firstIndex(of: articleID) {
+                    if !state.context.isEmpty,
+                       let currentIndex = state.context.firstIndex(of: state.articleID) {
                         let previousIndex = currentIndex - 1
                         let nextIndex = currentIndex + 1
-                        let previousArticleID = previousIndex >= 0 ? navigationContext[previousIndex] : nil
-                        let nextArticleID = nextIndex < navigationContext.count ? navigationContext[nextIndex] : nil
+                        let previousArticleID = previousIndex >= 0 ? state.context[previousIndex] : nil
+                        let nextArticleID = nextIndex < state.context.count ? state.context[nextIndex] : nil
 
                         RedditPostView(
                             article: article,
@@ -690,16 +702,17 @@ struct FeedArticlesView: View {
                             onNavigateToPrevious: { prevID in
                                 Task { @MainActor in
                                     try? await Task.sleep(nanoseconds: 50_000_000)
-                                    selectedArticleID = prevID
+                                    navigationState = NavigationState(articleID: prevID, context: state.context)
                                 }
                             },
                             onNavigateToNext: { nextID in
                                 Task { @MainActor in
                                     try? await Task.sleep(nanoseconds: 50_000_000)
-                                    selectedArticleID = nextID
+                                    navigationState = NavigationState(articleID: nextID, context: state.context)
                                 }
                             }
                         )
+                        .id(state.articleID)  // Force view refresh when article changes
                     } else {
                         RedditPostView(
                             article: article,
@@ -711,12 +724,12 @@ struct FeedArticlesView: View {
                     }
                 }
                 // Use the captured navigation context
-                else if !navigationContext.isEmpty,
-                   let currentIndex = navigationContext.firstIndex(of: articleID) {
+                else if !state.context.isEmpty,
+                   let currentIndex = state.context.firstIndex(of: state.articleID) {
                     let previousIndex = currentIndex - 1
                     let nextIndex = currentIndex + 1
-                    let previousArticleID = previousIndex >= 0 ? navigationContext[previousIndex] : nil
-                    let nextArticleID = nextIndex < navigationContext.count ? navigationContext[nextIndex] : nil
+                    let previousArticleID = previousIndex >= 0 ? state.context[previousIndex] : nil
+                    let nextArticleID = nextIndex < state.context.count ? state.context[nextIndex] : nil
 
                     ArticleDetailSimple(
                         article: article,
@@ -725,13 +738,13 @@ struct FeedArticlesView: View {
                         onNavigateToPrevious: { prevID in
                             Task { @MainActor in
                                 try? await Task.sleep(nanoseconds: 50_000_000)
-                                selectedArticleID = prevID
+                                navigationState = NavigationState(articleID: prevID, context: state.context)
                             }
                         },
                         onNavigateToNext: { nextID in
                             Task { @MainActor in
                                 try? await Task.sleep(nanoseconds: 50_000_000)
-                                selectedArticleID = nextID
+                                navigationState = NavigationState(articleID: nextID, context: state.context)
                             }
                         }
                     )
@@ -745,12 +758,6 @@ struct FeedArticlesView: View {
                     )
                 }
             }
-        }
-        .onAppear {
-            navigationContext = filteredArticles.map { $0.persistentModelID }
-        }
-        .onChange(of: filteredArticles) { _, newArticles in
-            navigationContext = newArticles.map { $0.persistentModelID }
         }
     }
 
