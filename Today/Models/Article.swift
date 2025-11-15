@@ -23,10 +23,15 @@ final class Article {
     var isRead: Bool
     var isFavorite: Bool
     var aiSummary: String?
+    
+    // Reddit-specific metadata
+    var redditSubreddit: String? // e.g., "baseball"
+    var redditCommentsUrl: String? // Direct link to Reddit comments
+    var redditPostId: String? // Reddit post ID (e.g., "t3_abc123")
 
     var feed: Feed?
 
-    init(title: String, link: String, articleDescription: String? = nil, content: String? = nil, contentEncoded: String? = nil, imageUrl: String? = nil, publishedDate: Date, author: String? = nil, guid: String, feed: Feed? = nil) {
+    init(title: String, link: String, articleDescription: String? = nil, content: String? = nil, contentEncoded: String? = nil, imageUrl: String? = nil, publishedDate: Date, author: String? = nil, guid: String, feed: Feed? = nil, redditSubreddit: String? = nil, redditCommentsUrl: String? = nil, redditPostId: String? = nil) {
         self.title = title
         self.link = link
         self.articleDescription = articleDescription
@@ -41,6 +46,9 @@ final class Article {
         self.isRead = false
         self.isFavorite = false
         self.aiSummary = nil
+        self.redditSubreddit = redditSubreddit
+        self.redditCommentsUrl = redditCommentsUrl
+        self.redditPostId = redditPostId
         self.feed = feed
     }
 
@@ -67,5 +75,10 @@ final class Article {
             .joined()
 
         return totalContent.count < 300
+    }
+
+    /// Returns true if the article is from a Reddit RSS feed
+    var isRedditPost: Bool {
+        return redditSubreddit != nil || redditCommentsUrl != nil
     }
 }

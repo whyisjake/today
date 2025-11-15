@@ -35,6 +35,11 @@ class RSSParser: NSObject, XMLParserDelegate {
         let publishedDate: Date?
         let author: String?
         let guid: String
+        
+        // Reddit-specific fields
+        let redditSubreddit: String?
+        let redditCommentsUrl: String?
+        let redditPostId: String?
     }
 
     func parse(data: Data) -> Bool {
@@ -218,6 +223,9 @@ class RSSParser: NSObject, XMLParserDelegate {
                 processedContentEncoded = decoded.texturize()
             }
 
+            // Extract Reddit metadata if this is a Reddit post
+            let redditMetadata = extractRedditMetadata(from: processedContentEncoded ?? processedContent, link: currentLink)
+
             let article = ParsedArticle(
                 title: processedTitle,
                 link: currentLink,
@@ -227,7 +235,10 @@ class RSSParser: NSObject, XMLParserDelegate {
                 imageUrl: finalImageUrl.isEmpty ? nil : finalImageUrl,
                 publishedDate: parseDate(currentPubDate),
                 author: currentAuthor.isEmpty ? nil : normalizeWhitespace(currentAuthor),
-                guid: finalGuid
+                guid: finalGuid,
+                redditSubreddit: redditMetadata.subreddit,
+                redditCommentsUrl: redditMetadata.commentsUrl,
+                redditPostId: redditMetadata.postId
             )
 
             articles.append(article)
@@ -379,6 +390,57 @@ class RSSParser: NSObject, XMLParserDelegate {
         }
 
         return nil
+    }
+    
+    /// Extract Reddit metadata from the article content and link
+    private func extractRedditMetadata(from content: String?, link: String) -> (subreddit: String?, commentsUrl: String?, postId: String?) {
+        var subreddit: String? = nil
+        var commentsUrl: String? = nil
+        var postId: String? = nil
+        
+        // Extract subreddit from link (e.g., https://www.reddit.com/r/baseball/comments/...)
+        if link.contains("reddit.com/r/") {
+            let pattern = "reddit\\.com/r/([^/]+)"
+            if let regex = try? NSRegularExpression(pattern: pattern, options: []),
+               let match = regex.firstMatch(in: link, options: [], range: NSRange(location: 0, length: link.utf16.count)),
+               match.numberOfRanges > 1 {
+                let range = match.range(at: 1)
+                if let swiftRange = Range(range, in: link) {
+                    subreddit = String(link[swiftRange])
+                }
+            }
+            
+            // The link itself is usually the comments URL for Reddit posts
+            commentsUrl = link
+        }
+        
+        // Extract post ID from content (e.g., "t3_abc123" in the id field) or link
+        if let content = content {
+            // Look for Reddit post ID pattern in content
+            let idPattern = "t3_[a-zA-Z0-9]+"
+            if let regex = try? NSRegularExpression(pattern: idPattern, options: []),
+               let match = regex.firstMatch(in: content, options: [], range: NSRange(location: 0, length: content.utf16.count)) {
+                let range = match.range
+                if let swiftRange = Range(range, in: content) {
+                    postId = String(content[swiftRange])
+                }
+            }
+        }
+        
+        // Also try to extract post ID from link
+        if postId == nil && link.contains("reddit.com") {
+            let pattern = "comments/([a-zA-Z0-9]+)"
+            if let regex = try? NSRegularExpression(pattern: pattern, options: []),
+               let match = regex.firstMatch(in: link, options: [], range: NSRange(location: 0, length: link.utf16.count)),
+               match.numberOfRanges > 1 {
+                let range = match.range(at: 1)
+                if let swiftRange = Range(range, in: link) {
+                    postId = "t3_" + String(link[swiftRange])
+                }
+            }
+        }
+        
+        return (subreddit, commentsUrl, postId)
     }
 }
 

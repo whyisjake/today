@@ -97,6 +97,15 @@ struct ArticleDetailSimple: View {
                     }
                     .disabled(previousArticleID == nil)
 
+                    // Reddit Comments button (if this is a Reddit post)
+                    if article.isRedditPost, let commentsUrl = article.redditCommentsUrl {
+                        NavigationLink {
+                            RedditCommentsView(commentsUrl: commentsUrl)
+                        } label: {
+                            Label("Comments", systemImage: "bubble.left.and.bubble.right")
+                        }
+                    }
+
                     // Read in App button with long-press menu
                     NavigationLink {
                         ArticleWebViewSimple(url: URL(string: article.link)!)
