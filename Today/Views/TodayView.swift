@@ -514,31 +514,45 @@ struct ArticleRowView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
 
-                    if let feedTitle = article.feed?.title {
-                        Text("•")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 4)
+                    // For Reddit posts, show author instead of feed title (since feed title is in header)
+                    if article.isRedditPost {
+                        if let author = article.author {
+                            Text("•")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 4)
 
-                        Text(feedTitle)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    
-                    // Show Reddit badge for Reddit posts
-                    if article.isRedditPost, let subreddit = article.redditSubreddit {
-                        Text("•")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 4)
-                        
-                        HStack(spacing: 2) {
-                            Image(systemName: "bubble.left.and.bubble.right.fill")
+                            Text(author)
                                 .font(.caption2)
-                            Text("r/\(subreddit)")
-                                .font(.caption2)
+                                .foregroundStyle(.secondary)
                         }
-                        .foregroundStyle(.orange)
+
+                        if let subreddit = article.redditSubreddit {
+                            Text("•")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 4)
+
+                            HStack(spacing: 2) {
+                                Image(systemName: "bubble.left.and.bubble.right.fill")
+                                    .font(.caption2)
+                                Text("r/\(subreddit)")
+                                    .font(.caption2)
+                            }
+                            .foregroundStyle(.orange)
+                        }
+                    } else {
+                        // For non-Reddit posts, show feed title as before
+                        if let feedTitle = article.feed?.title {
+                            Text("•")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 4)
+
+                            Text(feedTitle)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
                     }
 
                     Spacer()
