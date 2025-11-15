@@ -87,18 +87,74 @@ class RedditJSONParser {
         let score = data["score"] as? Int ?? 0
         let numComments = data["num_comments"] as? Int ?? 0
 
-        // Extract thumbnail/preview image
+        // Extract gallery images if present
+        var galleryImages: [RedditGalleryImage] = []
+        if let galleryData = data["gallery_data"] as? [String: Any],
+           let items = galleryData["items"] as? [[String: Any]],
+           let mediaMetadata = data["media_metadata"] as? [String: Any] {
+
+            for item in items {
+                if let mediaId = item["media_id"] as? String,
+                   let metadata = mediaMetadata[mediaId] as? [String: Any],
+                   let status = metadata["status"] as? String,
+                   status == "valid" {
+
+                    // Get the highest resolution image
+                    var imageUrl: String? = nil
+                    var width: Int = 0
+                    var height: Int = 0
+
+                    // Try source image first (highest quality)
+                    if let source = metadata["s"] as? [String: Any],
+                       let sourceUrl = source["u"] as? String,
+                       let sourceWidth = source["x"] as? Int,
+                       let sourceHeight = source["y"] as? Int {
+                        imageUrl = sourceUrl.replacingOccurrences(of: "&amp;", with: "&")
+                        width = sourceWidth
+                        height = sourceHeight
+                    }
+                    // Fallback to largest preview
+                    else if let previews = metadata["p"] as? [[String: Any]],
+                            let largest = previews.last,
+                            let previewUrl = largest["u"] as? String,
+                            let previewWidth = largest["x"] as? Int,
+                            let previewHeight = largest["y"] as? Int {
+                        imageUrl = previewUrl.replacingOccurrences(of: "&amp;", with: "&")
+                        width = previewWidth
+                        height = previewHeight
+                    }
+
+                    if let imageUrl = imageUrl {
+                        galleryImages.append(RedditGalleryImage(
+                            url: imageUrl,
+                            width: width,
+                            height: height
+                        ))
+                    }
+                }
+            }
+        }
+
+        // Extract preview image - use first gallery image or preview
         var imageUrl: String? = nil
-        if let thumbnail = data["thumbnail"] as? String,
-           thumbnail.hasPrefix("http") {
-            imageUrl = thumbnail
-        } else if let preview = data["preview"] as? [String: Any],
-                  let images = preview["images"] as? [[String: Any]],
-                  let firstImage = images.first,
-                  let source = firstImage["source"] as? [String: Any],
-                  let sourceUrl = source["url"] as? String {
-            // Decode HTML entities in URL
-            imageUrl = sourceUrl.replacingOccurrences(of: "&amp;", with: "&")
+        if !galleryImages.isEmpty {
+            // Use first gallery image as thumbnail
+            imageUrl = galleryImages.first?.url
+        } else {
+            // Try preview source first (highest quality)
+            if let preview = data["preview"] as? [String: Any],
+               let images = preview["images"] as? [[String: Any]],
+               let firstImage = images.first,
+               let source = firstImage["source"] as? [String: Any],
+               let sourceUrl = source["url"] as? String {
+                // Decode HTML entities in URL
+                imageUrl = sourceUrl.replacingOccurrences(of: "&amp;", with: "&")
+            }
+            // Fallback to thumbnail if no preview available
+            else if let thumbnail = data["thumbnail"] as? String,
+                    thumbnail.hasPrefix("http") {
+                imageUrl = thumbnail
+            }
         }
 
         let postUrl = "https://www.reddit.com\(permalink)"
@@ -117,7 +173,8 @@ class RedditJSONParser {
             score: score,
             numComments: numComments,
             createdUtc: Date(timeIntervalSince1970: createdUtc),
-            imageUrl: imageUrl
+            imageUrl: imageUrl,
+            galleryImages: galleryImages
         )
     }
 
@@ -175,6 +232,13 @@ class RedditJSONParser {
 
 // MARK: - Parsed Reddit Post Model
 
+struct RedditGalleryImage: Identifiable {
+    let id = UUID()
+    let url: String
+    let width: Int
+    let height: Int
+}
+
 struct ParsedRedditPost {
     let id: String
     let title: String
@@ -189,6 +253,7 @@ struct ParsedRedditPost {
     let numComments: Int
     let createdUtc: Date
     let imageUrl: String?
+    let galleryImages: [RedditGalleryImage]
 
     /// Convert to RSSParser.ParsedArticle format for compatibility
     func toArticle() -> RSSParser.ParsedArticle {

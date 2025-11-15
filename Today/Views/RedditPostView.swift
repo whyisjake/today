@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct RedditPostView: View {
     let article: Article
@@ -98,8 +99,17 @@ struct RedditPostView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                ShareLink(item: URL(string: article.link)!, subject: Text(article.title)) {
+                Button {
+                    // Share functionality handled in context menu
+                } label: {
                     Image(systemName: "square.and.arrow.up")
+                }
+                .contextMenu {
+                    if let url = URL(string: article.link) {
+                        ShareLink(item: url, subject: Text(article.title)) {
+                            Label("Share", systemImage: "square.and.arrow.up")
+                        }
+                    }
                 }
             }
 
@@ -263,8 +273,12 @@ struct PostContentView: View {
                     .foregroundStyle(.secondary)
             }
 
-            // Post image (if available)
-            if let imageUrl = post.imageUrl, let url = URL(string: imageUrl) {
+            // Gallery images (if available)
+            if !post.galleryImages.isEmpty {
+                ImageGalleryView(images: post.galleryImages)
+            }
+            // Single post image (if available and no gallery)
+            else if let imageUrl = post.imageUrl, let url = URL(string: imageUrl) {
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .success(let image):
@@ -491,3 +505,292 @@ struct PostWebView: UIViewRepresentable {
 }
 
 import WebKit
+
+// MARK: - Image Gallery View
+
+struct ImageGalleryView: View {
+    let images: [RedditGalleryImage]
+    @State private var showFullScreen = false
+    @State private var currentPage = 0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Image carousel
+            TabView(selection: $currentPage) {
+                ForEach(Array(images.enumerated()), id: \.element.id) { index, image in
+                    AsyncImage(url: URL(string: image.url)) { phase in
+                        switch phase {
+                        case .success(let loadedImage):
+                            loadedImage
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .cornerRadius(8)
+                                .onTapGesture {
+                                    showFullScreen = true
+                                }
+                        case .failure:
+                            VStack {
+                                Image(systemName: "photo")
+                                    .font(.largeTitle)
+                                    .foregroundStyle(.secondary)
+                                Text("Failed to load")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 200)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(8)
+                        case .empty:
+                            ProgressView()
+                                .frame(maxWidth: .infinity, minHeight: 200)
+                        @unknown default:
+                            EmptyView()
+                        }
+                    }
+                    .tag(index)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: images.count > 1 ? .always : .never))
+            .frame(height: 300)
+
+            // Image counter
+            if images.count > 1 {
+                HStack {
+                    Text("\(currentPage + 1) / \(images.count)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text("Tap to view full size")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Text("Tap to view full size")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .sheet(isPresented: $showFullScreen) {
+            FullScreenImageGallery(images: images, startIndex: currentPage)
+        }
+    }
+}
+
+// MARK: - Full Screen Image Gallery
+
+struct FullScreenImageGallery: View {
+    let images: [RedditGalleryImage]
+    let startIndex: Int
+    @Environment(\.dismiss) private var dismiss
+    @State private var currentIndex: Int
+
+    init(images: [RedditGalleryImage], startIndex: Int) {
+        self.images = images
+        self.startIndex = startIndex
+        _currentIndex = State(initialValue: startIndex)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.black.ignoresSafeArea()
+
+                TabView(selection: $currentIndex) {
+                    ForEach(Array(images.enumerated()), id: \.element.id) { index, image in
+                        ZoomableImageView(imageUrl: image.url)
+                            .tag(index)
+                    }
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+            }
+            .navigationTitle("\(currentIndex + 1) of \(images.count)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .foregroundStyle(.white)
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    if let imageUrl = URL(string: images[currentIndex].url) {
+                        ShareLink(item: imageUrl) {
+                            Image(systemName: "square.and.arrow.up")
+                                .foregroundStyle(.white)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Zoomable Image View
+
+struct ZoomableImageView: View {
+    let imageUrl: String
+
+    @State private var scale: CGFloat = 1.0
+    @State private var offset: CGSize = .zero
+    @State private var imageSize: CGSize = .zero
+
+    @GestureState private var gestureScale: CGFloat = 1.0
+    @GestureState private var gestureOffset: CGSize = .zero
+
+    var body: some View {
+        GeometryReader { geometry in
+            AsyncImage(url: URL(string: imageUrl)) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .scaleEffect(scale * gestureScale)
+                        .offset(x: offset.width + gestureOffset.width,
+                               y: offset.height + gestureOffset.height)
+                        .highPriorityGesture(makeDoubleTapGesture(in: geometry.size))
+                        .gesture(makeZoomGesture(in: geometry.size))
+                        .simultaneousGesture(makeDragGesture(in: geometry.size))
+
+                case .failure:
+                    VStack {
+                        Image(systemName: "photo")
+                            .font(.largeTitle)
+                            .foregroundStyle(.white)
+                        Text("Failed to load image")
+                            .foregroundStyle(.white)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                case .empty:
+                    ProgressView()
+                        .tint(.white)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                @unknown default:
+                    EmptyView()
+                }
+            }
+        }
+    }
+
+    private func makeZoomGesture(in size: CGSize) -> some Gesture {
+        MagnifyGesture()
+            .updating($gestureScale) { value, state, _ in
+                state = value.magnification
+            }
+            .onEnded { value in
+                let newScale = scale * value.magnification
+
+                // Clamp between 1.0 and 10.0
+                let clampedScale: CGFloat
+                if newScale < 1.0 {
+                    clampedScale = 1.0
+                } else if newScale > 10.0 {
+                    clampedScale = 10.0
+                } else {
+                    clampedScale = newScale
+                }
+
+                // Calculate offset to keep the pinch center point stationary
+                let anchor = value.startAnchor
+                let imageCenter = CGPoint(x: size.width / 2, y: size.height / 2)
+
+                // Calculate how much to offset to keep the anchor point at the same position
+                let anchorOffsetX = anchor.x - imageCenter.x
+                let anchorOffsetY = anchor.y - imageCenter.y
+
+                // Adjust offset based on scale change
+                let scaleChange = clampedScale / scale
+                let newOffsetX = offset.width * scaleChange - anchorOffsetX * (clampedScale - scale)
+                let newOffsetY = offset.height * scaleChange - anchorOffsetY * (clampedScale - scale)
+
+                withAnimation(.spring(response: 0.3)) {
+                    scale = clampedScale
+                    if scale <= 1.0 {
+                        offset = .zero
+                    } else {
+                        offset = CGSize(width: newOffsetX, height: newOffsetY)
+                        offset = constrainOffset(offset, for: scale, in: size)
+                    }
+                }
+            }
+    }
+
+    private func makeDragGesture(in size: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 5)
+            .updating($gestureOffset) { value, state, _ in
+                // Only update when zoomed in (including during active zoom gesture)
+                let currentScale = scale * gestureScale
+                guard currentScale > 1.01 else { return }
+                state = value.translation
+            }
+            .onEnded { value in
+                // Only apply if we're zoomed in
+                let currentScale = scale * gestureScale
+                guard currentScale > 1.01 else { return }
+
+                let newOffset = CGSize(
+                    width: offset.width + value.translation.width,
+                    height: offset.height + value.translation.height
+                )
+                offset = constrainOffset(newOffset, for: scale, in: size)
+            }
+    }
+
+    private func makeDoubleTapGesture(in size: CGSize) -> some Gesture {
+        SpatialTapGesture(count: 2)
+            .onEnded { value in
+                withAnimation(.spring(response: 0.3)) {
+                    if scale > 1.0 {
+                        // Already zoomed in - reset to 1x
+                        scale = 1.0
+                        offset = .zero
+                    } else {
+                        // At 1x - zoom to 2.5x centered on tap location
+                        let tapLocation = value.location
+                        let imageCenter = CGPoint(x: size.width / 2, y: size.height / 2)
+
+                        scale = 2.5
+
+                        // Calculate offset to center the tap point
+                        let offsetX = (imageCenter.x - tapLocation.x) * (scale - 1)
+                        let offsetY = (imageCenter.y - tapLocation.y) * (scale - 1)
+
+                        offset = CGSize(width: offsetX, height: offsetY)
+                        offset = constrainOffset(offset, for: scale, in: size)
+                    }
+                }
+            }
+    }
+
+    private func constrainOffset(_ offset: CGSize, for scale: CGFloat, in size: CGSize) -> CGSize {
+        // Don't constrain if at 1x zoom
+        guard scale > 1.0 else { return .zero }
+
+        // Calculate the maximum allowed offset based on the scaled image size
+        let maxOffsetX = (size.width * (scale - 1)) / 2
+        let maxOffsetY = (size.height * (scale - 1)) / 2
+
+        return CGSize(
+            width: min(max(offset.width, -maxOffsetX), maxOffsetX),
+            height: min(max(offset.height, -maxOffsetY), maxOffsetY)
+        )
+    }
+}
+
+// MARK: - View Extension for Conditional Modifiers
+
+extension View {
+    @ViewBuilder func `if`<Content: View>(_ condition: Bool, transform: (Self) -> Content) -> some View {
+        if condition {
+            transform(self)
+        } else {
+            self
+        }
+    }
+}
