@@ -586,23 +586,35 @@ struct FeedArticlesView: View {
     }
 
     var body: some View {
-        Group {
-            if filteredArticles.isEmpty {
-                VStack(spacing: 12) {
-                    Image(systemName: showReadArticles ? "tray" : "checkmark.circle")
-                        .font(.system(size: 48))
-                        .foregroundStyle(.secondary)
-                    Text(showReadArticles ? "No articles in this feed" : "All caught up!")
-                        .font(.headline)
-                    Text(showReadArticles ? "Try syncing the feed to fetch new articles" : "No unread articles from this feed")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .padding()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List {
-                    ForEach(filteredArticles, id: \.persistentModelID) { article in
+        VStack(spacing: 0) {
+            // Show r/subreddit header for Reddit feeds
+            if feed.isRedditFeed, let subreddit = feed.redditSubreddit {
+                Text("r/\(subreddit)")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.orange)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 8)
+                    .background(Color(.systemGroupedBackground))
+            }
+
+            Group {
+                if filteredArticles.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: showReadArticles ? "tray" : "checkmark.circle")
+                            .font(.system(size: 48))
+                            .foregroundStyle(.secondary)
+                        Text(showReadArticles ? "No articles in this feed" : "All caught up!")
+                            .font(.headline)
+                        Text(showReadArticles ? "Try syncing the feed to fetch new articles" : "No unread articles from this feed")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List {
+                        ForEach(filteredArticles, id: \.persistentModelID) { article in
                         Button {
                             // Capture navigation context when article is selected
                             navigationContext = filteredArticles.map { $0.persistentModelID }
@@ -634,6 +646,7 @@ struct FeedArticlesView: View {
                 .listStyle(.plain)
             }
         }
+        }
         .navigationTitle(feed.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -661,8 +674,44 @@ struct FeedArticlesView: View {
         }
         .navigationDestination(item: $selectedArticleID) { articleID in
             if let article = modelContext.model(for: articleID) as? Article {
+                // For Reddit posts, show combined post + comments view
+                if article.isRedditPost {
+                    if !navigationContext.isEmpty,
+                       let currentIndex = navigationContext.firstIndex(of: articleID) {
+                        let previousIndex = currentIndex - 1
+                        let nextIndex = currentIndex + 1
+                        let previousArticleID = previousIndex >= 0 ? navigationContext[previousIndex] : nil
+                        let nextArticleID = nextIndex < navigationContext.count ? navigationContext[nextIndex] : nil
+
+                        RedditPostView(
+                            article: article,
+                            previousArticleID: previousArticleID,
+                            nextArticleID: nextArticleID,
+                            onNavigateToPrevious: { prevID in
+                                Task { @MainActor in
+                                    try? await Task.sleep(nanoseconds: 50_000_000)
+                                    selectedArticleID = prevID
+                                }
+                            },
+                            onNavigateToNext: { nextID in
+                                Task { @MainActor in
+                                    try? await Task.sleep(nanoseconds: 50_000_000)
+                                    selectedArticleID = nextID
+                                }
+                            }
+                        )
+                    } else {
+                        RedditPostView(
+                            article: article,
+                            previousArticleID: nil,
+                            nextArticleID: nil,
+                            onNavigateToPrevious: { _ in },
+                            onNavigateToNext: { _ in }
+                        )
+                    }
+                }
                 // Use the captured navigation context
-                if !navigationContext.isEmpty,
+                else if !navigationContext.isEmpty,
                    let currentIndex = navigationContext.firstIndex(of: articleID) {
                     let previousIndex = currentIndex - 1
                     let nextIndex = currentIndex + 1

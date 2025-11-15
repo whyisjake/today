@@ -100,7 +100,7 @@ struct ArticleDetailSimple: View {
                     // Reddit Comments button (if this is a Reddit post)
                     if article.isRedditPost, let commentsUrl = article.redditCommentsUrl {
                         NavigationLink {
-                            ArticleWebViewSimple(url: URL(string: commentsUrl)!)
+                            RedditCommentsView(commentsUrl: commentsUrl)
                         } label: {
                             Label("Comments", systemImage: "bubble.left.and.bubble.right")
                         }

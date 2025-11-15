@@ -281,8 +281,44 @@ struct TodayView: View {
             }
             .navigationDestination(item: $selectedArticleID) { articleID in
                 if let article = modelContext.model(for: articleID) as? Article {
+                    // For Reddit posts, show combined post + comments view
+                    if article.isRedditPost {
+                        if !navigationContext.isEmpty,
+                           let currentIndex = navigationContext.firstIndex(of: articleID) {
+                            let previousIndex = currentIndex - 1
+                            let nextIndex = currentIndex + 1
+                            let previousArticleID = previousIndex >= 0 ? navigationContext[previousIndex] : nil
+                            let nextArticleID = nextIndex < navigationContext.count ? navigationContext[nextIndex] : nil
+
+                            RedditPostView(
+                                article: article,
+                                previousArticleID: previousArticleID,
+                                nextArticleID: nextArticleID,
+                                onNavigateToPrevious: { prevID in
+                                    Task { @MainActor in
+                                        try? await Task.sleep(nanoseconds: 50_000_000)
+                                        selectedArticleID = prevID
+                                    }
+                                },
+                                onNavigateToNext: { nextID in
+                                    Task { @MainActor in
+                                        try? await Task.sleep(nanoseconds: 50_000_000)
+                                        selectedArticleID = nextID
+                                    }
+                                }
+                            )
+                        } else {
+                            RedditPostView(
+                                article: article,
+                                previousArticleID: nil,
+                                nextArticleID: nil,
+                                onNavigateToPrevious: { _ in },
+                                onNavigateToNext: { _ in }
+                            )
+                        }
+                    }
                     // For articles with minimal content, go directly to web view
-                    if article.hasMinimalContent, let url = URL(string: article.link) {
+                    else if article.hasMinimalContent, let url = URL(string: article.link) {
                         ArticleWebViewSimple(url: url)
                             .onAppear {
                                 // Mark as read
@@ -525,21 +561,6 @@ struct ArticleRowView: View {
                             Text(author)
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
-                        }
-
-                        if let subreddit = article.redditSubreddit {
-                            Text("•")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, 4)
-
-                            HStack(spacing: 2) {
-                                Image(systemName: "bubble.left.and.bubble.right.fill")
-                                    .font(.caption2)
-                                Text("r/\(subreddit)")
-                                    .font(.caption2)
-                            }
-                            .foregroundStyle(.orange)
                         }
                     } else {
                         // For non-Reddit posts, show feed title as before
