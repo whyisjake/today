@@ -636,6 +636,7 @@ struct ZoomableImageView: View {
     @State private var scale: CGFloat = 1.0
     @State private var offset: CGSize = .zero
     @State private var imageSize: CGSize = .zero
+    @State private var lastZoomTime: Date = .distantPast
 
     @GestureState private var gestureScale: CGFloat = 1.0
     @GestureState private var gestureOffset: CGSize = .zero
@@ -697,7 +698,9 @@ struct ZoomableImageView: View {
                 }
 
                 // Calculate offset to keep the pinch center point stationary
-                let anchor = value.startAnchor
+                let anchorUnit = value.startAnchor
+                // Convert UnitPoint (0-1) to actual pixel coordinates
+                let anchor = CGPoint(x: anchorUnit.x * size.width, y: anchorUnit.y * size.height)
                 let imageCenter = CGPoint(x: size.width / 2, y: size.height / 2)
 
                 // Calculate how much to offset to keep the anchor point at the same position
@@ -709,15 +712,21 @@ struct ZoomableImageView: View {
                 let newOffsetX = offset.width * scaleChange - anchorOffsetX * (clampedScale - scale)
                 let newOffsetY = offset.height * scaleChange - anchorOffsetY * (clampedScale - scale)
 
-                withAnimation(.spring(response: 0.3)) {
-                    scale = clampedScale
-                    if scale <= 1.0 {
-                        offset = .zero
-                    } else {
-                        offset = CGSize(width: newOffsetX, height: newOffsetY)
-                        offset = constrainOffset(offset, for: scale, in: size)
-                    }
+                // Add any pan offset that accumulated during the zoom gesture
+                let finalOffsetX = newOffsetX + gestureOffset.width
+                let finalOffsetY = newOffsetY + gestureOffset.height
+
+                // No animation - apply immediately for smoother feel
+                scale = clampedScale
+                if scale <= 1.0 {
+                    offset = .zero
+                } else {
+                    offset = CGSize(width: finalOffsetX, height: finalOffsetY)
+                    offset = constrainOffset(offset, for: scale, in: size)
                 }
+
+                // Mark that a zoom just completed
+                lastZoomTime = Date()
             }
     }
 
@@ -730,6 +739,10 @@ struct ZoomableImageView: View {
                 state = value.translation
             }
             .onEnded { value in
+                // Skip if a zoom just completed (within last 50ms) - zoom already handled offset
+                let timeSinceZoom = Date().timeIntervalSince(lastZoomTime)
+                guard timeSinceZoom > 0.05 else { return }
+
                 // Only apply if we're zoomed in
                 let currentScale = scale * gestureScale
                 guard currentScale > 1.01 else { return }
