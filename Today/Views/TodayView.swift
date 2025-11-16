@@ -215,7 +215,6 @@ struct TodayView: View {
                                     articleID: article.persistentModelID,
                                     context: context
                                 )
-                                print("DEBUG TodayView: Button tapped - created navigationState with \(context.count) articles")
                             } label: {
                                 HStack {
                                     ArticleRowView(article: article, fontOption: fontOption)
@@ -299,16 +298,11 @@ struct TodayView: View {
                 resetToToday()
             }
             .navigationDestination(item: $navigationState) { state in
-                let _ = print("DEBUG TodayView: navigationDestination called")
-                let _ = print("DEBUG TodayView: context count = \(state.context.count)")
-                let _ = print("DEBUG TodayView: articleID = \(state.articleID)")
-
                 if let article = modelContext.model(for: state.articleID) as? Article {
                     // For Reddit posts, show combined post + comments view
                     if article.isRedditPost {
                         if !state.context.isEmpty,
                            let currentIndex = state.context.firstIndex(of: state.articleID) {
-                            let _ = print("DEBUG TodayView: Found article at index \(currentIndex)")
                             let previousIndex = currentIndex - 1
                             let nextIndex = currentIndex + 1
                             let previousArticleID = previousIndex >= 0 ? state.context[previousIndex] : nil
@@ -319,25 +313,20 @@ struct TodayView: View {
                                 previousArticleID: previousArticleID,
                                 nextArticleID: nextArticleID,
                                 onNavigateToPrevious: { prevID in
-                                    print("DEBUG TodayView: onNavigateToPrevious callback called with \(prevID)")
                                     Task { @MainActor in
                                         try? await Task.sleep(nanoseconds: 50_000_000)
-                                        print("DEBUG TodayView: Creating new navigationState for prev article")
                                         navigationState = NavigationState(articleID: prevID, context: state.context)
                                     }
                                 },
                                 onNavigateToNext: { nextID in
-                                    print("DEBUG TodayView: onNavigateToNext callback called with \(nextID)")
                                     Task { @MainActor in
                                         try? await Task.sleep(nanoseconds: 50_000_000)
-                                        print("DEBUG TodayView: Creating new navigationState for next article")
                                         navigationState = NavigationState(articleID: nextID, context: state.context)
                                     }
                                 }
                             )
                             .id(state.articleID)  // Force view refresh when article changes
                         } else {
-                            let _ = print("DEBUG TodayView: navigationContext check failed - using nil IDs")
                             RedditPostView(
                                 article: article,
                                 previousArticleID: nil,
@@ -361,18 +350,14 @@ struct TodayView: View {
                             previousArticleID: previousArticleID,
                             nextArticleID: nextArticleID,
                             onNavigateToPrevious: { prevID in
-                                print("DEBUG TodayView: onNavigateToPrevious callback called with \(prevID)")
                                 Task { @MainActor in
                                     try? await Task.sleep(nanoseconds: 50_000_000)
-                                    print("DEBUG TodayView: Creating new navigationState for prev article")
                                     navigationState = NavigationState(articleID: prevID, context: state.context)
                                 }
                             },
                             onNavigateToNext: { nextID in
-                                print("DEBUG TodayView: onNavigateToNext callback called with \(nextID)")
                                 Task { @MainActor in
                                     try? await Task.sleep(nanoseconds: 50_000_000)
-                                    print("DEBUG TodayView: Creating new navigationState for next article")
                                     navigationState = NavigationState(articleID: nextID, context: state.context)
                                 }
                             }

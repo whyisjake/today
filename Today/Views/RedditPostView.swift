@@ -118,9 +118,7 @@ struct RedditPostView: View {
                 HStack(spacing: 20) {
                     // Previous article button
                     Button {
-                        print("DEBUG: Previous button tapped, prevID: \(String(describing: previousArticleID))")
                         if let prevID = previousArticleID {
-                            print("DEBUG: Calling onNavigateToPrevious")
                             onNavigateToPrevious(prevID)
                         }
                     } label: {
@@ -160,9 +158,7 @@ struct RedditPostView: View {
 
                     // Next article button
                     Button {
-                        print("DEBUG: Next button tapped, nextID: \(String(describing: nextArticleID))")
                         if let nextID = nextArticleID {
-                            print("DEBUG: Calling onNavigateToNext")
                             onNavigateToNext(nextID)
                         }
                     } label: {
@@ -174,9 +170,6 @@ struct RedditPostView: View {
         }
         .toolbar(.hidden, for: .tabBar)
         .onAppear {
-            print("DEBUG: RedditPostView appeared")
-            print("DEBUG: previousArticleID = \(String(describing: previousArticleID))")
-            print("DEBUG: nextArticleID = \(String(describing: nextArticleID))")
             markAsRead()
         }
         .task {
@@ -819,20 +812,14 @@ struct AnimatedMediaView: View {
                 VideoPlayer(player: player)
                     .aspectRatio(contentMode: .fit)
                     .onAppear {
-                        print("DEBUG: VideoPlayer appeared, playing...")
                         player.play()
                     }
             } else {
                 ProgressView()
-                    .onAppear {
-                        print("DEBUG: Still loading player for URL: \(videoUrl)")
-                    }
             }
         }
         .onAppear {
-            print("DEBUG: AnimatedMediaView appeared for URL: \(videoUrl)")
             if let url = URL(string: videoUrl) {
-                print("DEBUG: Creating AVPlayer with URL: \(url)")
                 let player = AVPlayer(url: url)
                 player.actionAtItemEnd = .none
 
@@ -842,19 +829,14 @@ struct AnimatedMediaView: View {
                     object: player.currentItem,
                     queue: .main
                 ) { _ in
-                    print("DEBUG: Video ended, looping...")
                     player.seek(to: .zero)
                     player.play()
                 }
 
                 self.player = player
-                print("DEBUG: Player created and set")
-            } else {
-                print("DEBUG: Failed to create URL from: \(videoUrl)")
             }
         }
         .onDisappear {
-            print("DEBUG: AnimatedMediaView disappeared")
             player?.pause()
             player = nil
         }

@@ -779,7 +779,6 @@ struct FeedArticlesView: View {
                                 articleID: article.persistentModelID,
                                 context: context
                             )
-                            print("DEBUG FeedArticlesView: Button tapped - created navigationState with \(context.count) articles")
                         } label: {
                             HStack {
                                 ArticleRowView(article: article, fontOption: fontOption)
@@ -834,9 +833,6 @@ struct FeedArticlesView: View {
             }
         }
         .navigationDestination(item: $navigationState) { state in
-            let _ = print("DEBUG FeedArticlesView: navigationDestination called")
-            let _ = print("DEBUG FeedArticlesView: context count = \(state.context.count)")
-
             if let article = modelContext.model(for: state.articleID) as? Article {
                 // For Reddit posts, show combined post + comments view
                 if article.isRedditPost {
@@ -987,7 +983,24 @@ struct FeedNewsletterView: View {
                                     if let article = item.article {
                                         // Regular newsletter item with article link
                                         NavigationLink {
-                                            ArticleDetailSimple(article: article, previousArticleID: nil, nextArticleID: nil, onNavigateToPrevious: { _ in }, onNavigateToNext: { _ in })
+                                            // Show RedditPostView for Reddit posts, ArticleDetailSimple for regular articles
+                                            if article.isRedditPost {
+                                                RedditPostView(
+                                                    article: article,
+                                                    previousArticleID: nil,
+                                                    nextArticleID: nil,
+                                                    onNavigateToPrevious: { _ in },
+                                                    onNavigateToNext: { _ in }
+                                                )
+                                            } else {
+                                                ArticleDetailSimple(
+                                                    article: article,
+                                                    previousArticleID: nil,
+                                                    nextArticleID: nil,
+                                                    onNavigateToPrevious: { _ in },
+                                                    onNavigateToNext: { _ in }
+                                                )
+                                            }
                                         } label: {
                                             VStack(alignment: .leading, spacing: 8) {
                                                 // Summary text
