@@ -17,7 +17,7 @@ struct FeedListView: View {
     @State private var feedType: FeedType = .rss
     @State private var newFeedURL = ""
     @State private var subredditName = ""
-    @State private var newFeedCategory = "general"
+    @State private var newFeedCategory = "General"
     @State private var customCategory = ""
     @State private var useCustomCategory = false
     @State private var isAddingFeed = false
@@ -34,6 +34,15 @@ struct FeedListView: View {
         Binding(
             get: { editingFeedID != nil },
             set: { if !$0 { editingFeedID = nil } }
+        )
+    }
+
+    @State private var newsletterFeedID: PersistentIdentifier?
+
+    private var showingNewsletterSheet: Binding<Bool> {
+        Binding(
+            get: { newsletterFeedID != nil },
+            set: { if !$0 { newsletterFeedID = nil } }
         )
     }
 
@@ -66,6 +75,9 @@ struct FeedListView: View {
                 .sheet(isPresented: showingEditFeed) {
                     editFeedSheet
                 }
+                .sheet(isPresented: showingNewsletterSheet) {
+                    newsletterSheet
+                }
                 .alert("OPML Exported", isPresented: $showingExportConfirmation) {
                     Button("OK", role: .cancel) { }
                 } message: {
@@ -95,6 +107,14 @@ struct FeedListView: View {
         }
         .swipeActions(edge: .trailing) {
             feedSwipeActions(for: feed)
+        }
+        .swipeActions(edge: .leading) {
+            Button {
+                newsletterFeedID = feed.id
+            } label: {
+                Label("Newsletter", systemImage: "newspaper")
+            }
+            .tint(.orange)
         }
     }
 
@@ -266,12 +286,12 @@ struct FeedListView: View {
                             .textInputAutocapitalization(.never)
                     } else {
                         Picker("Category", selection: $newFeedCategory) {
-                            Text("General").tag("general")
-                            Text("Work").tag("work")
-                            Text("Social").tag("social")
-                            Text("Tech").tag("tech")
-                            Text("News").tag("news")
-                            Text("Politics").tag("politics")
+                            Text("General").tag("General")
+                            Text("Work").tag("Work")
+                            Text("Social").tag("Social")
+                            Text("Tech").tag("Tech")
+                            Text("News").tag("News")
+                            Text("Politics").tag("Politics")
                         }
                     }
                 } header: {
@@ -381,6 +401,16 @@ struct FeedListView: View {
            let feed = feeds.first(where: { $0.id == feedID }) {
             NavigationStack {
                 EditFeedView(feed: feed, modelContext: modelContext)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var newsletterSheet: some View {
+        if let feedID = newsletterFeedID,
+           let feed = feeds.first(where: { $0.id == feedID }) {
+            NavigationStack {
+                FeedNewsletterView(feed: feed)
             }
         }
     }
@@ -605,7 +635,7 @@ struct EditFeedView: View {
     @State private var url: String
     @State private var category: String
     @State private var useCustomCategory: Bool
-    @State private var predefinedCategories = ["general", "work", "social", "tech", "news", "politics"]
+    @State private var predefinedCategories = ["General", "Work", "Social", "Tech", "News", "Politics"]
 
     init(feed: Feed, modelContext: ModelContext) {
         self.feed = feed
@@ -614,7 +644,7 @@ struct EditFeedView: View {
         _url = State(initialValue: feed.url)
         _category = State(initialValue: feed.category)
         // Check if current category is a predefined one
-        let isPredefined = ["general", "work", "social", "tech", "news", "politics"].contains(feed.category)
+        let isPredefined = ["General", "Work", "Social", "Tech", "News", "Politics"].contains(feed.category)
         _useCustomCategory = State(initialValue: !isPredefined)
     }
 
@@ -638,12 +668,12 @@ struct EditFeedView: View {
                         .textInputAutocapitalization(.never)
                 } else {
                     Picker("Category", selection: $category) {
-                        Text("General").tag("general")
-                        Text("Work").tag("work")
-                        Text("Social").tag("social")
-                        Text("Tech").tag("tech")
-                        Text("News").tag("news")
-                        Text("Politics").tag("politics")
+                        Text("General").tag("General")
+                        Text("Work").tag("Work")
+                        Text("Social").tag("Social")
+                        Text("Tech").tag("Tech")
+                        Text("News").tag("News")
+                        Text("Politics").tag("Politics")
                     }
                 }
             } header: {
@@ -888,5 +918,269 @@ struct FeedArticlesView: View {
             article.isRead = true
         }
         try? modelContext.save()
+    }
+}
+
+// MARK: - Feed Newsletter View
+struct FeedNewsletterView: View {
+    let feed: Feed
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \Article.publishedDate, order: .reverse) private var allArticles: [Article]
+
+    @State private var isGenerating = false
+    @State private var newsletterMessage: ChatMessage?
+
+    private var feedArticles: [Article] {
+        // Get articles from this feed, prioritizing unread then by date
+        let feedArticles = allArticles.filter { article in
+            article.feed?.id == feed.id
+        }
+
+        // Sort: unread first, then by published date (newest first)
+        let sortedArticles = feedArticles.sorted { a, b in
+            if a.isRead != b.isRead {
+                return !a.isRead  // Unread articles first
+            }
+            return a.publishedDate > b.publishedDate  // Then newest first
+        }
+
+        // Limit to most recent 15 articles to avoid context window issues
+        return Array(sortedArticles.prefix(15))
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 20) {
+                if let message = newsletterMessage {
+                    // Show newsletter
+                    VStack(alignment: .leading, spacing: 16) {
+                        // Header
+                        if message.isTyping {
+                            TypingIndicator()
+                                .padding(12)
+                                .background(Color.gray.opacity(0.2))
+                                .cornerRadius(16)
+                        } else {
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(parseMarkdown(message.content))
+                                    .padding(16)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .textSelection(.enabled)
+
+                                Divider()
+                                    .background(Color.accentColor)
+                                    .frame(height: 2)
+                            }
+                            .background(Color.accentColor.opacity(0.1))
+                            .cornerRadius(16)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(Color.accentColor.opacity(0.3), lineWidth: 1)
+                            )
+                        }
+
+                        // Newsletter items
+                        if let items = message.newsletterItems, !items.isEmpty {
+                            VStack(alignment: .leading, spacing: 12) {
+                                ForEach(items) { item in
+                                    if let article = item.article {
+                                        // Regular newsletter item with article link
+                                        NavigationLink {
+                                            ArticleDetailSimple(article: article, previousArticleID: nil, nextArticleID: nil, onNavigateToPrevious: { _ in }, onNavigateToNext: { _ in })
+                                        } label: {
+                                            VStack(alignment: .leading, spacing: 8) {
+                                                // Summary text
+                                                Text(parseMarkdown(item.summary))
+                                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                                    .textSelection(.enabled)
+                                                    .foregroundStyle(.primary)
+
+                                                Divider()
+
+                                                // Article link
+                                                HStack(spacing: 8) {
+                                                    Image(systemName: "arrow.right.circle.fill")
+                                                        .font(.subheadline)
+                                                        .foregroundStyle(Color.accentColor)
+
+                                                    VStack(alignment: .leading, spacing: 2) {
+                                                        Text("Read full article")
+                                                            .font(.subheadline)
+                                                            .fontWeight(.medium)
+
+                                                        if let feedTitle = article.feed?.title {
+                                                            Text(feedTitle)
+                                                                .font(.caption2)
+                                                                .foregroundStyle(.secondary)
+                                                        }
+                                                    }
+
+                                                    Spacer()
+
+                                                    Image(systemName: "chevron.right")
+                                                        .font(.caption)
+                                                        .foregroundStyle(.secondary)
+                                                }
+                                                .foregroundStyle(Color.accentColor)
+                                            }
+                                            .padding(12)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .background(Color.gray.opacity(0.1))
+                                            .cornerRadius(12)
+                                        }
+                                        .buttonStyle(.plain)
+                                    } else {
+                                        // Closing message
+                                        VStack(alignment: .leading, spacing: 8) {
+                                            Text(parseMarkdown(item.summary))
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                                .textSelection(.enabled)
+                                                .foregroundStyle(.primary)
+                                        }
+                                        .padding(12)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .background(Color.gray.opacity(0.1))
+                                        .cornerRadius(12)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .padding()
+                } else {
+                    // Welcome screen
+                    VStack(spacing: 20) {
+                        Image(systemName: "newspaper")
+                            .font(.system(size: 60))
+                            .foregroundStyle(Color.accentColor)
+
+                        Text("Feed Newsletter")
+                            .font(.title2)
+                            .fontWeight(.bold)
+
+                        Text("Generate a curated newsletter from \(feed.title)")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+
+                        if feedArticles.isEmpty {
+                            Text("No recent articles from this feed")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .padding()
+                        } else {
+                            Button {
+                                generateNewsletter()
+                            } label: {
+                                VStack(spacing: 8) {
+                                    Image(systemName: "newspaper.fill")
+                                        .font(.title2)
+                                    Text("Generate Newsletter")
+                                        .font(.headline)
+                                    Text("\(feedArticles.count) recent articles")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.accentColor)
+                                .foregroundStyle(.white)
+                                .cornerRadius(12)
+                            }
+                            .disabled(isGenerating)
+                            .padding(.horizontal)
+                        }
+                    }
+                    .padding()
+                    .frame(maxHeight: .infinity)
+                }
+            }
+        }
+        .navigationTitle(feed.title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Done") {
+                    dismiss()
+                }
+            }
+        }
+        .overlay {
+            if isGenerating && newsletterMessage == nil {
+                ProgressView("Generating newsletter...")
+                    .padding()
+                    .background(.regularMaterial)
+                    .cornerRadius(10)
+            }
+        }
+    }
+
+    private func generateNewsletter() {
+        isGenerating = true
+
+        // Create message immediately with typing indicator
+        let message = ChatMessage(content: "", isUser: false, isTyping: true, isNewsletter: true)
+        newsletterMessage = message
+
+        Task {
+            // Use streaming on-device AI if available (iOS 18+)
+            if #available(iOS 18.0, *), OnDeviceAIService.shared.isAvailable {
+                do {
+                    var items: [NewsletterItem] = []
+
+                    for try await event in OnDeviceAIService.shared.generateNewsletterSummaryStream(articles: feedArticles) {
+                        await MainActor.run {
+                            switch event {
+                            case .header(let header):
+                                // Show header and stop typing indicator
+                                message.isTyping = false
+                                message.content = header
+
+                            case .item(let itemData):
+                                // Add item as it's generated
+                                items.append(NewsletterItem(summary: itemData.summary, article: itemData.article))
+                                message.newsletterItems = items
+
+                            case .completed:
+                                // All done
+                                break
+                            }
+                        }
+                    }
+                } catch {
+                    // Fallback to basic service if on-device AI fails
+                    await MainActor.run {
+                        message.isTyping = false
+                    }
+                    let (text, _) = await AIService.shared.generateNewsletterSummary(articles: feedArticles)
+                    await MainActor.run {
+                        message.content = text
+                        message.newsletterItems = nil
+                    }
+                }
+            } else {
+                // Use basic service for older iOS versions
+                let (text, _) = await AIService.shared.generateNewsletterSummary(articles: feedArticles)
+                await MainActor.run {
+                    message.isTyping = false
+                    message.content = text
+                    message.newsletterItems = nil
+                }
+            }
+
+            await MainActor.run {
+                isGenerating = false
+            }
+        }
+    }
+
+    private func parseMarkdown(_ text: String) -> AttributedString {
+        do {
+            return try AttributedString(markdown: text, options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace))
+        } catch {
+            return AttributedString(text)
+        }
     }
 }
