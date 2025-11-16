@@ -154,7 +154,7 @@ struct SettingsView: View {
                     }
 
                     Button {
-                        if let url = URL(string: "https://github.com/jakespurlock") {
+                        if let url = URL(string: "https://github.com/whyisjake") {
                             openURL(url)
                         }
                     } label: {

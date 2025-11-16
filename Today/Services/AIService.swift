@@ -429,12 +429,19 @@ class AIService {
     /// Public wrapper to generate AI-powered intro (for use by other services)
     @available(iOS 26.0, *)
     func generateIntro(for category: String, articleTitle: String, articleContent: String = "") async -> String? {
-        guard isAppleIntelligenceAvailable, let session = session else {
+        guard isAppleIntelligenceAvailable else {
             return nil
         }
 
+        // Create a fresh session for this request to avoid context accumulation
+        #if canImport(FoundationModels)
+        let freshSession = LanguageModelSession()
+        #else
+        return nil
+        #endif
+
         do {
-            return try await generateNewsletterIntro(for: category, articleTitle: articleTitle, articleContent: articleContent, session: session)
+            return try await generateNewsletterIntro(for: category, articleTitle: articleTitle, articleContent: articleContent, session: freshSession)
         } catch {
             print("⚠️ AI intro generation failed: \(error.localizedDescription)")
 
@@ -446,7 +453,7 @@ class AIService {
                 print("   Content snippet: \(String(articleContent.prefix(100)))")
 
                 // Export feedback attachment
-                let feedbackAttachment = session.logFeedbackAttachment(
+                let feedbackAttachment = freshSession.logFeedbackAttachment(
                     sentiment: .negative,
                     issues: []
                 )
@@ -462,9 +469,16 @@ class AIService {
     /// Returns (title, intro) tuple or nil if AI is unavailable
     @available(iOS 26.0, *)
     func generateNewsletterHeader(articles: [Article]) async -> (String, String)? {
-        guard isAppleIntelligenceAvailable, let session = session else {
+        guard isAppleIntelligenceAvailable else {
             return nil
         }
+
+        // Create a fresh session for this request to avoid context accumulation
+        #if canImport(FoundationModels)
+        let freshSession = LanguageModelSession()
+        #else
+        return nil
+        #endif
 
         do {
             // Extract themes from top articles for context (limit to avoid token overflow)
@@ -501,7 +515,7 @@ class AIService {
             INTRO: [paragraph]
             """
 
-            let response = try await session.respond(to: prompt)
+            let response = try await freshSession.respond(to: prompt)
             var content = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
 
             print("📰 AI Response for header:\n\(content)")
@@ -554,7 +568,7 @@ class AIService {
                 print("   Articles: \(articles.prefix(3).map { $0.title }.joined(separator: "; "))")
 
                 // Export feedback attachment
-                let feedbackAttachment = session.logFeedbackAttachment(
+                let feedbackAttachment = freshSession.logFeedbackAttachment(
                     sentiment: .negative,
                     issues: []
                 )

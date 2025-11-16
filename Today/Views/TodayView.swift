@@ -13,7 +13,7 @@ struct TodayView: View {
 
     @Query(sort: \Article.publishedDate, order: .reverse) private var allArticles: [Article]
 
-    @State private var selectedCategory: String = "all"
+    @State private var selectedCategory: String = "All"
     @State private var searchText = ""
     @State private var hideReadArticles = false
     @State private var showFavoritesOnly = false
@@ -30,9 +30,19 @@ struct TodayView: View {
     }
 
     // Cache expensive computations
+    // Only show categories that have articles in the current time window
     private var categories: [String] {
-        let feedCategories = Set(allArticles.compactMap { $0.feed?.category })
-        return ["all"] + feedCategories.sorted()
+        // Apply time filter (same as filteredArticles)
+        let now = Date.now
+        let startOfToday = Calendar.current.startOfDay(for: now)
+        let cutoffDate = Calendar.current.date(byAdding: .day, value: -daysToLoad, to: startOfToday)!
+        let timeFilteredArticles = allArticles.filter { $0.publishedDate >= cutoffDate }
+
+        // Get all unique categories from articles in the time window
+        // This automatically excludes empty categories
+        let feedCategories = Set(timeFilteredArticles.compactMap { $0.feed?.category })
+
+        return ["All"] + feedCategories.sorted()
     }
 
     // Count unread/favorites in the current time window and category
@@ -47,7 +57,7 @@ struct TodayView: View {
         articles = articles.filter { $0.publishedDate >= cutoffDate }
 
         // Apply same category filter as filteredArticles
-        if selectedCategory != "all" {
+        if selectedCategory != "All" {
             articles = articles.filter { $0.feed?.category == selectedCategory }
         }
 
@@ -64,7 +74,7 @@ struct TodayView: View {
         articles = articles.filter { $0.publishedDate >= cutoffDate }
 
         // Apply same category filter as filteredArticles
-        if selectedCategory != "all" {
+        if selectedCategory != "All" {
             articles = articles.filter { $0.feed?.category == selectedCategory }
         }
 
@@ -95,7 +105,7 @@ struct TodayView: View {
         articles = articles.filter { $0.publishedDate >= cutoffDate }
 
         // Filter by category
-        if selectedCategory != "all" {
+        if selectedCategory != "All" {
             articles = articles.filter { $0.feed?.category == selectedCategory }
         }
 
@@ -153,7 +163,7 @@ struct TodayView: View {
                                 Button {
                                     selectedCategory = category
                                 } label: {
-                                    Text(category.capitalized)
+                                    Text(category)
                                         .font(.subheadline)
                                         .padding(.horizontal, 16)
                                         .padding(.vertical, 8)
@@ -432,7 +442,7 @@ struct TodayView: View {
                         Divider()
 
                         // Show filtered counts with total in parentheses
-                        if daysToLoad > 1 || selectedCategory != "all" {
+                        if daysToLoad > 1 || selectedCategory != "All" {
                             Text("\(unreadCount) unread (\(totalUnreadCount) total) • \(favoritesCount) favorites (\(totalFavoritesCount) total)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -456,7 +466,7 @@ struct TodayView: View {
                 }
             }
             .confirmationDialog(
-                selectedCategory == "all"
+                selectedCategory == "All"
                     ? "Mark all \(unreadCount) articles as read?"
                     : "Mark all \(unreadCount) articles in \(selectedCategory) as read?",
                 isPresented: $showMarkAllReadConfirmation,
@@ -495,8 +505,8 @@ struct TodayView: View {
     private func markAllAsRead() {
         var articlesToMark = allArticles.filter { !$0.isRead }
 
-        // Filter by category if not "all"
-        if selectedCategory != "all" {
+        // Filter by category if not "All"
+        if selectedCategory != "All" {
             articlesToMark = articlesToMark.filter { $0.feed?.category == selectedCategory }
         }
 
