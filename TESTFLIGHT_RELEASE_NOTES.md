@@ -1,11 +1,21 @@
 # TestFlight Beta Release Notes
 
-## Version 1.3.0 (Build 6)
-**Release Date:** November 1, 2025
+## Version 1.4.0 (Build 7)
+**Release Date:** November 15, 2025
 
 ---
 
 ## 🎉 What's New
+
+### Reddit RSS Support
+**Add Reddit feeds directly to your reader!**
+- **Simplified feed picker** - Choose between RSS Feed or Reddit when adding new feeds
+- **Just enter the subreddit name** - No need for full URLs (e.g., just type "politics" not "r/politics")
+- **Animated GIF/video playback** - Reddit posts with animated content play automatically
+- **Gallery support** - Browse through multi-image Reddit posts with zoom and pan gestures
+- **Comments view** - Read Reddit comments directly in the app
+- **Author display** - See post authors in list view instead of feed names
+- **Newsletter integration** - Reddit posts work seamlessly in generated newsletters
 
 ### Feed Navigation Improvements
 **Tap feeds to view their articles!**
@@ -29,6 +39,16 @@
 ---
 
 ## 🧪 What to Test
+
+### Priority: Reddit RSS Support
+- [ ] **Add a Reddit feed** → Tap "+" → Select "Reddit" → Enter subreddit name (e.g., "technology")
+- [ ] **View Reddit posts** → Should show with author name instead of feed title
+- [ ] **Open a Reddit post** → Should see post content, images/videos, and comments button
+- [ ] **Animated GIFs** → Should auto-play and loop smoothly
+- [ ] **Gallery posts** → Swipe through multiple images, tap to zoom/pan
+- [ ] **Comments** → Tap comments button → Should load and display Reddit comments
+- [ ] **Newsletter with Reddit** → Generate newsletter from Reddit feed → Tap post → Should open in Reddit view
+- [ ] **Navigation** → Use Previous/Next buttons to navigate between posts
 
 ### Priority: Feed Navigation
 - [ ] **Tap a feed** in the Feeds tab → Should open that feed's articles
@@ -220,7 +240,7 @@ Happy testing! 🚀
 ---
 
 **Build Info:**
-- Version: 1.3.0
-- Build: [Will be set during archive]
+- Version: 1.4.0
+- Build: 7
 - Branch: main
 - Commit: [Latest]
