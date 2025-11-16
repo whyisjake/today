@@ -16,7 +16,7 @@ A modern, privacy-focused RSS reader for iOS with AI-powered content summarizati
 - 🔍 **Smart Filtering** - Filter by category, search articles, and mark as read/unread
 - ⭐ **Favorites** - Save important articles for later
 - 🎨 **Typography** - WordPress-style smart quotes and em/en dashes for beautiful text rendering
-- 🔴 **Reddit RSS Support** - Special handling for Reddit feeds with direct comment links and subreddit badges
+- 🔴 **Reddit RSS Support** - Native Reddit integration with JSON API, animated GIF/video playback, gallery images with zoom/pan, comments view, and author display
 
 ### User Experience
 - 🌓 **Dark Mode Support** - Automatic light/dark theme with manual override
@@ -125,10 +125,14 @@ For detailed release instructions, see [RELEASE_PROCESS.md](RELEASE_PROCESS.md).
 Quick version bump:
 ```bash
 # Update marketing version
-xcrun agvtool new-marketing-version 1.3
+xcrun agvtool new-marketing-version 1.4.0
 
 # Increment build number
 xcrun agvtool next-version -all
+
+# Note: agvtool may only update Info.plist
+# Verify and update project.pbxproj manually if needed:
+grep "MARKETING_VERSION = " Today.xcodeproj/project.pbxproj
 ```
 
 ## Contributing
@@ -224,6 +228,17 @@ Today respects your privacy:
 - ✅ AI processing happens on-device (when using Apple Intelligence)
 
 ## Version History
+
+### v1.4.0 (Build 7) - November 15, 2025
+**Reddit RSS Support**
+- 🔴 **Native Reddit integration** - Add subreddits as feeds using simple names (e.g., "technology")
+- 🎬 **Animated GIF/video playback** - Reddit posts with animated content play automatically
+- 🖼️ **Gallery support** - Swipe through multi-image posts with pinch-to-zoom and pan gestures
+- 💬 **Comments view** - Read Reddit comments directly in the app with proper threading
+- 👤 **Author display** - See post authors in list view instead of feed names
+- 📰 **Newsletter integration** - Reddit posts work seamlessly in AI-generated newsletters
+- 🎯 **Simplified feed picker** - Choose between RSS Feed or Reddit when adding new feeds
+- 🔄 **Previous/Next navigation** - Navigate between Reddit posts and articles
 
 ### v1.3.0 (Build 6) - November 1, 2025
 **Feed Navigation & Category Improvements**
