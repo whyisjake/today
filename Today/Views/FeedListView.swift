@@ -14,12 +14,19 @@ struct FeedListView: View {
     @StateObject private var feedManager: FeedManager
 
     @State private var showingAddFeed = false
+    @State private var feedType: FeedType = .rss
     @State private var newFeedURL = ""
+    @State private var subredditName = ""
     @State private var newFeedCategory = "general"
     @State private var customCategory = ""
     @State private var useCustomCategory = false
     @State private var isAddingFeed = false
     @State private var addFeedError: String?
+
+    enum FeedType: String, CaseIterable {
+        case rss = "RSS Feed"
+        case reddit = "Reddit"
+    }
 
     @State private var editingFeedID: PersistentIdentifier?
 
@@ -172,10 +179,35 @@ struct FeedListView: View {
             .sheet(isPresented: $showingAddFeed) {
                 NavigationStack {
                     Form {
+                        Section("Feed Type") {
+                            Picker("Type", selection: $feedType) {
+                                ForEach(FeedType.allCases, id: \.self) { type in
+                                    Text(type.rawValue).tag(type)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                        }
+
                         Section("Feed Details") {
-                            TextField("RSS Feed URL", text: $newFeedURL)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
+                            if feedType == .rss {
+                                TextField("RSS Feed URL", text: $newFeedURL)
+                                    .textInputAutocapitalization(.never)
+                                    .autocorrectionDisabled()
+                                    .keyboardType(.URL)
+                            } else {
+                                HStack {
+                                    Text("r/")
+                                        .foregroundStyle(.secondary)
+                                    TextField("Subreddit Name", text: $subredditName)
+                                        .textInputAutocapitalization(.never)
+                                        .autocorrectionDisabled()
+                                }
+                            }
+                        } footer: {
+                            if feedType == .reddit {
+                                Text("Enter the subreddit name without 'r/' (e.g., 'politics', 'technology')")
+                                    .font(.caption)
+                            }
                         }
 
                         Section {
@@ -212,7 +244,7 @@ struct FeedListView: View {
                             }
                         }
                     }
-                    .navigationTitle("Add RSS Feed")
+                    .navigationTitle(feedType == .rss ? "Add RSS Feed" : "Add Reddit Feed")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
@@ -226,7 +258,7 @@ struct FeedListView: View {
                             Button("Add") {
                                 addFeed()
                             }
-                            .disabled(newFeedURL.isEmpty || isAddingFeed || (useCustomCategory && customCategory.isEmpty))
+                            .disabled(isFieldsInvalid() || isAddingFeed)
                         }
                     }
                     .overlay {
@@ -313,13 +345,35 @@ struct FeedListView: View {
         Task {
             do {
                 let category = useCustomCategory ? customCategory : newFeedCategory
-                _ = try await feedManager.addFeed(url: newFeedURL, category: category)
+
+                // Construct the URL based on feed type
+                let feedURL: String
+                if feedType == .reddit {
+                    // Clean up the subreddit name (remove any leading r/ or /)
+                    let cleanSubreddit = subredditName
+                        .trimmingCharacters(in: .whitespaces)
+                        .replacingOccurrences(of: "^r/", with: "", options: .regularExpression)
+                        .replacingOccurrences(of: "^/", with: "", options: .regularExpression)
+                    feedURL = "https://www.reddit.com/r/\(cleanSubreddit)/.json"
+                } else {
+                    feedURL = newFeedURL
+                }
+
+                _ = try await feedManager.addFeed(url: feedURL, category: category)
                 showingAddFeed = false
                 resetAddFeedForm()
             } catch {
                 addFeedError = error.localizedDescription
             }
             isAddingFeed = false
+        }
+    }
+
+    private func isFieldsInvalid() -> Bool {
+        if feedType == .rss {
+            return newFeedURL.isEmpty || (useCustomCategory && customCategory.isEmpty)
+        } else {
+            return subredditName.isEmpty || (useCustomCategory && customCategory.isEmpty)
         }
     }
 
@@ -332,7 +386,9 @@ struct FeedListView: View {
     }
 
     private func resetAddFeedForm() {
+        feedType = .rss
         newFeedURL = ""
+        subredditName = ""
         newFeedCategory = "general"
         customCategory = ""
         useCustomCategory = false
