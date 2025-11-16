@@ -17,12 +17,17 @@ struct TodayView: View {
     @State private var searchText = ""
     @State private var hideReadArticles = false
     @State private var showFavoritesOnly = false
-    @State private var selectedArticleID: PersistentIdentifier?
+    @State private var navigationState: NavigationState?
     @State private var isRefreshing = false
     @State private var showMarkAllReadConfirmation = false
     @State private var daysToLoad = 1 // Start with 1 day (today)
-    @State private var navigationContext: [PersistentIdentifier] = [] // Captured list for navigation
     @AppStorage("fontOption") private var fontOption: FontOption = .serif
+
+    // Navigation state that bundles article ID with context
+    struct NavigationState: Hashable {
+        let articleID: PersistentIdentifier
+        let context: [PersistentIdentifier]
+    }
 
     // Cache expensive computations
     // Only show categories that have articles in the current time window
@@ -205,8 +210,11 @@ struct TodayView: View {
                         ForEach(filteredArticles, id: \.persistentModelID) { article in
                             Button {
                                 // Capture the navigation context when an article is selected
-                                navigationContext = filteredArticles.map { $0.persistentModelID }
-                                selectedArticleID = article.persistentModelID
+                                let context = filteredArticles.map { $0.persistentModelID }
+                                navigationState = NavigationState(
+                                    articleID: article.persistentModelID,
+                                    context: context
+                                )
                             } label: {
                                 HStack {
                                     ArticleRowView(article: article, fontOption: fontOption)
@@ -289,47 +297,37 @@ struct TodayView: View {
             .onChange(of: showFavoritesOnly) { _, _ in
                 resetToToday()
             }
-            .navigationDestination(item: $selectedArticleID) { articleID in
-                if let article = modelContext.model(for: articleID) as? Article {
-                    // For articles with minimal content, go directly to web view
-                    if article.hasMinimalContent, let url = URL(string: article.link) {
-                        ArticleWebViewSimple(url: url)
-                            .onAppear {
-                                // Mark as read
-                                if !article.isRead {
-                                    article.isRead = true
-                                    try? modelContext.save()
-                                }
-                            }
-                    } else {
-                        // Show in-app article detail for articles with substantial content
-                        // Use the captured navigation context (stable across view updates)
-                        if !navigationContext.isEmpty,
-                           let currentIndex = navigationContext.firstIndex(of: articleID) {
+            .navigationDestination(item: $navigationState) { state in
+                if let article = modelContext.model(for: state.articleID) as? Article {
+                    // For Reddit posts, show combined post + comments view
+                    if article.isRedditPost {
+                        if !state.context.isEmpty,
+                           let currentIndex = state.context.firstIndex(of: state.articleID) {
                             let previousIndex = currentIndex - 1
                             let nextIndex = currentIndex + 1
-                            let previousArticleID = previousIndex >= 0 ? navigationContext[previousIndex] : nil
-                            let nextArticleID = nextIndex < navigationContext.count ? navigationContext[nextIndex] : nil
+                            let previousArticleID = previousIndex >= 0 ? state.context[previousIndex] : nil
+                            let nextArticleID = nextIndex < state.context.count ? state.context[nextIndex] : nil
 
-                            ArticleDetailSimple(
+                            RedditPostView(
                                 article: article,
                                 previousArticleID: previousArticleID,
                                 nextArticleID: nextArticleID,
                                 onNavigateToPrevious: { prevID in
                                     Task { @MainActor in
                                         try? await Task.sleep(nanoseconds: 50_000_000)
-                                        selectedArticleID = prevID
+                                        navigationState = NavigationState(articleID: prevID, context: state.context)
                                     }
                                 },
                                 onNavigateToNext: { nextID in
                                     Task { @MainActor in
                                         try? await Task.sleep(nanoseconds: 50_000_000)
-                                        selectedArticleID = nextID
+                                        navigationState = NavigationState(articleID: nextID, context: state.context)
                                     }
                                 }
                             )
+                            .id(state.articleID)  // Force view refresh when article changes
                         } else {
-                            ArticleDetailSimple(
+                            RedditPostView(
                                 article: article,
                                 previousArticleID: nil,
                                 nextArticleID: nil,
@@ -337,6 +335,41 @@ struct TodayView: View {
                                 onNavigateToNext: { _ in }
                             )
                         }
+                    }
+                    // For all other articles, show in-app article detail
+                    // Use the captured navigation context (stable across view updates)
+                    else if !state.context.isEmpty,
+                       let currentIndex = state.context.firstIndex(of: state.articleID) {
+                        let previousIndex = currentIndex - 1
+                        let nextIndex = currentIndex + 1
+                        let previousArticleID = previousIndex >= 0 ? state.context[previousIndex] : nil
+                        let nextArticleID = nextIndex < state.context.count ? state.context[nextIndex] : nil
+
+                        ArticleDetailSimple(
+                            article: article,
+                            previousArticleID: previousArticleID,
+                            nextArticleID: nextArticleID,
+                            onNavigateToPrevious: { prevID in
+                                Task { @MainActor in
+                                    try? await Task.sleep(nanoseconds: 50_000_000)
+                                    navigationState = NavigationState(articleID: prevID, context: state.context)
+                                }
+                            },
+                            onNavigateToNext: { nextID in
+                                Task { @MainActor in
+                                    try? await Task.sleep(nanoseconds: 50_000_000)
+                                    navigationState = NavigationState(articleID: nextID, context: state.context)
+                                }
+                            }
+                        )
+                    } else {
+                        ArticleDetailSimple(
+                            article: article,
+                            previousArticleID: nil,
+                            nextArticleID: nil,
+                            onNavigateToPrevious: { _ in },
+                            onNavigateToNext: { _ in }
+                        )
                     }
                 }
             }
@@ -524,19 +557,34 @@ struct ArticleRowView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
 
-                    if let feedTitle = article.feed?.title {
-                        Text("•")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 4)
+                    // For Reddit posts, show author instead of feed title (since feed title is in header)
+                    if article.isRedditPost {
+                        if let author = article.author {
+                            Text("•")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 4)
 
-                        Text(feedTitle)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            Text(author)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    } else {
+                        // For non-Reddit posts, show feed title as before
+                        if let feedTitle = article.feed?.title {
+                            Text("•")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 4)
+
+                            Text(feedTitle)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
                     }
 
                     Spacer()
-                    if article.hasMinimalContent {
+                    if article.hasMinimalContent && !article.isRedditPost {
                         Image(systemName: "arrow.up.forward.square")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
@@ -579,7 +627,6 @@ struct ArticleRowView: View {
                 }
             }
         }
-        .padding(.vertical, 4)
     }
 }
 

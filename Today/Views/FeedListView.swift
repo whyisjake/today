@@ -14,12 +14,19 @@ struct FeedListView: View {
     @StateObject private var feedManager: FeedManager
 
     @State private var showingAddFeed = false
+    @State private var feedType: FeedType = .rss
     @State private var newFeedURL = ""
+    @State private var subredditName = ""
     @State private var newFeedCategory = "General"
     @State private var customCategory = ""
     @State private var useCustomCategory = false
     @State private var isAddingFeed = false
     @State private var addFeedError: String?
+
+    enum FeedType: String, CaseIterable {
+        case rss = "RSS Feed"
+        case reddit = "Reddit"
+    }
 
     @State private var editingFeedID: PersistentIdentifier?
 
@@ -51,282 +58,376 @@ struct FeedListView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                ForEach(feeds) { feed in
-                    NavigationLink {
-                        FeedArticlesView(feed: feed)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text(feed.title)
-                                    .font(.headline)
-                                Spacer()
-                                if let unreadCount = feed.articles?.filter({ !$0.isRead }).count, unreadCount > 0 {
-                                    Text("\(unreadCount)")
-                                        .font(.caption)
-                                        .fontWeight(.bold)
-                                        .foregroundStyle(.white)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 2)
-                                        .background(Color.accentColor)
-                                        .cornerRadius(10)
-                                }
-                            }
-                            Text(feed.url)
-                                .font(.caption)
+            feedListContent
+                .navigationTitle("RSS Feeds")
+                .toolbar {
+                    toolbarContent
+                }
+                .overlay {
+                    syncingOverlay
+                }
+                .sheet(isPresented: $showingAddFeed) {
+                    addFeedSheet
+                }
+                .sheet(isPresented: $showingImportOPML) {
+                    importOPMLSheet
+                }
+                .sheet(isPresented: showingEditFeed) {
+                    editFeedSheet
+                }
+                .sheet(isPresented: showingNewsletterSheet) {
+                    newsletterSheet
+                }
+                .alert("OPML Exported", isPresented: $showingExportConfirmation) {
+                    Button("OK", role: .cancel) { }
+                } message: {
+                    Text("Your OPML feed list has been copied to the clipboard.")
+                }
+        }
+    }
+
+    @ViewBuilder
+    private var feedListContent: some View {
+        List {
+            ForEach(feeds) { feed in
+                feedRow(for: feed)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func feedRow(for feed: Feed) -> some View {
+        NavigationLink {
+            FeedArticlesView(feed: feed)
+        } label: {
+            feedRowLabel(for: feed)
+        }
+        .contextMenu {
+            feedContextMenu(for: feed)
+        }
+        .swipeActions(edge: .trailing) {
+            feedSwipeActions(for: feed)
+        }
+        .swipeActions(edge: .leading) {
+            Button {
+                newsletterFeedID = feed.id
+            } label: {
+                Label("Newsletter", systemImage: "newspaper")
+            }
+            .tint(.orange)
+        }
+    }
+
+    @ViewBuilder
+    private func feedRowLabel(for feed: Feed) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(feed.title)
+                    .font(.headline)
+                Spacer()
+                unreadBadge(for: feed)
+            }
+            Text(feed.url)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack {
+                Text(feed.category)
+                    .font(.caption)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(Color.accentColor.opacity(0.2))
+                    .cornerRadius(4)
+
+                if let lastFetched = feed.lastFetched {
+                    Text("Last synced: \(lastFetched, style: .relative) ago")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func feedContextMenu(for feed: Feed) -> some View {
+        Button {
+            editingFeedID = feed.id
+        } label: {
+            Label("Edit Feed", systemImage: "pencil")
+        }
+
+        Button(role: .destructive) {
+            deleteFeed(feed)
+        } label: {
+            Label("Delete Feed", systemImage: "trash")
+        }
+    }
+
+    @ViewBuilder
+    private func feedSwipeActions(for feed: Feed) -> some View {
+        Button(role: .destructive) {
+            deleteFeed(feed)
+        } label: {
+            Label("Delete", systemImage: "trash")
+        }
+
+        Button {
+            editingFeedID = feed.id
+        } label: {
+            Label("Edit", systemImage: "pencil")
+        }
+        .tint(.blue)
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                showingAddFeed = true
+            } label: {
+                Label("Add Feed", systemImage: "plus")
+            }
+        }
+
+        ToolbarItem(placement: .topBarLeading) {
+            Menu {
+                Button {
+                    Task {
+                        await feedManager.syncAllFeeds()
+                    }
+                } label: {
+                    Label("Sync All Feeds", systemImage: "arrow.clockwise")
+                }
+                .disabled(feedManager.isSyncing)
+
+                Divider()
+
+                Button {
+                    showingImportOPML = true
+                } label: {
+                    Label("Import OPML", systemImage: "square.and.arrow.down")
+                }
+
+                Button {
+                    exportOPML()
+                } label: {
+                    Label("Export OPML", systemImage: "square.and.arrow.up")
+                }
+
+                Divider()
+
+                Button(role: .destructive) {
+                    clearAllData()
+                } label: {
+                    Label("Clear All Data", systemImage: "trash")
+                }
+            } label: {
+                Label("Menu", systemImage: "ellipsis.circle")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var syncingOverlay: some View {
+        if feedManager.isSyncing {
+            VStack {
+                ProgressView("Syncing feeds...")
+                    .padding()
+                    .background(.regularMaterial)
+                    .cornerRadius(10)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var addFeedSheet: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Picker("Type", selection: $feedType) {
+                        ForEach(FeedType.allCases, id: \.self) { type in
+                            Text(type.rawValue).tag(type)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                } header: {
+                    Text("Feed Type")
+                }
+
+                Section {
+                    if feedType == .rss {
+                        TextField("RSS Feed URL", text: $newFeedURL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .keyboardType(.URL)
+                    } else {
+                        HStack {
+                            Text("r/")
                                 .foregroundStyle(.secondary)
-                            HStack {
-                                Text(feed.category)
-                                    .font(.caption)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 2)
-                                    .background(Color.accentColor.opacity(0.2))
-                                    .cornerRadius(4)
-
-                                if let lastFetched = feed.lastFetched {
-                                    Text("Last synced: \(lastFetched, style: .relative) ago")
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .contextMenu {
-                        Button {
-                            editingFeedID = feed.id
-                        } label: {
-                            Label("Edit Feed", systemImage: "pencil")
-                        }
-
-                        Button(role: .destructive) {
-                            deleteFeed(feed)
-                        } label: {
-                            Label("Delete Feed", systemImage: "trash")
-                        }
-                    }
-                    .swipeActions(edge: .trailing) {
-                        Button(role: .destructive) {
-                            deleteFeed(feed)
-                        } label: {
-                            Label("Delete", systemImage: "trash")
-                        }
-
-                        Button {
-                            editingFeedID = feed.id
-                        } label: {
-                            Label("Edit", systemImage: "pencil")
-                        }
-                        .tint(.blue)
-                    }
-                    .swipeActions(edge: .leading) {
-                        Button {
-                            newsletterFeedID = feed.id
-                        } label: {
-                            Label("Newsletter", systemImage: "newspaper")
-                        }
-                        .tint(.orange)
-                    }
-                }
-            }
-            .navigationTitle("RSS Feeds")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showingAddFeed = true
-                    } label: {
-                        Label("Add Feed", systemImage: "plus")
-                    }
-                }
-
-                ToolbarItem(placement: .topBarLeading) {
-                    Menu {
-                        Button {
-                            Task {
-                                await feedManager.syncAllFeeds()
-                            }
-                        } label: {
-                            Label("Sync All Feeds", systemImage: "arrow.clockwise")
-                        }
-                        .disabled(feedManager.isSyncing)
-
-                        Divider()
-
-                        Button {
-                            showingImportOPML = true
-                        } label: {
-                            Label("Import OPML", systemImage: "square.and.arrow.down")
-                        }
-
-                        Button {
-                            exportOPML()
-                        } label: {
-                            Label("Export OPML", systemImage: "square.and.arrow.up")
-                        }
-
-                        Divider()
-
-                        Button(role: .destructive) {
-                            clearAllData()
-                        } label: {
-                            Label("Clear All Data", systemImage: "trash")
-                        }
-                    } label: {
-                        Label("Menu", systemImage: "ellipsis.circle")
-                    }
-                }
-            }
-            .overlay {
-                if feedManager.isSyncing {
-                    VStack {
-                        ProgressView("Syncing feeds...")
-                            .padding()
-                            .background(.regularMaterial)
-                            .cornerRadius(10)
-                    }
-                }
-            }
-            .sheet(isPresented: $showingAddFeed) {
-                NavigationStack {
-                    Form {
-                        Section("Feed Details") {
-                            TextField("RSS Feed URL", text: $newFeedURL)
+                            TextField("Subreddit Name", text: $subredditName)
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
                         }
+                    }
+                } header: {
+                    Text("Feed Details")
+                } footer: {
+                    if feedType == .reddit {
+                        Text("Enter the subreddit name without 'r/' (e.g., 'politics', 'technology')")
+                            .font(.caption)
+                    }
+                }
 
-                        Section {
-                            Toggle("Use Custom Category", isOn: $useCustomCategory)
+                Section {
+                    Toggle("Use Custom Category", isOn: $useCustomCategory)
 
-                            if useCustomCategory {
-                                TextField("Custom Category Name", text: $customCategory)
-                                    .textInputAutocapitalization(.never)
-                            } else {
-                                Picker("Category", selection: $newFeedCategory) {
-                                    Text("General").tag("General")
-                                    Text("Work").tag("Work")
-                                    Text("Social").tag("Social")
-                                    Text("Tech").tag("Tech")
-                                    Text("News").tag("News")
-                                    Text("Politics").tag("Politics")
-                                }
-                            }
-                        } header: {
-                            Text("Category")
-                        } footer: {
-                            if useCustomCategory {
-                                Text("Enter a custom category name for this feed")
-                            } else {
-                                Text("Select from predefined categories")
-                            }
-                        }
-
-                        if let error = addFeedError {
-                            Section {
-                                Text(error)
-                                    .foregroundStyle(.red)
-                                    .font(.caption)
-                            }
+                    if useCustomCategory {
+                        TextField("Custom Category Name", text: $customCategory)
+                            .textInputAutocapitalization(.never)
+                    } else {
+                        Picker("Category", selection: $newFeedCategory) {
+                            Text("General").tag("General")
+                            Text("Work").tag("Work")
+                            Text("Social").tag("Social")
+                            Text("Tech").tag("Tech")
+                            Text("News").tag("News")
+                            Text("Politics").tag("Politics")
                         }
                     }
-                    .navigationTitle("Add RSS Feed")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Cancel") {
-                                showingAddFeed = false
-                                resetAddFeedForm()
-                            }
-                        }
-
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Add") {
-                                addFeed()
-                            }
-                            .disabled(newFeedURL.isEmpty || isAddingFeed || (useCustomCategory && customCategory.isEmpty))
-                        }
+                } header: {
+                    Text("Category")
+                } footer: {
+                    if useCustomCategory {
+                        Text("Enter a custom category name for this feed")
+                    } else {
+                        Text("Select from predefined categories")
                     }
-                    .overlay {
-                        if isAddingFeed {
-                            ProgressView("Adding feed...")
-                                .padding()
-                                .background(.regularMaterial)
-                                .cornerRadius(10)
-                        }
+                }
+
+                if let error = addFeedError {
+                    Section {
+                        Text(error)
+                            .foregroundStyle(.red)
+                            .font(.caption)
                     }
                 }
             }
-            .sheet(isPresented: $showingImportOPML) {
-                NavigationStack {
-                    Form {
-                        Section("Paste OPML Content") {
-                            TextEditor(text: $opmlText)
-                                .font(.system(.body, design: .monospaced))
-                                .frame(minHeight: 200)
-                        }
-
-                        if let error = importError {
-                            Section {
-                                Text(error)
-                                    .foregroundStyle(.red)
-                                    .font(.caption)
-                            }
-                        }
-
-                        Section {
-                            Text("Paste your OPML file content above to import feeds.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .navigationTitle("Import OPML")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Cancel") {
-                                showingImportOPML = false
-                                opmlText = ""
-                                importError = nil
-                            }
-                        }
-
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Import") {
-                                importOPML()
-                            }
-                            .disabled(opmlText.isEmpty || isImporting)
-                        }
-                    }
-                    .overlay {
-                        if isImporting {
-                            ProgressView("Importing feeds...")
-                                .padding()
-                                .background(.regularMaterial)
-                                .cornerRadius(10)
-                        }
+            .navigationTitle(feedType == .rss ? "Add RSS Feed" : "Add Reddit Feed")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        showingAddFeed = false
+                        resetAddFeedForm()
                     }
                 }
-            }
-            .sheet(isPresented: showingEditFeed) {
-                if let feedID = editingFeedID,
-                   let feed = feeds.first(where: { $0.id == feedID }) {
-                    NavigationStack {
-                        EditFeedView(feed: feed, modelContext: modelContext)
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") {
+                        addFeed()
                     }
+                    .disabled(isFieldsInvalid() || isAddingFeed)
                 }
             }
-            .sheet(isPresented: showingNewsletterSheet) {
-                if let feedID = newsletterFeedID,
-                   let feed = feeds.first(where: { $0.id == feedID }) {
-                    NavigationStack {
-                        FeedNewsletterView(feed: feed)
-                    }
+            .overlay {
+                if isAddingFeed {
+                    ProgressView("Adding feed...")
+                        .padding()
+                        .background(.regularMaterial)
+                        .cornerRadius(10)
                 }
             }
-            .alert("OPML Exported", isPresented: $showingExportConfirmation) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text("Your OPML feed list has been copied to the clipboard.")
+        }
+    }
+
+    @ViewBuilder
+    private var importOPMLSheet: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextEditor(text: $opmlText)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(minHeight: 200)
+                } header: {
+                    Text("Paste OPML Content")
+                }
+
+                if let error = importError {
+                    Section {
+                        Text(error)
+                            .foregroundStyle(.red)
+                            .font(.caption)
+                    }
+                }
+
+                Section {
+                    Text("Paste your OPML file content above to import feeds.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Import OPML")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        showingImportOPML = false
+                        opmlText = ""
+                        importError = nil
+                    }
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Import") {
+                        importOPML()
+                    }
+                    .disabled(opmlText.isEmpty || isImporting)
+                }
+            }
+            .overlay {
+                if isImporting {
+                    ProgressView("Importing feeds...")
+                        .padding()
+                        .background(.regularMaterial)
+                        .cornerRadius(10)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var editFeedSheet: some View {
+        if let feedID = editingFeedID,
+           let feed = feeds.first(where: { $0.id == feedID }) {
+            NavigationStack {
+                EditFeedView(feed: feed, modelContext: modelContext)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var newsletterSheet: some View {
+        if let feedID = newsletterFeedID,
+           let feed = feeds.first(where: { $0.id == feedID }) {
+            NavigationStack {
+                FeedNewsletterView(feed: feed)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func unreadBadge(for feed: Feed) -> some View {
+        if let articles = feed.articles {
+            let unreadCount = articles.filter { !$0.isRead }.count
+            if unreadCount > 0 {
+                Text("\(unreadCount)")
+                    .font(.caption)
+                    .fontWeight(.bold)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(Color.accentColor)
+                    .cornerRadius(10)
             }
         }
     }
@@ -338,13 +439,35 @@ struct FeedListView: View {
         Task {
             do {
                 let category = useCustomCategory ? customCategory : newFeedCategory
-                _ = try await feedManager.addFeed(url: newFeedURL, category: category)
+
+                // Construct the URL based on feed type
+                let feedURL: String
+                if feedType == .reddit {
+                    // Clean up the subreddit name (remove any leading r/ or /)
+                    let cleanSubreddit = subredditName
+                        .trimmingCharacters(in: .whitespaces)
+                        .replacingOccurrences(of: "^r/", with: "", options: .regularExpression)
+                        .replacingOccurrences(of: "^/", with: "", options: .regularExpression)
+                    feedURL = "https://www.reddit.com/r/\(cleanSubreddit)/.json"
+                } else {
+                    feedURL = newFeedURL
+                }
+
+                _ = try await feedManager.addFeed(url: feedURL, category: category)
                 showingAddFeed = false
                 resetAddFeedForm()
             } catch {
                 addFeedError = error.localizedDescription
             }
             isAddingFeed = false
+        }
+    }
+
+    private func isFieldsInvalid() -> Bool {
+        if feedType == .rss {
+            return newFeedURL.isEmpty || (useCustomCategory && customCategory.isEmpty)
+        } else {
+            return subredditName.isEmpty || (useCustomCategory && customCategory.isEmpty)
         }
     }
 
@@ -357,8 +480,10 @@ struct FeedListView: View {
     }
 
     private func resetAddFeedForm() {
+        feedType = .rss
         newFeedURL = ""
-        newFeedCategory = "General"
+        subredditName = ""
+        newFeedCategory = "general"
         customCategory = ""
         useCustomCategory = false
         addFeedError = nil
@@ -474,7 +599,7 @@ struct FeedListView: View {
 // MARK: - OPML Parser Delegate
 class OPMLParserDelegate: NSObject, XMLParserDelegate {
     var feeds: [(url: String, title: String, category: String)] = []
-    private var currentCategory = "General"
+    private var currentCategory = "general"
     private var categoryStack: [String] = []
 
     func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String : String] = [:]) {
@@ -525,12 +650,14 @@ struct EditFeedView: View {
 
     var body: some View {
         Form {
-            Section("Feed Details") {
+            Section {
                 TextField("Feed Title", text: $title)
 
                 TextField("RSS Feed URL", text: $url)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+            } header: {
+                Text("Feed Details")
             }
 
             Section {
@@ -592,9 +719,14 @@ struct FeedArticlesView: View {
     @Query(sort: \Article.publishedDate, order: .reverse) private var allArticles: [Article]
 
     @State private var showReadArticles = false
-    @State private var selectedArticleID: PersistentIdentifier?
-    @State private var navigationContext: [PersistentIdentifier] = []
+    @State private var navigationState: NavigationState?
     @AppStorage("fontOption") private var fontOption: FontOption = .serif
+
+    // Navigation state that bundles article ID with context
+    struct NavigationState: Hashable {
+        let articleID: PersistentIdentifier
+        let context: [PersistentIdentifier]
+    }
 
     private var filteredArticles: [Article] {
         var articles = allArticles.filter { $0.feed?.id == feed.id }
@@ -611,27 +743,42 @@ struct FeedArticlesView: View {
     }
 
     var body: some View {
-        Group {
-            if filteredArticles.isEmpty {
-                VStack(spacing: 12) {
-                    Image(systemName: showReadArticles ? "tray" : "checkmark.circle")
-                        .font(.system(size: 48))
-                        .foregroundStyle(.secondary)
-                    Text(showReadArticles ? "No articles in this feed" : "All caught up!")
-                        .font(.headline)
-                    Text(showReadArticles ? "Try syncing the feed to fetch new articles" : "No unread articles from this feed")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .padding()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List {
-                    ForEach(filteredArticles, id: \.persistentModelID) { article in
+        VStack(spacing: 0) {
+            // Show r/subreddit header for Reddit feeds
+            if feed.isRedditFeed, let subreddit = feed.redditSubreddit {
+                Text("r/\(subreddit)")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.orange)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 8)
+                    .background(Color(.systemGroupedBackground))
+            }
+
+            Group {
+                if filteredArticles.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: showReadArticles ? "tray" : "checkmark.circle")
+                            .font(.system(size: 48))
+                            .foregroundStyle(.secondary)
+                        Text(showReadArticles ? "No articles in this feed" : "All caught up!")
+                            .font(.headline)
+                        Text(showReadArticles ? "Try syncing the feed to fetch new articles" : "No unread articles from this feed")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List {
+                        ForEach(filteredArticles, id: \.persistentModelID) { article in
                         Button {
                             // Capture navigation context when article is selected
-                            navigationContext = filteredArticles.map { $0.persistentModelID }
-                            selectedArticleID = article.persistentModelID
+                            let context = filteredArticles.map { $0.persistentModelID }
+                            navigationState = NavigationState(
+                                articleID: article.persistentModelID,
+                                context: context
+                            )
                         } label: {
                             HStack {
                                 ArticleRowView(article: article, fontOption: fontOption)
@@ -659,6 +806,7 @@ struct FeedArticlesView: View {
                 .listStyle(.plain)
             }
         }
+        }
         .navigationTitle(feed.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -684,15 +832,52 @@ struct FeedArticlesView: View {
                 }
             }
         }
-        .navigationDestination(item: $selectedArticleID) { articleID in
-            if let article = modelContext.model(for: articleID) as? Article {
+        .navigationDestination(item: $navigationState) { state in
+            if let article = modelContext.model(for: state.articleID) as? Article {
+                // For Reddit posts, show combined post + comments view
+                if article.isRedditPost {
+                    if !state.context.isEmpty,
+                       let currentIndex = state.context.firstIndex(of: state.articleID) {
+                        let previousIndex = currentIndex - 1
+                        let nextIndex = currentIndex + 1
+                        let previousArticleID = previousIndex >= 0 ? state.context[previousIndex] : nil
+                        let nextArticleID = nextIndex < state.context.count ? state.context[nextIndex] : nil
+
+                        RedditPostView(
+                            article: article,
+                            previousArticleID: previousArticleID,
+                            nextArticleID: nextArticleID,
+                            onNavigateToPrevious: { prevID in
+                                Task { @MainActor in
+                                    try? await Task.sleep(nanoseconds: 50_000_000)
+                                    navigationState = NavigationState(articleID: prevID, context: state.context)
+                                }
+                            },
+                            onNavigateToNext: { nextID in
+                                Task { @MainActor in
+                                    try? await Task.sleep(nanoseconds: 50_000_000)
+                                    navigationState = NavigationState(articleID: nextID, context: state.context)
+                                }
+                            }
+                        )
+                        .id(state.articleID)  // Force view refresh when article changes
+                    } else {
+                        RedditPostView(
+                            article: article,
+                            previousArticleID: nil,
+                            nextArticleID: nil,
+                            onNavigateToPrevious: { _ in },
+                            onNavigateToNext: { _ in }
+                        )
+                    }
+                }
                 // Use the captured navigation context
-                if !navigationContext.isEmpty,
-                   let currentIndex = navigationContext.firstIndex(of: articleID) {
+                else if !state.context.isEmpty,
+                   let currentIndex = state.context.firstIndex(of: state.articleID) {
                     let previousIndex = currentIndex - 1
                     let nextIndex = currentIndex + 1
-                    let previousArticleID = previousIndex >= 0 ? navigationContext[previousIndex] : nil
-                    let nextArticleID = nextIndex < navigationContext.count ? navigationContext[nextIndex] : nil
+                    let previousArticleID = previousIndex >= 0 ? state.context[previousIndex] : nil
+                    let nextArticleID = nextIndex < state.context.count ? state.context[nextIndex] : nil
 
                     ArticleDetailSimple(
                         article: article,
@@ -701,13 +886,13 @@ struct FeedArticlesView: View {
                         onNavigateToPrevious: { prevID in
                             Task { @MainActor in
                                 try? await Task.sleep(nanoseconds: 50_000_000)
-                                selectedArticleID = prevID
+                                navigationState = NavigationState(articleID: prevID, context: state.context)
                             }
                         },
                         onNavigateToNext: { nextID in
                             Task { @MainActor in
                                 try? await Task.sleep(nanoseconds: 50_000_000)
-                                selectedArticleID = nextID
+                                navigationState = NavigationState(articleID: nextID, context: state.context)
                             }
                         }
                     )
@@ -721,12 +906,6 @@ struct FeedArticlesView: View {
                     )
                 }
             }
-        }
-        .onAppear {
-            navigationContext = filteredArticles.map { $0.persistentModelID }
-        }
-        .onChange(of: filteredArticles) { _, newArticles in
-            navigationContext = newArticles.map { $0.persistentModelID }
         }
     }
 
@@ -804,7 +983,24 @@ struct FeedNewsletterView: View {
                                     if let article = item.article {
                                         // Regular newsletter item with article link
                                         NavigationLink {
-                                            ArticleDetailSimple(article: article, previousArticleID: nil, nextArticleID: nil, onNavigateToPrevious: { _ in }, onNavigateToNext: { _ in })
+                                            // Show RedditPostView for Reddit posts, ArticleDetailSimple for regular articles
+                                            if article.isRedditPost {
+                                                RedditPostView(
+                                                    article: article,
+                                                    previousArticleID: nil,
+                                                    nextArticleID: nil,
+                                                    onNavigateToPrevious: { _ in },
+                                                    onNavigateToNext: { _ in }
+                                                )
+                                            } else {
+                                                ArticleDetailSimple(
+                                                    article: article,
+                                                    previousArticleID: nil,
+                                                    nextArticleID: nil,
+                                                    onNavigateToPrevious: { _ in },
+                                                    onNavigateToNext: { _ in }
+                                                )
+                                            }
                                         } label: {
                                             VStack(alignment: .leading, spacing: 8) {
                                                 // Summary text

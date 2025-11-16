@@ -72,6 +72,7 @@ struct TodayApp: App {
             ("The New York Times", "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml", "news"),
             ("BBC News", "http://feeds.bbci.co.uk/news/rss.xml", "news"),
             ("NPR", "https://feeds.npr.org/1001/rss.xml", "news"),
+            ("r/politics", "https://www.reddit.com/r/politics/.json", "news"),
         ]
 
         // Create Feed objects
