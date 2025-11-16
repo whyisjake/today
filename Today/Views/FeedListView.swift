@@ -49,291 +49,355 @@ struct FeedListView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                ForEach(feeds) { feed in
-                    NavigationLink {
-                        FeedArticlesView(feed: feed)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text(feed.title)
-                                    .font(.headline)
-                                Spacer()
-                                if let unreadCount = feed.articles?.filter({ !$0.isRead }).count, unreadCount > 0 {
-                                    Text("\(unreadCount)")
-                                        .font(.caption)
-                                        .fontWeight(.bold)
-                                        .foregroundStyle(.white)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 2)
-                                        .background(Color.accentColor)
-                                        .cornerRadius(10)
-                                }
-                            }
-                            Text(feed.url)
-                                .font(.caption)
+            feedListContent
+                .navigationTitle("RSS Feeds")
+                .toolbar {
+                    toolbarContent
+                }
+                .overlay {
+                    syncingOverlay
+                }
+                .sheet(isPresented: $showingAddFeed) {
+                    addFeedSheet
+                }
+                .sheet(isPresented: $showingImportOPML) {
+                    importOPMLSheet
+                }
+                .sheet(isPresented: showingEditFeed) {
+                    editFeedSheet
+                }
+                .alert("OPML Exported", isPresented: $showingExportConfirmation) {
+                    Button("OK", role: .cancel) { }
+                } message: {
+                    Text("Your OPML feed list has been copied to the clipboard.")
+                }
+        }
+    }
+
+    @ViewBuilder
+    private var feedListContent: some View {
+        List {
+            ForEach(feeds) { feed in
+                feedRow(for: feed)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func feedRow(for feed: Feed) -> some View {
+        NavigationLink {
+            FeedArticlesView(feed: feed)
+        } label: {
+            feedRowLabel(for: feed)
+        }
+        .contextMenu {
+            feedContextMenu(for: feed)
+        }
+        .swipeActions(edge: .trailing) {
+            feedSwipeActions(for: feed)
+        }
+    }
+
+    @ViewBuilder
+    private func feedRowLabel(for feed: Feed) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(feed.title)
+                    .font(.headline)
+                Spacer()
+                unreadBadge(for: feed)
+            }
+            Text(feed.url)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack {
+                Text(feed.category)
+                    .font(.caption)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(Color.accentColor.opacity(0.2))
+                    .cornerRadius(4)
+
+                if let lastFetched = feed.lastFetched {
+                    Text("Last synced: \(lastFetched, style: .relative) ago")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func feedContextMenu(for feed: Feed) -> some View {
+        Button {
+            editingFeedID = feed.id
+        } label: {
+            Label("Edit Feed", systemImage: "pencil")
+        }
+
+        Button(role: .destructive) {
+            deleteFeed(feed)
+        } label: {
+            Label("Delete Feed", systemImage: "trash")
+        }
+    }
+
+    @ViewBuilder
+    private func feedSwipeActions(for feed: Feed) -> some View {
+        Button(role: .destructive) {
+            deleteFeed(feed)
+        } label: {
+            Label("Delete", systemImage: "trash")
+        }
+
+        Button {
+            editingFeedID = feed.id
+        } label: {
+            Label("Edit", systemImage: "pencil")
+        }
+        .tint(.blue)
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                showingAddFeed = true
+            } label: {
+                Label("Add Feed", systemImage: "plus")
+            }
+        }
+
+        ToolbarItem(placement: .topBarLeading) {
+            Menu {
+                Button {
+                    Task {
+                        await feedManager.syncAllFeeds()
+                    }
+                } label: {
+                    Label("Sync All Feeds", systemImage: "arrow.clockwise")
+                }
+                .disabled(feedManager.isSyncing)
+
+                Divider()
+
+                Button {
+                    showingImportOPML = true
+                } label: {
+                    Label("Import OPML", systemImage: "square.and.arrow.down")
+                }
+
+                Button {
+                    exportOPML()
+                } label: {
+                    Label("Export OPML", systemImage: "square.and.arrow.up")
+                }
+
+                Divider()
+
+                Button(role: .destructive) {
+                    clearAllData()
+                } label: {
+                    Label("Clear All Data", systemImage: "trash")
+                }
+            } label: {
+                Label("Menu", systemImage: "ellipsis.circle")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var syncingOverlay: some View {
+        if feedManager.isSyncing {
+            VStack {
+                ProgressView("Syncing feeds...")
+                    .padding()
+                    .background(.regularMaterial)
+                    .cornerRadius(10)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var addFeedSheet: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Picker("Type", selection: $feedType) {
+                        ForEach(FeedType.allCases, id: \.self) { type in
+                            Text(type.rawValue).tag(type)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                } header: {
+                    Text("Feed Type")
+                }
+
+                Section {
+                    if feedType == .rss {
+                        TextField("RSS Feed URL", text: $newFeedURL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .keyboardType(.URL)
+                    } else {
+                        HStack {
+                            Text("r/")
                                 .foregroundStyle(.secondary)
-                            HStack {
-                                Text(feed.category)
-                                    .font(.caption)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 2)
-                                    .background(Color.accentColor.opacity(0.2))
-                                    .cornerRadius(4)
-
-                                if let lastFetched = feed.lastFetched {
-                                    Text("Last synced: \(lastFetched, style: .relative) ago")
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .contextMenu {
-                        Button {
-                            editingFeedID = feed.id
-                        } label: {
-                            Label("Edit Feed", systemImage: "pencil")
-                        }
-
-                        Button(role: .destructive) {
-                            deleteFeed(feed)
-                        } label: {
-                            Label("Delete Feed", systemImage: "trash")
+                            TextField("Subreddit Name", text: $subredditName)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
                         }
                     }
-                    .swipeActions(edge: .trailing) {
-                        Button(role: .destructive) {
-                            deleteFeed(feed)
-                        } label: {
-                            Label("Delete", systemImage: "trash")
-                        }
+                } header: {
+                    Text("Feed Details")
+                } footer: {
+                    if feedType == .reddit {
+                        Text("Enter the subreddit name without 'r/' (e.g., 'politics', 'technology')")
+                            .font(.caption)
+                    }
+                }
 
-                        Button {
-                            editingFeedID = feed.id
-                        } label: {
-                            Label("Edit", systemImage: "pencil")
+                Section {
+                    Toggle("Use Custom Category", isOn: $useCustomCategory)
+
+                    if useCustomCategory {
+                        TextField("Custom Category Name", text: $customCategory)
+                            .textInputAutocapitalization(.never)
+                    } else {
+                        Picker("Category", selection: $newFeedCategory) {
+                            Text("General").tag("general")
+                            Text("Work").tag("work")
+                            Text("Social").tag("social")
+                            Text("Tech").tag("tech")
+                            Text("News").tag("news")
+                            Text("Politics").tag("politics")
                         }
-                        .tint(.blue)
+                    }
+                } header: {
+                    Text("Category")
+                } footer: {
+                    if useCustomCategory {
+                        Text("Enter a custom category name for this feed")
+                    } else {
+                        Text("Select from predefined categories")
+                    }
+                }
+
+                if let error = addFeedError {
+                    Section {
+                        Text(error)
+                            .foregroundStyle(.red)
+                            .font(.caption)
                     }
                 }
             }
-            .navigationTitle("RSS Feeds")
+            .navigationTitle(feedType == .rss ? "Add RSS Feed" : "Add Reddit Feed")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showingAddFeed = true
-                    } label: {
-                        Label("Add Feed", systemImage: "plus")
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        showingAddFeed = false
+                        resetAddFeedForm()
                     }
                 }
 
-                ToolbarItem(placement: .topBarLeading) {
-                    Menu {
-                        Button {
-                            Task {
-                                await feedManager.syncAllFeeds()
-                            }
-                        } label: {
-                            Label("Sync All Feeds", systemImage: "arrow.clockwise")
-                        }
-                        .disabled(feedManager.isSyncing)
-
-                        Divider()
-
-                        Button {
-                            showingImportOPML = true
-                        } label: {
-                            Label("Import OPML", systemImage: "square.and.arrow.down")
-                        }
-
-                        Button {
-                            exportOPML()
-                        } label: {
-                            Label("Export OPML", systemImage: "square.and.arrow.up")
-                        }
-
-                        Divider()
-
-                        Button(role: .destructive) {
-                            clearAllData()
-                        } label: {
-                            Label("Clear All Data", systemImage: "trash")
-                        }
-                    } label: {
-                        Label("Menu", systemImage: "ellipsis.circle")
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") {
+                        addFeed()
                     }
+                    .disabled(isFieldsInvalid() || isAddingFeed)
                 }
             }
             .overlay {
-                if feedManager.isSyncing {
-                    VStack {
-                        ProgressView("Syncing feeds...")
-                            .padding()
-                            .background(.regularMaterial)
-                            .cornerRadius(10)
-                    }
+                if isAddingFeed {
+                    ProgressView("Adding feed...")
+                        .padding()
+                        .background(.regularMaterial)
+                        .cornerRadius(10)
                 }
             }
-            .sheet(isPresented: $showingAddFeed) {
-                NavigationStack {
-                    Form {
-                        Section("Feed Type") {
-                            Picker("Type", selection: $feedType) {
-                                ForEach(FeedType.allCases, id: \.self) { type in
-                                    Text(type.rawValue).tag(type)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-                        }
+        }
+    }
 
-                        Section("Feed Details") {
-                            if feedType == .rss {
-                                TextField("RSS Feed URL", text: $newFeedURL)
-                                    .textInputAutocapitalization(.never)
-                                    .autocorrectionDisabled()
-                                    .keyboardType(.URL)
-                            } else {
-                                HStack {
-                                    Text("r/")
-                                        .foregroundStyle(.secondary)
-                                    TextField("Subreddit Name", text: $subredditName)
-                                        .textInputAutocapitalization(.never)
-                                        .autocorrectionDisabled()
-                                }
-                            }
-                        } footer: {
-                            if feedType == .reddit {
-                                Text("Enter the subreddit name without 'r/' (e.g., 'politics', 'technology')")
-                                    .font(.caption)
-                            }
-                        }
+    @ViewBuilder
+    private var importOPMLSheet: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextEditor(text: $opmlText)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(minHeight: 200)
+                } header: {
+                    Text("Paste OPML Content")
+                }
 
-                        Section {
-                            Toggle("Use Custom Category", isOn: $useCustomCategory)
-
-                            if useCustomCategory {
-                                TextField("Custom Category Name", text: $customCategory)
-                                    .textInputAutocapitalization(.never)
-                            } else {
-                                Picker("Category", selection: $newFeedCategory) {
-                                    Text("General").tag("general")
-                                    Text("Work").tag("work")
-                                    Text("Social").tag("social")
-                                    Text("Tech").tag("tech")
-                                    Text("News").tag("news")
-                                    Text("Politics").tag("politics")
-                                }
-                            }
-                        } header: {
-                            Text("Category")
-                        } footer: {
-                            if useCustomCategory {
-                                Text("Enter a custom category name for this feed")
-                            } else {
-                                Text("Select from predefined categories")
-                            }
-                        }
-
-                        if let error = addFeedError {
-                            Section {
-                                Text(error)
-                                    .foregroundStyle(.red)
-                                    .font(.caption)
-                            }
-                        }
-                    }
-                    .navigationTitle(feedType == .rss ? "Add RSS Feed" : "Add Reddit Feed")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Cancel") {
-                                showingAddFeed = false
-                                resetAddFeedForm()
-                            }
-                        }
-
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Add") {
-                                addFeed()
-                            }
-                            .disabled(isFieldsInvalid() || isAddingFeed)
-                        }
-                    }
-                    .overlay {
-                        if isAddingFeed {
-                            ProgressView("Adding feed...")
-                                .padding()
-                                .background(.regularMaterial)
-                                .cornerRadius(10)
-                        }
+                if let error = importError {
+                    Section {
+                        Text(error)
+                            .foregroundStyle(.red)
+                            .font(.caption)
                     }
                 }
-            }
-            .sheet(isPresented: $showingImportOPML) {
-                NavigationStack {
-                    Form {
-                        Section("Paste OPML Content") {
-                            TextEditor(text: $opmlText)
-                                .font(.system(.body, design: .monospaced))
-                                .frame(minHeight: 200)
-                        }
 
-                        if let error = importError {
-                            Section {
-                                Text(error)
-                                    .foregroundStyle(.red)
-                                    .font(.caption)
-                            }
-                        }
-
-                        Section {
-                            Text("Paste your OPML file content above to import feeds.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .navigationTitle("Import OPML")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Cancel") {
-                                showingImportOPML = false
-                                opmlText = ""
-                                importError = nil
-                            }
-                        }
-
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Import") {
-                                importOPML()
-                            }
-                            .disabled(opmlText.isEmpty || isImporting)
-                        }
-                    }
-                    .overlay {
-                        if isImporting {
-                            ProgressView("Importing feeds...")
-                                .padding()
-                                .background(.regularMaterial)
-                                .cornerRadius(10)
-                        }
-                    }
+                Section {
+                    Text("Paste your OPML file content above to import feeds.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
-            .sheet(isPresented: showingEditFeed) {
-                if let feedID = editingFeedID,
-                   let feed = feeds.first(where: { $0.id == feedID }) {
-                    NavigationStack {
-                        EditFeedView(feed: feed, modelContext: modelContext)
+            .navigationTitle("Import OPML")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        showingImportOPML = false
+                        opmlText = ""
+                        importError = nil
                     }
                 }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Import") {
+                        importOPML()
+                    }
+                    .disabled(opmlText.isEmpty || isImporting)
+                }
             }
-            .alert("OPML Exported", isPresented: $showingExportConfirmation) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text("Your OPML feed list has been copied to the clipboard.")
+            .overlay {
+                if isImporting {
+                    ProgressView("Importing feeds...")
+                        .padding()
+                        .background(.regularMaterial)
+                        .cornerRadius(10)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var editFeedSheet: some View {
+        if let feedID = editingFeedID,
+           let feed = feeds.first(where: { $0.id == feedID }) {
+            NavigationStack {
+                EditFeedView(feed: feed, modelContext: modelContext)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func unreadBadge(for feed: Feed) -> some View {
+        if let articles = feed.articles {
+            let unreadCount = articles.filter { !$0.isRead }.count
+            if unreadCount > 0 {
+                Text("\(unreadCount)")
+                    .font(.caption)
+                    .fontWeight(.bold)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(Color.accentColor)
+                    .cornerRadius(10)
             }
         }
     }
@@ -556,12 +620,14 @@ struct EditFeedView: View {
 
     var body: some View {
         Form {
-            Section("Feed Details") {
+            Section {
                 TextField("Feed Title", text: $title)
 
                 TextField("RSS Feed URL", text: $url)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+            } header: {
+                Text("Feed Details")
             }
 
             Section {
