@@ -629,7 +629,7 @@ struct ImageGalleryView: View {
             }
         }
         .sheet(isPresented: $showFullScreen) {
-            FullScreenImageGallery(images: images, startIndex: currentPage)
+            FullScreenImageGallery(images: images, currentIndex: $currentPage)
         }
     }
 }
@@ -638,15 +638,8 @@ struct ImageGalleryView: View {
 
 struct FullScreenImageGallery: View {
     let images: [RedditGalleryImage]
-    let startIndex: Int
+    @Binding var currentIndex: Int
     @Environment(\.dismiss) private var dismiss
-    @State private var currentIndex: Int
-
-    init(images: [RedditGalleryImage], startIndex: Int) {
-        self.images = images
-        self.startIndex = startIndex
-        _currentIndex = State(initialValue: startIndex)
-    }
 
     var body: some View {
         NavigationStack {
@@ -893,14 +886,6 @@ struct AnimatedMediaView: View {
         }
         .onAppear {
             if let url = URL(string: videoUrl) {
-                // Configure audio session to mix with other audio (music, podcasts, etc.)
-                do {
-                    try AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default)
-                    try AVAudioSession.sharedInstance().setActive(true)
-                } catch {
-                    print("Failed to set audio session category: \(error)")
-                }
-
                 let player = AVPlayer(url: url)
                 player.actionAtItemEnd = .none
 
