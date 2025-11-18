@@ -116,6 +116,30 @@ struct CommentRowView: View {
         return decoded
     }
 
+    // Parse simple HTML to AttributedString (lightweight alternative to WebView)
+    private func parseSimpleHTML(_ html: String) -> AttributedString {
+        // Decode HTML entities first
+        let decoded = decodeHTMLEntities(html)
+
+        // Use NSAttributedString.DocumentType.html for parsing
+        guard let data = decoded.data(using: .utf8) else {
+            return AttributedString(decoded)
+        }
+
+        do {
+            let nsAttributed = try NSAttributedString(
+                data: data,
+                options: [.documentType: NSAttributedString.DocumentType.html,
+                         .characterEncoding: String.Encoding.utf8.rawValue],
+                documentAttributes: nil
+            )
+            return AttributedString(nsAttributed)
+        } catch {
+            // Fallback to plain text if parsing fails
+            return AttributedString(decoded)
+        }
+    }
+
     // Check if HTML contains images or other rich content worth rendering
     private func hasRichContent(_ html: String) -> Bool {
         // Check for images
@@ -290,7 +314,19 @@ struct CommentWebView: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            webView.evaluateJavaScript("Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)") { height, error in
+            // Better height calculation that measures actual content
+            let script = """
+            (function() {
+                // Force layout
+                document.body.style.height = 'auto';
+                // Get actual content height
+                var range = document.createRange();
+                range.selectNodeContents(document.body);
+                var rect = range.getBoundingClientRect();
+                return Math.ceil(rect.height);
+            })();
+            """
+            webView.evaluateJavaScript(script) { height, error in
                 if let height = height as? CGFloat {
                     DispatchQueue.main.async {
                         self.parent.height = height
@@ -330,7 +366,7 @@ struct CommentWebView: UIViewRepresentable {
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
             <style>
-                body {
+                html, body {
                     font-family: \(fontOption.fontFamily);
                     font-size: 15px;
                     line-height: 1.6;
@@ -338,10 +374,15 @@ struct CommentWebView: UIViewRepresentable {
                     background-color: transparent;
                     margin: 0;
                     padding: 0;
+                    height: auto;
+                    min-height: 0;
                 }
                 p {
                     margin: 0 0 8px 0;
                     padding: 0;
+                }
+                p:last-child {
+                    margin-bottom: 0;
                 }
                 a {
                     color: \(accentColorHex);
