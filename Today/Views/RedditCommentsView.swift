@@ -96,6 +96,26 @@ struct CommentRowView: View {
         return colors[comment.depth % colors.count]
     }
 
+    // Decode HTML entities from plain text
+    private func decodeHTMLEntities(_ text: String) -> String {
+        var decoded = text
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
+
+        // Second pass for double-encoded entities
+        decoded = decoded
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
+
+        return decoded
+    }
+
     // Check if HTML contains images or other rich content worth rendering
     private func hasRichContent(_ html: String) -> Bool {
         // Check for images
@@ -170,11 +190,12 @@ struct CommentRowView: View {
 
                     // Comment body (hidden if collapsed)
                     if !isCollapsed {
-                        // Only use WebView if HTML contains images or other rich content
-                        if let bodyHtml = comment.bodyHtml, hasRichContent(bodyHtml) {
+                        // Use body_html if available (preserves markdown formatting, links, etc.)
+                        if let bodyHtml = comment.bodyHtml, !bodyHtml.isEmpty {
                             CommentHTMLView(html: bodyHtml, fontOption: fontOption)
                         } else {
-                            Text(comment.body)
+                            // Fallback to plain text if body_html is not available
+                            Text(decodeHTMLEntities(comment.body))
                                 .font(fontOption == .serif ?
                                     .system(.subheadline, design: .serif) :
                                     .system(.subheadline, design: .default))
@@ -240,12 +261,21 @@ struct CommentWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
-        // Decode HTML entities (Reddit returns HTML-encoded)
-        let decodedHTML = html
+        // Decode HTML entities (Reddit double-encodes, so decode twice)
+        var decodedHTML = html
             .replacingOccurrences(of: "&lt;", with: "<")
             .replacingOccurrences(of: "&gt;", with: ">")
             .replacingOccurrences(of: "&amp;", with: "&")
             .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
+
+        // Second pass to handle double-encoded entities like &amp;amp;
+        decodedHTML = decodedHTML
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
 
         let styledHTML = createStyledHTML(from: decodedHTML, colorScheme: colorScheme, accentColor: accentColor, fontOption: fontOption)
         context.coordinator.parent = self
