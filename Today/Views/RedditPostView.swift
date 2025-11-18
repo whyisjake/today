@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import AVKit
+import AVFoundation
 
 struct RedditPostView: View {
     let article: Article
@@ -362,12 +363,21 @@ struct PostWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
-        // Decode HTML entities (Reddit returns HTML-encoded)
-        let decodedHTML = html
+        // Decode HTML entities (Reddit double-encodes, so decode twice)
+        var decodedHTML = html
             .replacingOccurrences(of: "&lt;", with: "<")
             .replacingOccurrences(of: "&gt;", with: ">")
             .replacingOccurrences(of: "&amp;", with: "&")
             .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
+
+        // Second pass to handle double-encoded entities like &amp;amp;
+        decodedHTML = decodedHTML
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
 
         let styledHTML = createStyledHTML(from: decodedHTML, colorScheme: colorScheme, accentColor: accentColor, fontOption: fontOption)
         context.coordinator.parent = self
@@ -490,12 +500,89 @@ struct PostWebView: UIViewRepresentable {
 
 import WebKit
 
+// MARK: - Image Size Tracking Helper
+struct SizeTrackingAsyncImage: View {
+    let imageUrl: String
+    let onSizeCalculated: (CGFloat) -> Void
+
+    @State private var image: UIImage?
+    @State private var isLoading = true
+    @State private var hasFailed = false
+
+    var body: some View {
+        Group {
+            if let image = image {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .cornerRadius(8)
+            } else if hasFailed {
+                VStack {
+                    Image(systemName: "photo")
+                        .font(.largeTitle)
+                        .foregroundStyle(.secondary)
+                    Text("Failed to load")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 200)
+                .background(Color(.systemGray6))
+                .cornerRadius(8)
+            } else {
+                ProgressView()
+                    .frame(maxWidth: .infinity, minHeight: 200)
+            }
+        }
+        .task {
+            await loadImage()
+        }
+    }
+
+    private func loadImage() async {
+        guard let url = URL(string: imageUrl) else {
+            hasFailed = true
+            return
+        }
+
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            if let uiImage = UIImage(data: data) {
+                await MainActor.run {
+                    self.image = uiImage
+
+                    // Calculate height based on aspect ratio
+                    let aspectRatio = uiImage.size.height / uiImage.size.width
+                    let screenWidth = UIScreen.main.bounds.width - 32 // Account for padding
+                    let calculatedHeight = screenWidth * aspectRatio
+
+                    // Cap maximum height to 100% of screen height
+                    let maxHeight = UIScreen.main.bounds.height
+                    let finalHeight = min(calculatedHeight, maxHeight)
+
+                    print("📸 Image sizing - Original: \(uiImage.size.width)x\(uiImage.size.height), AspectRatio: \(aspectRatio), ScreenWidth: \(screenWidth), CalculatedHeight: \(calculatedHeight), FinalHeight: \(finalHeight)")
+
+                    onSizeCalculated(finalHeight)
+                }
+            } else {
+                await MainActor.run {
+                    hasFailed = true
+                }
+            }
+        } catch {
+            await MainActor.run {
+                hasFailed = true
+            }
+        }
+    }
+}
+
 // MARK: - Image Gallery View
 
 struct ImageGalleryView: View {
     let images: [RedditGalleryImage]
     @State private var showFullScreen = false
     @State private var currentPage = 0
+    @State private var galleryHeight: CGFloat = 300
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -516,41 +603,22 @@ struct ImageGalleryView: View {
                         }
                         .tag(index)
                     } else {
-                        AsyncImage(url: URL(string: image.url)) { phase in
-                            switch phase {
-                            case .success(let loadedImage):
-                                loadedImage
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fit)
-                                    .cornerRadius(8)
-                                    .onTapGesture {
-                                        showFullScreen = true
-                                    }
-                            case .failure:
-                                VStack {
-                                    Image(systemName: "photo")
-                                        .font(.largeTitle)
-                                        .foregroundStyle(.secondary)
-                                    Text("Failed to load")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .frame(maxWidth: .infinity, minHeight: 200)
-                                .background(Color(.systemGray6))
-                                .cornerRadius(8)
-                            case .empty:
-                                ProgressView()
-                                    .frame(maxWidth: .infinity, minHeight: 200)
-                            @unknown default:
-                                EmptyView()
+                        SizeTrackingAsyncImage(imageUrl: image.url, onSizeCalculated: { height in
+                            // Update gallery height based on first loaded image
+                            if galleryHeight == 300 {
+                                print("📐 Gallery height updated from 300 to \(height)")
+                                galleryHeight = height
                             }
+                        })
+                        .onTapGesture {
+                            showFullScreen = true
                         }
                         .tag(index)
                     }
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: images.count > 1 ? .always : .never))
-            .frame(height: 300)
+            .frame(height: galleryHeight)
 
             // Image counter
             if images.count > 1 {
@@ -570,7 +638,7 @@ struct ImageGalleryView: View {
             }
         }
         .sheet(isPresented: $showFullScreen) {
-            FullScreenImageGallery(images: images, startIndex: currentPage)
+            FullScreenImageGallery(images: images, currentIndex: $currentPage)
         }
     }
 }
@@ -579,15 +647,8 @@ struct ImageGalleryView: View {
 
 struct FullScreenImageGallery: View {
     let images: [RedditGalleryImage]
-    let startIndex: Int
+    @Binding var currentIndex: Int
     @Environment(\.dismiss) private var dismiss
-    @State private var currentIndex: Int
-
-    init(images: [RedditGalleryImage], startIndex: Int) {
-        self.images = images
-        self.startIndex = startIndex
-        _currentIndex = State(initialValue: startIndex)
-    }
 
     var body: some View {
         NavigationStack {
@@ -805,23 +866,46 @@ struct AnimatedMediaView: View {
     let posterUrl: String?
 
     @State private var player: AVPlayer?
+    @State private var videoSize: CGSize?
+    @State private var itemObserver: NSKeyValueObservation?
 
     var body: some View {
         ZStack {
             if let player = player {
-                VideoPlayer(player: player)
-                    .aspectRatio(contentMode: .fit)
-                    .onAppear {
-                        player.play()
-                    }
+                if let videoSize = videoSize {
+                    VideoPlayer(player: player)
+                        .aspectRatio(videoSize.width / videoSize.height, contentMode: .fit)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: calculatedHeight(for: UIScreen.main.bounds.width))
+                        .onAppear {
+                            player.play()
+                        }
+                } else {
+                    // While loading, show player without size constraints
+                    VideoPlayer(player: player)
+                        .frame(height: 300)
+                        .onAppear {
+                            player.play()
+                        }
+                }
             } else {
                 ProgressView()
+                    .frame(height: 300)
             }
         }
         .onAppear {
             if let url = URL(string: videoUrl) {
                 let player = AVPlayer(url: url)
                 player.actionAtItemEnd = .none
+
+                // Observe when the video dimensions are available
+                itemObserver = player.currentItem?.observe(\.presentationSize, options: [.new]) { item, change in
+                    if let size = change.newValue, size.width > 0, size.height > 0 {
+                        DispatchQueue.main.async {
+                            self.videoSize = size
+                        }
+                    }
+                }
 
                 // Loop the video when it ends
                 NotificationCenter.default.addObserver(
@@ -838,8 +922,28 @@ struct AnimatedMediaView: View {
         }
         .onDisappear {
             player?.pause()
+            itemObserver?.invalidate()
             player = nil
         }
+    }
+
+    private func calculatedHeight(for width: CGFloat) -> CGFloat {
+        guard let videoSize = videoSize, videoSize.width > 0 else {
+            // Default height while loading or if dimensions unavailable
+            print("🎥 Video sizing - No video size yet, using default 300")
+            return 300
+        }
+
+        let aspectRatio = videoSize.height / videoSize.width
+        let calculatedHeight = width * aspectRatio
+
+        // Cap maximum height to 100% of screen height
+        let maxHeight = UIScreen.main.bounds.height
+        let finalHeight = min(calculatedHeight, maxHeight)
+
+        print("🎥 Video sizing - Original: \(videoSize.width)x\(videoSize.height), AspectRatio: \(aspectRatio), Width: \(width), CalculatedHeight: \(calculatedHeight), FinalHeight: \(finalHeight)")
+
+        return finalHeight
     }
 }
 

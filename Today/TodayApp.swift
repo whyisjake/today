@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import AVFoundation
 
 @main
 struct TodayApp: App {
@@ -25,6 +26,15 @@ struct TodayApp: App {
     }()
 
     init() {
+        // Configure audio session to mix with other audio (music, podcasts, etc.)
+        // This allows animated GIFs and videos to play without interrupting user's audio
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default)
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            print("Failed to set audio session category: \(error)")
+        }
+
         // Register background tasks
         BackgroundSyncManager.shared.registerBackgroundTasks()
     }

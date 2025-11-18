@@ -96,6 +96,50 @@ struct CommentRowView: View {
         return colors[comment.depth % colors.count]
     }
 
+    // Decode HTML entities from plain text
+    private func decodeHTMLEntities(_ text: String) -> String {
+        var decoded = text
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
+
+        // Second pass for double-encoded entities
+        decoded = decoded
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
+
+        return decoded
+    }
+
+    // Parse simple HTML to AttributedString (lightweight alternative to WebView)
+    private func parseSimpleHTML(_ html: String) -> AttributedString {
+        // Decode HTML entities first
+        let decoded = decodeHTMLEntities(html)
+
+        // Use NSAttributedString.DocumentType.html for parsing
+        guard let data = decoded.data(using: .utf8) else {
+            return AttributedString(decoded)
+        }
+
+        do {
+            let nsAttributed = try NSAttributedString(
+                data: data,
+                options: [.documentType: NSAttributedString.DocumentType.html,
+                         .characterEncoding: String.Encoding.utf8.rawValue],
+                documentAttributes: nil
+            )
+            return AttributedString(nsAttributed)
+        } catch {
+            // Fallback to plain text if parsing fails
+            return AttributedString(decoded)
+        }
+    }
+
     // Check if HTML contains images or other rich content worth rendering
     private func hasRichContent(_ html: String) -> Bool {
         // Check for images
@@ -170,11 +214,12 @@ struct CommentRowView: View {
 
                     // Comment body (hidden if collapsed)
                     if !isCollapsed {
-                        // Only use WebView if HTML contains images or other rich content
-                        if let bodyHtml = comment.bodyHtml, hasRichContent(bodyHtml) {
+                        // Use body_html if available (preserves markdown formatting, links, etc.)
+                        if let bodyHtml = comment.bodyHtml, !bodyHtml.isEmpty {
                             CommentHTMLView(html: bodyHtml, fontOption: fontOption)
                         } else {
-                            Text(comment.body)
+                            // Fallback to plain text if body_html is not available
+                            Text(decodeHTMLEntities(comment.body))
                                 .font(fontOption == .serif ?
                                     .system(.subheadline, design: .serif) :
                                     .system(.subheadline, design: .default))
@@ -240,12 +285,21 @@ struct CommentWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
-        // Decode HTML entities (Reddit returns HTML-encoded)
-        let decodedHTML = html
+        // Decode HTML entities (Reddit double-encodes, so decode twice)
+        var decodedHTML = html
             .replacingOccurrences(of: "&lt;", with: "<")
             .replacingOccurrences(of: "&gt;", with: ">")
             .replacingOccurrences(of: "&amp;", with: "&")
             .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
+
+        // Second pass to handle double-encoded entities like &amp;amp;
+        decodedHTML = decodedHTML
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
 
         let styledHTML = createStyledHTML(from: decodedHTML, colorScheme: colorScheme, accentColor: accentColor, fontOption: fontOption)
         context.coordinator.parent = self
@@ -260,7 +314,19 @@ struct CommentWebView: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            webView.evaluateJavaScript("Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)") { height, error in
+            // Better height calculation that measures actual content
+            let script = """
+            (function() {
+                // Force layout
+                document.body.style.height = 'auto';
+                // Get actual content height
+                var range = document.createRange();
+                range.selectNodeContents(document.body);
+                var rect = range.getBoundingClientRect();
+                return Math.ceil(rect.height);
+            })();
+            """
+            webView.evaluateJavaScript(script) { height, error in
                 if let height = height as? CGFloat {
                     DispatchQueue.main.async {
                         self.parent.height = height
@@ -300,7 +366,7 @@ struct CommentWebView: UIViewRepresentable {
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
             <style>
-                body {
+                html, body {
                     font-family: \(fontOption.fontFamily);
                     font-size: 15px;
                     line-height: 1.6;
@@ -308,10 +374,15 @@ struct CommentWebView: UIViewRepresentable {
                     background-color: transparent;
                     margin: 0;
                     padding: 0;
+                    height: auto;
+                    min-height: 0;
                 }
                 p {
                     margin: 0 0 8px 0;
                     padding: 0;
+                }
+                p:last-child {
+                    margin-bottom: 0;
                 }
                 a {
                     color: \(accentColorHex);
