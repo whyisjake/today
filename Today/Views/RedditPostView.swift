@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import AVKit
+import AVFoundation
 
 struct RedditPostView: View {
     let article: Article
@@ -820,6 +821,14 @@ struct AnimatedMediaView: View {
         }
         .onAppear {
             if let url = URL(string: videoUrl) {
+                // Configure audio session to mix with other audio (music, podcasts, etc.)
+                do {
+                    try AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default)
+                    try AVAudioSession.sharedInstance().setActive(true)
+                } catch {
+                    print("Failed to set audio session category: \(error)")
+                }
+
                 let player = AVPlayer(url: url)
                 player.actionAtItemEnd = .none
 
