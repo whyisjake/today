@@ -146,10 +146,10 @@ struct AIChatView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
 
-                            SuggestionButton(text: "What should I read?", action: sendMessage)
-                            SuggestionButton(text: "Show me recent articles", action: sendMessage)
-                            SuggestionButton(text: "What's trending?", action: sendMessage)
-                            SuggestionButton(text: "Help", action: sendMessage)
+                            SuggestionButton(text: String(localized: "What should I read?"), action: sendMessage)
+                            SuggestionButton(text: String(localized: "Show me recent articles"), action: sendMessage)
+                            SuggestionButton(text: String(localized: "What's trending?"), action: sendMessage)
+                            SuggestionButton(text: String(localized: "Help"), action: sendMessage)
                         }
                         .padding()
                     }
