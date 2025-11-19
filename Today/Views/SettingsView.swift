@@ -12,6 +12,14 @@ enum AppearanceMode: String, CaseIterable {
     case light = "Light"
     case dark = "Dark"
 
+    var localizedName: String {
+        switch self {
+        case .system: return String(localized: "System")
+        case .light: return String(localized: "Light")
+        case .dark: return String(localized: "Dark")
+        }
+    }
+
     var colorScheme: ColorScheme? {
         switch self {
         case .system: return nil
@@ -26,6 +34,13 @@ enum FontOption: String, CaseIterable, Identifiable {
     case sansSerif = "Sans Serif"
 
     var id: String { rawValue }
+
+    var localizedName: String {
+        switch self {
+        case .serif: return String(localized: "Serif")
+        case .sansSerif: return String(localized: "Sans Serif")
+        }
+    }
 
     var fontFamily: String {
         switch self {
@@ -83,14 +98,14 @@ struct SettingsView: View {
                 Section("Appearance") {
                     Picker("Theme", selection: $appearanceMode) {
                         ForEach(AppearanceMode.allCases, id: \.self) { mode in
-                            Text(mode.rawValue).tag(mode)
+                            Text(mode.localizedName).tag(mode)
                         }
                     }
                     .pickerStyle(.segmented)
 
                     Picker("Font", selection: $fontOption) {
                         ForEach(FontOption.allCases) { option in
-                            Text(option.rawValue).tag(option)
+                            Text(option.localizedName).tag(option)
                         }
                     }
                     .pickerStyle(.segmented)
