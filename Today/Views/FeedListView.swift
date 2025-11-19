@@ -35,6 +35,9 @@ enum FeedCategory: String, CaseIterable {
     }
 
     /// Standard categories shown in pickers (excludes legacy/duplicate categories)
+    /// Note: `.personal`, `.comics`, and `.technology` are legacy categories kept for backward compatibility.
+    /// They are intentionally excluded from the picker and cannot be selected for new feeds,
+    /// but may still appear for existing feeds created before this change.
     static var pickerCategories: [FeedCategory] {
         [.general, .work, .social, .tech, .news, .politics]
     }
