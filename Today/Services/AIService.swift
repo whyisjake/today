@@ -21,8 +21,20 @@ class AIService {
     private var sessionStorage: Any?
 
     /// Get the user's preferred language code for AI responses
+    /// Returns language code with script for Chinese (zh-Hans, zh-Hant)
     private var userLanguageCode: String {
-        Locale.current.language.languageCode?.identifier ?? "en"
+        let languageCode = Locale.current.language.languageCode?.identifier ?? "en"
+
+        // For Chinese, we need to check the script to determine Simplified vs Traditional
+        if languageCode == "zh" {
+            if let script = Locale.current.language.script?.identifier {
+                return "zh-\(script)" // Returns "zh-Hans" or "zh-Hant"
+            }
+            // Default to Simplified if no script specified
+            return "zh-Hans"
+        }
+
+        return languageCode
     }
 
     /// Get language instruction for AI prompts
@@ -43,8 +55,10 @@ class AIService {
             return "IMPORTANT: Respond entirely in Japanese (日本語)."
         case "ko":
             return "IMPORTANT: Respond entirely in Korean (한국어)."
-        case "zh":
-            return "IMPORTANT: Respond entirely in Chinese (中文)."
+        case "zh-Hans":
+            return "IMPORTANT: Respond entirely in Simplified Chinese (简体中文)."
+        case "zh-Hant":
+            return "IMPORTANT: Respond entirely in Traditional Chinese (繁體中文)."
         default:
             return "" // English is default, no instruction needed
         }
