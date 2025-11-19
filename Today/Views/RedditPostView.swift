@@ -184,10 +184,8 @@ struct RedditPostView: View {
             try? modelContext.save()
 
             // Track article read for review prompts
-            Task { @MainActor in
-                ReviewRequestManager.shared.incrementArticleReadCount()
-                ReviewRequestManager.shared.requestReviewIfAppropriate()
-            }
+            ReviewRequestManager.shared.incrementArticleReadCount()
+            ReviewRequestManager.shared.requestReviewIfAppropriate()
         }
     }
 
