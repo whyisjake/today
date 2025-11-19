@@ -8,6 +8,41 @@
 import SwiftUI
 import SwiftData
 
+// MARK: - Feed Category
+enum FeedCategory: String, CaseIterable {
+    case general = "General"
+    case work = "Work"
+    case social = "Social"
+    case tech = "Tech"
+    case news = "News"
+    case politics = "Politics"
+    case personal = "Personal"
+    case comics = "Comics"
+    case technology = "Technology"
+
+    var localizedName: String {
+        switch self {
+        case .general: return String(localized: "General")
+        case .work: return String(localized: "Work")
+        case .social: return String(localized: "Social")
+        case .tech: return String(localized: "Tech")
+        case .news: return String(localized: "News")
+        case .politics: return String(localized: "Politics")
+        case .personal: return String(localized: "Personal")
+        case .comics: return String(localized: "Comics")
+        case .technology: return String(localized: "Technology")
+        }
+    }
+
+    /// Standard categories shown in pickers (excludes legacy/duplicate categories)
+    /// Note: `.personal`, `.comics`, and `.technology` are legacy categories kept for backward compatibility.
+    /// They are intentionally excluded from the picker and cannot be selected for new feeds,
+    /// but may still appear for existing feeds created before this change.
+    static var pickerCategories: [FeedCategory] {
+        [.general, .work, .social, .tech, .news, .politics]
+    }
+}
+
 struct FeedListView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Feed.title) private var feeds: [Feed]
@@ -131,7 +166,7 @@ struct FeedListView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             HStack {
-                Text(feed.category)
+                Text(FeedCategory(rawValue: feed.category)?.localizedName ?? feed.category)
                     .font(.caption)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 2)
@@ -286,12 +321,9 @@ struct FeedListView: View {
                             .textInputAutocapitalization(.never)
                     } else {
                         Picker("Category", selection: $newFeedCategory) {
-                            Text("General").tag("General")
-                            Text("Work").tag("Work")
-                            Text("Social").tag("Social")
-                            Text("Tech").tag("Tech")
-                            Text("News").tag("News")
-                            Text("Politics").tag("Politics")
+                            ForEach(FeedCategory.pickerCategories, id: \.self) { category in
+                                Text(category.localizedName).tag(category.rawValue)
+                            }
                         }
                     }
                 } header: {
@@ -635,7 +667,6 @@ struct EditFeedView: View {
     @State private var url: String
     @State private var category: String
     @State private var useCustomCategory: Bool
-    @State private var predefinedCategories = ["General", "Work", "Social", "Tech", "News", "Politics"]
 
     init(feed: Feed, modelContext: ModelContext) {
         self.feed = feed
@@ -644,7 +675,7 @@ struct EditFeedView: View {
         _url = State(initialValue: feed.url)
         _category = State(initialValue: feed.category)
         // Check if current category is a predefined one
-        let isPredefined = ["General", "Work", "Social", "Tech", "News", "Politics"].contains(feed.category)
+        let isPredefined = FeedCategory(rawValue: feed.category) != nil
         _useCustomCategory = State(initialValue: !isPredefined)
     }
 
@@ -668,12 +699,9 @@ struct EditFeedView: View {
                         .textInputAutocapitalization(.never)
                 } else {
                     Picker("Category", selection: $category) {
-                        Text("General").tag("General")
-                        Text("Work").tag("Work")
-                        Text("Social").tag("Social")
-                        Text("Tech").tag("Tech")
-                        Text("News").tag("News")
-                        Text("Politics").tag("Politics")
+                        ForEach(FeedCategory.pickerCategories, id: \.self) { category in
+                            Text(category.localizedName).tag(category.rawValue)
+                        }
                     }
                 }
             } header: {

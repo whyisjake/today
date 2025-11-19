@@ -84,7 +84,7 @@ class OnDeviceAIService {
                 }
 
                 // Add closing message
-                let closingMessage = "**That's it for today!** ✌️\n\nTap any article above to read more. See you tomorrow."
+                let closingMessage = "**\(String(localized: "That's it for today!"))** ✌️\n\n\(String(localized: "Tap any article above to read more. See you tomorrow."))"
                 continuation.yield(.item(NewsletterItemData(summary: closingMessage, article: nil)))
 
                 continuation.yield(.completed)
@@ -138,7 +138,7 @@ class OnDeviceAIService {
         }
 
         // Add closing message as the last newsletter item (without an article link)
-        let closingMessage = "**That's it for today!** ✌️\n\nTap any article above to read more. See you tomorrow."
+        let closingMessage = "**\(String(localized: "That's it for today!"))** ✌️\n\n\(String(localized: "Tap any article above to read more. See you tomorrow."))"
         newsletterItems.append(NewsletterItemData(summary: closingMessage, article: nil))
 
         return (newsletter, newsletterItems)

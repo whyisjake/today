@@ -20,6 +20,50 @@ class AIService {
     private var systemModelStorage: Any?
     private var sessionStorage: Any?
 
+    /// Get the user's preferred language code for AI responses
+    /// Returns language code with script for Chinese (zh-Hans, zh-Hant)
+    private var userLanguageCode: String {
+        let languageCode = Locale.current.language.languageCode?.identifier ?? "en"
+
+        // For Chinese, we need to check the script to determine Simplified vs Traditional
+        if languageCode == "zh" {
+            if let script = Locale.current.language.script?.identifier {
+                return "zh-\(script)" // Returns "zh-Hans" or "zh-Hant"
+            }
+            // Default to Simplified if no script specified
+            return "zh-Hans"
+        }
+
+        return languageCode
+    }
+
+    /// Get language instruction for AI prompts
+    private var languageInstruction: String {
+        let code = userLanguageCode
+        switch code {
+        case "es":
+            return "IMPORTANT: Respond entirely in Spanish (Español)."
+        case "fr":
+            return "IMPORTANT: Respond entirely in French (Français)."
+        case "de":
+            return "IMPORTANT: Respond entirely in German (Deutsch)."
+        case "it":
+            return "IMPORTANT: Respond entirely in Italian (Italiano)."
+        case "pt":
+            return "IMPORTANT: Respond entirely in Portuguese (Português)."
+        case "ja":
+            return "IMPORTANT: Respond entirely in Japanese (日本語)."
+        case "ko":
+            return "IMPORTANT: Respond entirely in Korean (한국어)."
+        case "zh-Hans":
+            return "IMPORTANT: Respond entirely in Simplified Chinese (简体中文)."
+        case "zh-Hant":
+            return "IMPORTANT: Respond entirely in Traditional Chinese (繁體中文)."
+        default:
+            return "" // English is default, no instruction needed
+        }
+    }
+
     // Computed properties to safely cast from storage
     @available(iOS 26.0, *)
     private var systemModel: SystemLanguageModel? {
@@ -151,6 +195,7 @@ class AIService {
         \(articleList)
 
         Provide a concise summary in 3-4 sentences that captures the key topics and trends. Focus especially on the unread articles marked [UNREAD].
+        \(languageInstruction)
         """
 
         let response = try await session.respond(to: prompt)
@@ -253,6 +298,7 @@ class AIService {
         - Include one unexpected or humorous observation if it fits.
         - Show you live online and track what matters.
         - End with a quick punchline or insight — something memorable.
+        \(languageInstruction)
         """
 
         let response = try await session.respond(to: prompt)
@@ -305,8 +351,8 @@ class AIService {
             }
             .prefix(10)
 
-        var newsletter = "📰 **Today's Brief**\n\n"
-        newsletter += "Here's what you need to know from your feeds today. I've curated the highlights with a bit of context.\n\n"
+        var newsletter = "📰 **\(String(localized: "Today's Brief"))**\n\n"
+        newsletter += "\(String(localized: "Here's what you need to know from your feeds today. I've curated the highlights with a bit of context."))\n\n"
 
         // Group by category for better organization
         let articlesByCategory = Dictionary(grouping: Array(sortedArticles), by: { $0.feed?.category ?? "general" })
@@ -363,7 +409,7 @@ class AIService {
         }
 
         newsletter += "\n---\n\n"
-        newsletter += "That's it for today! Tap any article below to read more. See you tomorrow. ✌️"
+        newsletter += "\(String(localized: "That's it for today! Tap any article below to read more. See you tomorrow.")) ✌️"
 
         return (newsletter, featuredArticles.isEmpty ? nil : featuredArticles)
     }
@@ -487,9 +533,9 @@ class AIService {
             let categories = Set(topArticles.compactMap { $0.feed?.category }).joined(separator: ", ")
 
             let prompt = """
-            You're an internet-addicted curator who lives online and loves sharing the best content. Write a creative newsletter header.
-
-            Today's stories: \(articleTitles)
+            You are writing a newsletter header for a personal RSS reader app. This is a helpful summary for the user's daily reading.
+            \(languageInstruction.isEmpty ? "" : "\n\(languageInstruction)\n")
+            Today's article topics: \(articleTitles)
             Categories: \(categories)
 
             Generate:
@@ -593,7 +639,8 @@ class AIService {
         Rules:
         - Maximum 6 words
         - No quotes, no punctuation
-        - Conversational, witty tone, feel free to be sarcastic at times. 
+        - Conversational, witty tone, feel free to be sarcastic at times.
+        \(languageInstruction)
 
         Examples:
         - Oh THIS again
