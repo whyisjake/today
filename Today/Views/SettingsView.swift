@@ -202,6 +202,29 @@ struct SettingsView: View {
                         Spacer()
                     }
                 }
+
+                #if DEBUG
+                Section("🧪 Debug - Review Testing") {
+                    Button("Force Review Prompt") {
+                        Task { @MainActor in
+                            ReviewRequestManager.shared.forceReviewRequest()
+                        }
+                    }
+
+                    Button("Reset Review Data") {
+                        Task { @MainActor in
+                            ReviewRequestManager.shared.resetAllReviewData()
+                        }
+                    }
+
+                    Button("Show Review Status") {
+                        Task { @MainActor in
+                            print(ReviewRequestManager.shared.getReviewStatus())
+                        }
+                    }
+                }
+                .foregroundStyle(accentColor.color)
+                #endif
             }
             .navigationTitle("Settings")
         }

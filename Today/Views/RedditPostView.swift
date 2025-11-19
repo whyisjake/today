@@ -182,6 +182,12 @@ struct RedditPostView: View {
         if !article.isRead {
             article.isRead = true
             try? modelContext.save()
+
+            // Track article read for review prompts
+            Task { @MainActor in
+                ReviewRequestManager.shared.incrementArticleReadCount()
+                ReviewRequestManager.shared.requestReviewIfAppropriate()
+            }
         }
     }
 
