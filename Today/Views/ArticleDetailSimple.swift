@@ -72,6 +72,12 @@ struct ArticleDetailSimple: View {
                 } else if let description = article.articleDescription {
                     ArticleContentWebView(htmlContent: description)
                 }
+
+                Divider()
+                    .padding(.top, 8)
+
+                // Audio player controls
+                ArticleAudioControls(article: article)
             }
             .padding()
         }
