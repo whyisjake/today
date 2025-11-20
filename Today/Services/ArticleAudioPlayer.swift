@@ -345,9 +345,11 @@ extension ArticleAudioPlayer: AVSpeechSynthesizerDelegate {
     }
 
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        let utteranceID = ObjectIdentifier(utterance)
         Task { @MainActor in
             // Don't reset state if we're switching articles or if this isn't the current utterance
-            if !isAdjustingPlayback && utterance === currentUtterance {
+            let isCurrentUtterance = currentUtterance.map { ObjectIdentifier($0) == utteranceID } ?? false
+            if !isAdjustingPlayback && isCurrentUtterance {
                 isPlaying = false
                 isPaused = false
                 progress = 1.0
