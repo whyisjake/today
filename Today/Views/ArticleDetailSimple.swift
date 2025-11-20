@@ -93,6 +93,7 @@ struct ArticleDetailSimple: View {
                         Image(systemName: isPlayingThisArticle ? "waveform.circle.fill" : "play.circle")
                     }
                     .foregroundStyle(Color.accentColor)
+                    .accessibilityLabel(isPlayingThisArticle ? "Pause article audio" : "Play article audio")
 
                     // Share button
                     ShareLink(item: URL(string: article.link)!, subject: Text(article.title)) {
