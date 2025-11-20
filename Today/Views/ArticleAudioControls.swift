@@ -206,15 +206,37 @@ struct MiniAudioPlayer: View {
                     .tint(.accentColor)
 
                     HStack(spacing: 12) {
+                        // Article thumbnail
+                        if let imageUrl = article.imageUrl, let url = URL(string: imageUrl) {
+                            AsyncImage(url: url) { image in
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                            } placeholder: {
+                                Rectangle()
+                                    .fill(Color(.systemGray5))
+                            }
+                            .frame(width: 48, height: 48)
+                            .cornerRadius(6)
+                        }
+
                         // Article info
                         VStack(alignment: .leading, spacing: 4) {
                             Text(article.title)
                                 .font(.subheadline.weight(.medium))
                                 .lineLimit(1)
-                            HStack(spacing: 8) {
-                                Text(article.feed?.title ?? "Today")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                            HStack(spacing: 4) {
+                                // Feed name - Author (if available)
+                                if let author = article.author {
+                                    Text("\(article.feed?.title ?? "Today") - \(author)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                } else {
+                                    Text(article.feed?.title ?? "Today")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
                                 Text("•")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
