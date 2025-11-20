@@ -315,7 +315,6 @@ struct VoicePickerView: View {
             Section {
                 Button {
                     selectedVoiceIdentifier = ""
-                    dismiss()
                 } label: {
                     HStack {
                         Text("Default (System Voice)")
@@ -333,14 +332,11 @@ struct VoicePickerView: View {
                 Section(header: Text(languageDisplayName(for: group.language))) {
                     ForEach(group.voices, id: \.identifier) { voice in
                         Button {
+                            // Select the voice immediately (shows checkmark)
+                            selectedVoiceIdentifier = voice.identifier
+
                             // Preview the voice with a sample phrase
                             previewVoice(voice)
-
-                            // Select the voice and dismiss after a short delay to allow preview
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                selectedVoiceIdentifier = voice.identifier
-                                dismiss()
-                            }
                         } label: {
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {
