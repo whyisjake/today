@@ -81,7 +81,7 @@ struct ArticleAudioControls: View {
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "gauge.with.dots.needle.50percent")
-                        Text(formatSpeed(audioPlayer.playbackRate))
+                        Text(ArticleAudioPlayer.formatSpeed(audioPlayer.playbackRate))
                     }
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
@@ -105,16 +105,6 @@ struct ArticleAudioControls: View {
         audioPlayer.currentArticle?.id == article.id &&
         audioPlayer.isPlaying &&
         !audioPlayer.isPaused
-    }
-
-    private func formatSpeed(_ speed: Float) -> String {
-        // Display speed is 2x the actual rate (0.5 actual = "1x" display)
-        let displaySpeed = speed * 2
-        if displaySpeed.truncatingRemainder(dividingBy: 1.0) == 0 {
-            return "\(Int(displaySpeed))x"
-        } else {
-            return String(format: "%.2fx", displaySpeed)
-        }
     }
 
     private var estimatedDuration: TimeInterval {
@@ -152,7 +142,7 @@ struct SpeedPickerView: View {
                         dismiss()
                     } label: {
                         HStack {
-                            Text(formatSpeed(speed))
+                            Text(ArticleAudioPlayer.formatSpeed(speed))
                                 .foregroundStyle(.primary)
                             Spacer()
                             if abs(audioPlayer.playbackRate - speed) < 0.01 {
@@ -172,16 +162,6 @@ struct SpeedPickerView: View {
                     }
                 }
             }
-        }
-    }
-
-    private func formatSpeed(_ speed: Float) -> String {
-        // Display speed is 2x the actual rate (0.5 actual = "1x" display)
-        let displaySpeed = speed * 2
-        if displaySpeed.truncatingRemainder(dividingBy: 1.0) == 0 {
-            return "\(Int(displaySpeed))x"
-        } else {
-            return String(format: "%.2fx", displaySpeed)
         }
     }
 }
@@ -257,7 +237,7 @@ struct MiniAudioPlayer: View {
                         Button {
                             showSpeedPicker.toggle()
                         } label: {
-                            Text(formatSpeed(audioPlayer.playbackRate))
+                            Text(ArticleAudioPlayer.formatSpeed(audioPlayer.playbackRate))
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(accentColor.color)
                                 .frame(minWidth: 36)
@@ -308,15 +288,5 @@ struct MiniAudioPlayer: View {
         let minutes = totalSeconds / 60
         let remainingSeconds = totalSeconds % 60
         return String(format: "%d:%02d", minutes, remainingSeconds)
-    }
-
-    private func formatSpeed(_ speed: Float) -> String {
-        // Display speed is 2x the actual rate (0.5 actual = "1x" display)
-        let displaySpeed = speed * 2
-        if displaySpeed.truncatingRemainder(dividingBy: 1.0) == 0 {
-            return "\(Int(displaySpeed))x"
-        } else {
-            return String(format: "%.2fx", displaySpeed)
-        }
     }
 }

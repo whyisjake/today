@@ -206,6 +206,19 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
     }
 
     // MARK: - Playback Rate Control
+    
+    /// Formats playback rate for display
+    /// - Parameter speed: The actual AVSpeech rate (0.5 = "1x" normal speed)
+    /// - Returns: Formatted string like "1x" or "1.25x"
+    static func formatSpeed(_ speed: Float) -> String {
+        // Display speed is 2x the actual rate (0.5 actual = "1x" display)
+        let displaySpeed = speed * 2
+        if displaySpeed.truncatingRemainder(dividingBy: 1.0) == 0 {
+            return "\(Int(displaySpeed))x"
+        } else {
+            return String(format: "%.2fx", displaySpeed)
+        }
+    }
 
     func setPlaybackRate(_ rate: Float) {
         playbackRate = max(0.3, min(2.0, rate)) // Clamp between 0.3x and 2.0x
