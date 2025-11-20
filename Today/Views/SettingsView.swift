@@ -296,16 +296,13 @@ struct VoicePickerView: View {
             voice.language
         }
 
-        // Sort: current language first, then alphabetically
-        let sorted = grouped.sorted { first, second in
-            if first.key.hasPrefix(currentLanguage) && !second.key.hasPrefix(currentLanguage) {
-                return true
-            }
-            if !first.key.hasPrefix(currentLanguage) && second.key.hasPrefix(currentLanguage) {
-                return false
-            }
-            return first.key < second.key
+        // Filter to only show voices matching the device's current language
+        let currentLanguageVoices = grouped.filter { languageCode, _ in
+            languageCode.hasPrefix(currentLanguage)
         }
+
+        // Sort by language variant (e.g., en-US, en-GB, en-AU)
+        let sorted = currentLanguageVoices.sorted { $0.key < $1.key }
 
         return sorted.map { (language: $0.key, voices: $0.value.sorted { $0.name < $1.name }) }
     }
