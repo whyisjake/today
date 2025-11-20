@@ -262,14 +262,25 @@ struct VoicePickerView: View {
     @Binding var selectedVoiceIdentifier: String
     @Environment(\.dismiss) private var dismiss
 
-    // Group voices by language (only premium quality)
+    // Group voices by language (exclude novelty/low-quality voices)
     private var voicesByLanguage: [(language: String, voices: [AVSpeechSynthesisVoice])] {
-        // Filter to only premium voices
-        let premiumVoices = AVSpeechSynthesisVoice.speechVoices().filter { $0.quality == .premium }
+        // Unwanted voice identifiers (novelty voices)
+        let unwantedVoiceNames = [
+            "Zarvox", "Organ", "Bells", "Bad News", "Bahh", "Boing",
+            "Bubbles", "Cellos", "Good News", "Trinoids", "Whisper",
+            "Albert", "Fred", "Hysterical", "Junior", "Ralph"
+        ]
+
+        // Filter out unwanted voices, keep enhanced and premium
+        let filteredVoices = AVSpeechSynthesisVoice.speechVoices().filter { voice in
+            // Remove novelty voices by name
+            let isUnwanted = unwantedVoiceNames.contains { voice.name.contains($0) }
+            return !isUnwanted
+        }
         let currentLanguage = Locale.current.language.languageCode?.identifier ?? "en"
 
         // Group voices by language code
-        let grouped = Dictionary(grouping: premiumVoices) { voice in
+        let grouped = Dictionary(grouping: filteredVoices) { voice in
             voice.language
         }
 
@@ -314,8 +325,15 @@ struct VoicePickerView: View {
                             dismiss()
                         } label: {
                             HStack {
-                                Text(voice.name)
-                                    .foregroundStyle(.primary)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(voice.name)
+                                        .foregroundStyle(.primary)
+                                    if voice.quality != .default {
+                                        Text(qualityDescription(for: voice))
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
                                 Spacer()
                                 if selectedVoiceIdentifier == voice.identifier {
                                     Image(systemName: "checkmark")
