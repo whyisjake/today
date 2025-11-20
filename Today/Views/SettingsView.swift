@@ -262,13 +262,14 @@ struct VoicePickerView: View {
     @Binding var selectedVoiceIdentifier: String
     @Environment(\.dismiss) private var dismiss
 
-    // Group voices by language
+    // Group voices by language (only premium quality)
     private var voicesByLanguage: [(language: String, voices: [AVSpeechSynthesisVoice])] {
-        let allVoices = AVSpeechSynthesisVoice.speechVoices()
+        // Filter to only premium voices
+        let premiumVoices = AVSpeechSynthesisVoice.speechVoices().filter { $0.quality == .premium }
         let currentLanguage = Locale.current.language.languageCode?.identifier ?? "en"
 
         // Group voices by language code
-        let grouped = Dictionary(grouping: allVoices) { voice in
+        let grouped = Dictionary(grouping: premiumVoices) { voice in
             voice.language
         }
 
@@ -313,13 +314,8 @@ struct VoicePickerView: View {
                             dismiss()
                         } label: {
                             HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(voice.name)
-                                        .foregroundStyle(.primary)
-                                    Text(qualityDescription(for: voice))
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
+                                Text(voice.name)
+                                    .foregroundStyle(.primary)
                                 Spacer()
                                 if selectedVoiceIdentifier == voice.identifier {
                                     Image(systemName: "checkmark")

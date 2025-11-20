@@ -14,11 +14,28 @@ struct ArticleAudioControls: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            // Progress bar
+            // Scrubber slider (only show when audio is active)
             if audioPlayer.isPlaying || audioPlayer.isPaused,
                audioPlayer.currentArticle?.id == article.id {
-                ProgressView(value: audioPlayer.progress)
+                VStack(spacing: 4) {
+                    Slider(value: Binding(
+                        get: { audioPlayer.progress },
+                        set: { newValue in
+                            audioPlayer.seek(to: newValue)
+                        }
+                    ), in: 0...1)
                     .tint(.accentColor)
+
+                    HStack {
+                        Text(formatTime(audioPlayer.progress * estimatedDuration))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text(formatTime(estimatedDuration))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
 
             HStack(spacing: 20) {
@@ -64,7 +81,7 @@ struct ArticleAudioControls: View {
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "gauge.with.dots.needle.50percent")
-                        Text(String(format: "%.1fx", audioPlayer.playbackRate))
+                        Text(formatSpeed(audioPlayer.playbackRate))
                     }
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
@@ -89,6 +106,31 @@ struct ArticleAudioControls: View {
         audioPlayer.isPlaying &&
         !audioPlayer.isPaused
     }
+
+    private func formatSpeed(_ speed: Float) -> String {
+        // Check if it's a whole number
+        if speed.truncatingRemainder(dividingBy: 1.0) == 0 {
+            return "\(Int(speed))x"
+        } else {
+            return String(format: "%.2fx", speed)
+        }
+    }
+
+    private var estimatedDuration: TimeInterval {
+        // Rough estimate: average speaking rate is ~150 words per minute at 1.0x
+        // Adjust for current playback rate
+        guard let article = audioPlayer.currentArticle else { return 0 }
+        let wordCount = article.cleanText.split(separator: " ").count
+        let baseMinutes = Double(wordCount) / 150.0
+        return (baseMinutes * 60.0) / Double(audioPlayer.playbackRate)
+    }
+
+    private func formatTime(_ seconds: TimeInterval) -> String {
+        let totalSeconds = Int(seconds)
+        let minutes = totalSeconds / 60
+        let remainingSeconds = totalSeconds % 60
+        return String(format: "%d:%02d", minutes, remainingSeconds)
+    }
 }
 
 // MARK: - Speed Picker
@@ -108,7 +150,7 @@ struct SpeedPickerView: View {
                         dismiss()
                     } label: {
                         HStack {
-                            Text(String(format: "%.2fx", speed as CVarArg))
+                            Text(formatSpeed(speed))
                                 .foregroundStyle(.primary)
                             Spacer()
                             if abs(audioPlayer.playbackRate - speed) < 0.01 {
@@ -128,6 +170,15 @@ struct SpeedPickerView: View {
                     }
                 }
             }
+        }
+    }
+
+    private func formatSpeed(_ speed: Float) -> String {
+        // Check if it's a whole number
+        if speed.truncatingRemainder(dividingBy: 1.0) == 0 {
+            return "\(Int(speed))x"
+        } else {
+            return String(format: "%.2fx", speed)
         }
     }
 }

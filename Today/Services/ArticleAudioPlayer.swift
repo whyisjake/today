@@ -24,7 +24,7 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
     @Published var isPaused = false
     @Published var currentArticle: Article?
     @Published var progress: Double = 0.0 // 0.0 to 1.0
-    @Published var playbackRate: Float = 0.5 // Default speaking rate
+    @Published var playbackRate: Float = 1.0 // Default speaking rate (1.0 = normal speed)
 
     private var currentUtterance: AVSpeechUtterance?
     private var fullText: String = ""
@@ -140,19 +140,100 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
         }
     }
 
+    // MARK: - Seeking Control
+
+    func seek(to newProgress: Double) {
+        guard (isPlaying || isPaused), let article = currentArticle else { return }
+
+        let wasPlaying = isPlaying && !isPaused
+
+        // Stop current playback
+        synthesizer.stopSpeaking(at: .immediate)
+
+        // Calculate character position to seek to
+        let seekPosition = Int(newProgress * Double(fullText.count))
+        progress = newProgress
+
+        // Create new utterance from seek position
+        let remainingText = String(fullText.suffix(fullText.count - seekPosition))
+        let utterance = AVSpeechUtterance(string: remainingText)
+
+        // Use selected voice if available
+        if !selectedVoiceIdentifier.isEmpty,
+           let voice = AVSpeechSynthesisVoice(identifier: selectedVoiceIdentifier) {
+            utterance.voice = voice
+        } else {
+            utterance.voice = AVSpeechSynthesisVoice(language: Locale.current.language.languageCode?.identifier ?? "en-US")
+        }
+
+        utterance.rate = playbackRate
+        utterance.pitchMultiplier = 1.0
+        utterance.volume = 1.0
+
+        currentUtterance = utterance
+        characterIndex = seekPosition
+
+        // Resume playback if it was playing
+        if wasPlaying {
+            synthesizer.speak(utterance)
+            isPlaying = true
+            isPaused = false
+        } else {
+            // Keep paused state
+            isPaused = true
+            isPlaying = false
+        }
+
+        updateNowPlayingInfo()
+    }
+
     // MARK: - Playback Rate Control
 
     func setPlaybackRate(_ rate: Float) {
         playbackRate = max(0.3, min(2.0, rate)) // Clamp between 0.3x and 2.0x
 
-        // If currently playing, restart with new rate
-        if isPlaying, let article = currentArticle {
-            let wasPlaying = !isPaused
-            stop()
-            play(article: article)
-            if !wasPlaying {
-                pause()
+        // If currently playing, restart with new rate while preserving position
+        if isPlaying || isPaused, let article = currentArticle {
+            let wasPlaying = isPlaying && !isPaused
+            let currentProgress = progress
+
+            // Stop current playback
+            synthesizer.stopSpeaking(at: .immediate)
+
+            // Calculate character position to resume from
+            let resumePosition = Int(currentProgress * Double(fullText.count))
+
+            // Create new utterance from current position
+            let remainingText = String(fullText.suffix(fullText.count - resumePosition))
+            let utterance = AVSpeechUtterance(string: remainingText)
+
+            // Use selected voice if available
+            if !selectedVoiceIdentifier.isEmpty,
+               let voice = AVSpeechSynthesisVoice(identifier: selectedVoiceIdentifier) {
+                utterance.voice = voice
+            } else {
+                utterance.voice = AVSpeechSynthesisVoice(language: Locale.current.language.languageCode?.identifier ?? "en-US")
             }
+
+            utterance.rate = playbackRate
+            utterance.pitchMultiplier = 1.0
+            utterance.volume = 1.0
+
+            currentUtterance = utterance
+            characterIndex = resumePosition
+
+            // Resume playback if it was playing
+            if wasPlaying {
+                synthesizer.speak(utterance)
+                isPlaying = true
+                isPaused = false
+            } else {
+                // Keep paused state
+                isPaused = true
+                isPlaying = false
+            }
+
+            updateNowPlayingInfo()
         }
     }
 
