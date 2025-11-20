@@ -36,6 +36,7 @@ struct ArticleDetailSimple: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @AppStorage("fontOption") private var fontOption: FontOption = .serif
+    @State private var showAudioPlayer = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -72,12 +73,6 @@ struct ArticleDetailSimple: View {
                 } else if let description = article.articleDescription {
                     ArticleContentWebView(htmlContent: description)
                 }
-
-                Divider()
-                    .padding(.top, 8)
-
-                // Audio player controls
-                ArticleAudioControls(article: article)
             }
             .padding()
         }
@@ -86,8 +81,18 @@ struct ArticleDetailSimple: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                ShareLink(item: URL(string: article.link)!, subject: Text(article.title)) {
-                    Image(systemName: "square.and.arrow.up")
+                HStack(spacing: 16) {
+                    // Audio player button
+                    Button {
+                        showAudioPlayer.toggle()
+                    } label: {
+                        Image(systemName: "play.circle")
+                    }
+
+                    // Share button
+                    ShareLink(item: URL(string: article.link)!, subject: Text(article.title)) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
                 }
             }
 
@@ -155,6 +160,22 @@ struct ArticleDetailSimple: View {
         .toolbar(.hidden, for: .tabBar)
         .onAppear {
             markAsRead()
+        }
+        .sheet(isPresented: $showAudioPlayer) {
+            NavigationStack {
+                ArticleAudioControls(article: article)
+                    .navigationTitle("Listen to Article")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") {
+                                showAudioPlayer = false
+                            }
+                        }
+                    }
+            }
+            .presentationDetents([.height(220), .medium])
+            .presentationDragIndicator(.visible)
         }
     }
 
