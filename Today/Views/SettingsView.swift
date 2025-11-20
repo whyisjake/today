@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AVFoundation
 
 enum AppearanceMode: String, CaseIterable {
     case system = "System"
@@ -84,12 +85,23 @@ struct SettingsView: View {
     @AppStorage("appearanceMode") private var appearanceMode: AppearanceMode = .system
     @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
     @AppStorage("fontOption") private var fontOption: FontOption = .serif
+    @AppStorage("selectedVoiceIdentifier") private var selectedVoiceIdentifier: String = ""
     @Environment(\.openURL) private var openURL
 
     // Get app version dynamically
     private var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
         return "v\(version)"
+    }
+
+    private var selectedVoiceName: String {
+        if selectedVoiceIdentifier.isEmpty {
+            return "Default"
+        }
+        if let voice = AVSpeechSynthesisVoice(identifier: selectedVoiceIdentifier) {
+            return voice.name
+        }
+        return "Default"
     }
 
     var body: some View {
@@ -137,6 +149,19 @@ struct SettingsView: View {
                         }
                     }
                     .padding(.vertical, 8)
+                }
+
+                Section("Audio") {
+                    NavigationLink {
+                        VoicePickerView(selectedVoiceIdentifier: $selectedVoiceIdentifier)
+                    } label: {
+                        HStack {
+                            Text("Text-to-Speech Voice")
+                            Spacer()
+                            Text(selectedVoiceName)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
 
                 Section("About") {
@@ -227,6 +252,129 @@ struct SettingsView: View {
                 #endif
             }
             .navigationTitle("Settings")
+        }
+    }
+}
+
+// MARK: - Voice Picker View
+
+struct VoicePickerView: View {
+    @Binding var selectedVoiceIdentifier: String
+    @Environment(\.dismiss) private var dismiss
+
+    // Group voices by language (exclude novelty/low-quality voices)
+    private var voicesByLanguage: [(language: String, voices: [AVSpeechSynthesisVoice])] {
+        // Hardcoded list of novelty voices to filter out (as of iOS 18)
+        //
+        // NOTE: This list uses name-based filtering rather than quality-based filtering because:
+        // 1. AVSpeechSynthesisVoice.Quality doesn't distinguish novelty voices from standard voices
+        // 2. Apple's voice quality enum only provides .default, .enhanced, and .premium tiers
+        // 3. Novelty voices (like Zarvox, Bells, etc.) are marked as .default quality alongside
+        //    legitimate standard voices, making quality-based filtering impractical
+        //
+        // This list may need periodic updates as Apple adds or removes voices in future iOS versions.
+        // The voices listed here are confirmed novelty/character voices that are inappropriate for
+        // article reading as of iOS 18.
+        let unwantedVoiceNames = [
+            "Zarvox", "Organ", "Bells", "Bad News", "Bahh", "Boing",
+            "Bubbles", "Cellos", "Good News", "Trinoids", "Whisper",
+            "Albert", "Fred", "Hysterical", "Junior", "Ralph",
+            "Wobble", "Superstar", "Jester", "Kathy"
+        ]
+
+        // Filter out unwanted voices, keep enhanced and premium
+        let filteredVoices = AVSpeechSynthesisVoice.speechVoices().filter { voice in
+            // Remove novelty voices by name
+            let isUnwanted = unwantedVoiceNames.contains { voice.name.contains($0) }
+            return !isUnwanted
+        }
+        let currentLanguage = Locale.current.language.languageCode?.identifier ?? "en"
+
+        // Group voices by language code
+        let grouped = Dictionary(grouping: filteredVoices) { voice in
+            voice.language
+        }
+
+        // Sort: current language first, then alphabetically
+        let sorted = grouped.sorted { first, second in
+            if first.key.hasPrefix(currentLanguage) && !second.key.hasPrefix(currentLanguage) {
+                return true
+            }
+            if !first.key.hasPrefix(currentLanguage) && second.key.hasPrefix(currentLanguage) {
+                return false
+            }
+            return first.key < second.key
+        }
+
+        return sorted.map { (language: $0.key, voices: $0.value.sorted { $0.name < $1.name }) }
+    }
+
+    var body: some View {
+        List {
+            Section {
+                Button {
+                    selectedVoiceIdentifier = ""
+                    dismiss()
+                } label: {
+                    HStack {
+                        Text("Default (System Voice)")
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        if selectedVoiceIdentifier.isEmpty {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(Color.accentColor)
+                        }
+                    }
+                }
+            }
+
+            ForEach(voicesByLanguage, id: \.language) { group in
+                Section(header: Text(languageDisplayName(for: group.language))) {
+                    ForEach(group.voices, id: \.identifier) { voice in
+                        Button {
+                            selectedVoiceIdentifier = voice.identifier
+                            dismiss()
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(voice.name)
+                                        .foregroundStyle(.primary)
+                                    if voice.quality != .default {
+                                        Text(qualityDescription(for: voice))
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                if selectedVoiceIdentifier == voice.identifier {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(Color.accentColor)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle("Select Voice")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func languageDisplayName(for languageCode: String) -> String {
+        let locale = Locale.current
+        return locale.localizedString(forIdentifier: languageCode) ?? languageCode
+    }
+
+    private func qualityDescription(for voice: AVSpeechSynthesisVoice) -> String {
+        switch voice.quality {
+        case .default:
+            return "Standard"
+        case .enhanced:
+            return "Enhanced"
+        case .premium:
+            return "Premium"
+        @unknown default:
+            return "Standard"
         }
     }
 }

@@ -36,6 +36,7 @@ struct ArticleDetailSimple: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @AppStorage("fontOption") private var fontOption: FontOption = .serif
+    @StateObject private var audioPlayer = ArticleAudioPlayer.shared
 
     var body: some View {
         GeometryReader { geometry in
@@ -74,14 +75,30 @@ struct ArticleDetailSimple: View {
                 }
             }
             .padding()
-        }
+            }
         }
         .navigationTitle(article.feed?.title ?? "Article")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                ShareLink(item: URL(string: article.link)!, subject: Text(article.title)) {
-                    Image(systemName: "square.and.arrow.up")
+                HStack(spacing: 16) {
+                    // Audio player button
+                    Button {
+                        if audioPlayer.currentArticle?.id == article.id {
+                            audioPlayer.togglePlayPause()
+                        } else {
+                            audioPlayer.play(article: article)
+                        }
+                    } label: {
+                        Image(systemName: isPlayingThisArticle ? "waveform.circle.fill" : "play.circle")
+                    }
+                    .foregroundStyle(Color.accentColor)
+                    .accessibilityLabel(isPlayingThisArticle ? "Pause article audio" : "Play article audio")
+
+                    // Share button
+                    ShareLink(item: URL(string: article.link)!, subject: Text(article.title)) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
                 }
             }
 
@@ -167,6 +184,11 @@ struct ArticleDetailSimple: View {
         article.isRead = false
         try? modelContext.save()
         dismiss()
+    }
+
+    private var isPlayingThisArticle: Bool {
+        audioPlayer.currentArticle?.id == article.id &&
+        (audioPlayer.isPlaying || audioPlayer.isPaused)
     }
 }
 
