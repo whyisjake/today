@@ -52,7 +52,7 @@ class ReviewRequestManager {
 
         // Request review (iOS handles rate limiting automatically)
         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-            SKStoreReviewController.requestReview(in: windowScene)
+            AppStore.requestReview(in: windowScene)
 
             // Mark that we requested a review for this version
             UserDefaults.standard.set(currentVersion, forKey: lastReviewRequestVersionKey)
@@ -99,7 +99,7 @@ class ReviewRequestManager {
     /// Force a review request for testing (bypasses all requirements)
     func forceReviewRequest() {
         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-            SKStoreReviewController.requestReview(in: windowScene)
+            AppStore.requestReview(in: windowScene)
             print("🧪 DEBUG: Force requested app review")
         }
     }
