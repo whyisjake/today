@@ -269,7 +269,7 @@ struct VoicePickerView: View {
             "Zarvox", "Organ", "Bells", "Bad News", "Bahh", "Boing",
             "Bubbles", "Cellos", "Good News", "Trinoids", "Whisper",
             "Albert", "Fred", "Hysterical", "Junior", "Ralph",
-            "Wobble", "Superstar", "Jester"
+            "Wobble", "Superstar", "Jester", "Kathy"
         ]
 
         // Filter out unwanted voices, keep enhanced and premium
