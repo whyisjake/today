@@ -188,6 +188,7 @@ struct SpeedPickerView: View {
 struct MiniAudioPlayer: View {
     @StateObject private var audioPlayer = ArticleAudioPlayer.shared
     @Environment(\.dismiss) private var dismiss
+    @State private var showSpeedPicker = false
 
     var body: some View {
         if let article = audioPlayer.currentArticle,
@@ -248,6 +249,16 @@ struct MiniAudioPlayer: View {
 
                         Spacer()
 
+                        // Speed control button
+                        Button {
+                            showSpeedPicker.toggle()
+                        } label: {
+                            Text(formatSpeed(audioPlayer.playbackRate))
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.secondary)
+                                .frame(minWidth: 36)
+                        }
+
                         // Play/Pause button
                         Button {
                             audioPlayer.togglePlayPause()
@@ -271,6 +282,10 @@ struct MiniAudioPlayer: View {
                 .background(Color(.systemBackground))
             }
             .transition(.move(edge: .bottom).combined(with: .opacity))
+            .sheet(isPresented: $showSpeedPicker) {
+                SpeedPickerView(audioPlayer: audioPlayer)
+                    .presentationDetents([.height(300)])
+            }
         }
     }
 
@@ -286,5 +301,14 @@ struct MiniAudioPlayer: View {
         let minutes = totalSeconds / 60
         let remainingSeconds = totalSeconds % 60
         return String(format: "%d:%02d", minutes, remainingSeconds)
+    }
+
+    private func formatSpeed(_ speed: Float) -> String {
+        // Check if it's a whole number
+        if speed.truncatingRemainder(dividingBy: 1.0) == 0 {
+            return "\(Int(speed))x"
+        } else {
+            return String(format: "%.2fx", speed)
+        }
     }
 }

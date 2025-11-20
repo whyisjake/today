@@ -36,7 +36,6 @@ struct ArticleDetailSimple: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @AppStorage("fontOption") private var fontOption: FontOption = .serif
-    @State private var showAudioPlayer = false
     @StateObject private var audioPlayer = ArticleAudioPlayer.shared
 
     var body: some View {
@@ -85,7 +84,11 @@ struct ArticleDetailSimple: View {
                 HStack(spacing: 16) {
                     // Audio player button
                     Button {
-                        showAudioPlayer.toggle()
+                        if audioPlayer.currentArticle?.id == article.id {
+                            audioPlayer.togglePlayPause()
+                        } else {
+                            audioPlayer.play(article: article)
+                        }
                     } label: {
                         Image(systemName: isPlayingThisArticle ? "waveform.circle.fill" : "play.circle")
                     }
@@ -162,22 +165,6 @@ struct ArticleDetailSimple: View {
         .toolbar(.hidden, for: .tabBar)
         .onAppear {
             markAsRead()
-        }
-        .sheet(isPresented: $showAudioPlayer) {
-            NavigationStack {
-                ArticleAudioControls(article: article)
-                    .navigationTitle("Listen to Article")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") {
-                                showAudioPlayer = false
-                            }
-                        }
-                    }
-            }
-            .presentationDetents([.height(220), .medium])
-            .presentationDragIndicator(.visible)
         }
     }
 
