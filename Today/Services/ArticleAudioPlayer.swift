@@ -197,6 +197,15 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
             let wasPlaying = isPlaying && !isPaused
             let currentProgress = progress
 
+            // Preserve state explicitly before stopping (prevents mini player from disappearing)
+            if wasPlaying {
+                isPlaying = true
+                isPaused = false
+            } else {
+                isPlaying = false
+                isPaused = true
+            }
+
             // Stop current playback
             synthesizer.stopSpeaking(at: .immediate)
 
@@ -225,12 +234,6 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
             // Resume playback if it was playing
             if wasPlaying {
                 synthesizer.speak(utterance)
-                isPlaying = true
-                isPaused = false
-            } else {
-                // Keep paused state
-                isPaused = true
-                isPlaying = false
             }
 
             updateNowPlayingInfo()
