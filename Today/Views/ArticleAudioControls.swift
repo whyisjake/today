@@ -27,11 +27,11 @@ struct ArticleAudioControls: View {
                     .tint(.accentColor)
 
                     HStack {
-                        Text(formatTime(audioPlayer.progress * audioPlayer.estimatedDuration))
+                        Text((audioPlayer.progress * audioPlayer.estimatedDuration).formatted())
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Spacer()
-                        Text(formatTime(audioPlayer.estimatedDuration))
+                        Text(audioPlayer.estimatedDuration.formatted())
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -105,13 +105,6 @@ struct ArticleAudioControls: View {
         audioPlayer.currentArticle?.id == article.id &&
         audioPlayer.isPlaying &&
         !audioPlayer.isPaused
-    }
-
-    private func formatTime(_ seconds: TimeInterval) -> String {
-        let totalSeconds = Int(seconds)
-        let minutes = totalSeconds / 60
-        let remainingSeconds = totalSeconds % 60
-        return String(format: "%d:%02d", minutes, remainingSeconds)
     }
 }
 
@@ -216,7 +209,7 @@ struct MiniAudioPlayer: View {
                                 Text("•")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
-                                Text(formatTime(audioPlayer.progress * audioPlayer.estimatedDuration))
+                                Text((audioPlayer.progress * audioPlayer.estimatedDuration).formatted())
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -265,12 +258,5 @@ struct MiniAudioPlayer: View {
                     .presentationDetents([.height(300)])
             }
         }
-    }
-
-    private func formatTime(_ seconds: TimeInterval) -> String {
-        let totalSeconds = Int(seconds)
-        let minutes = totalSeconds / 60
-        let remainingSeconds = totalSeconds % 60
-        return String(format: "%d:%02d", minutes, remainingSeconds)
     }
 }
