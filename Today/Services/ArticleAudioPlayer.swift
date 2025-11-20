@@ -280,12 +280,34 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
         var nowPlayingInfo: [String: Any] = [
             MPMediaItemPropertyTitle: article.title,
             MPMediaItemPropertyArtist: article.feed?.title ?? "Today RSS Reader",
-            MPNowPlayingInfoPropertyElapsedPlaybackTime: progress * Double(fullText.count),
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: progress * estimatedDuration,
             MPNowPlayingInfoPropertyPlaybackRate: isPaused ? 0.0 : 1.0,
-            MPMediaItemPropertyPlaybackDuration: Double(fullText.count) / Double(playbackRate * 150) // Rough estimate
+            MPMediaItemPropertyPlaybackDuration: estimatedDuration
         ]
 
-        // Add artwork if available (app icon as fallback)
+        // Try to use article thumbnail as artwork, fall back to app icon
+        if let imageUrlString = article.imageUrl,
+           let imageUrl = URL(string: imageUrlString) {
+            // Load image asynchronously for artwork
+            Task {
+                do {
+                    let (data, _) = try await URLSession.shared.data(from: imageUrl)
+                    if let image = UIImage(data: data) {
+                        await MainActor.run {
+                            // Only update if still playing the same article
+                            guard self.currentArticle?.id == article.id else { return }
+                            var updatedInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? nowPlayingInfo
+                            updatedInfo[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                            MPNowPlayingInfoCenter.default().nowPlayingInfo = updatedInfo
+                        }
+                    }
+                } catch {
+                    // Failed to load thumbnail, artwork will use app icon fallback below
+                }
+            }
+        }
+
+        // Set initial artwork (app icon as fallback)
         if let image = UIImage(named: "AppIcon") {
             nowPlayingInfo[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
         }
