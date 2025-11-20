@@ -175,6 +175,8 @@ class FeedManager: ObservableObject {
     /// Sync all active feeds
     func syncAllFeeds() async {
         // Check if a sync is already in progress globally
+        // This check-and-set is atomic because both the check and set happen on the MainActor,
+        // preventing any interleaving from concurrent calls
         guard !Self.globalSyncInProgress else {
             print("⚠️ Sync already in progress, skipping concurrent sync request")
             return
