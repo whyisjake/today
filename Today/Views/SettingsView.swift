@@ -385,8 +385,9 @@ struct VoicePickerView: View {
         }
 
         // Create preview utterance with localized text
-        let previewText = String(localized: "This is the voice of \(voice.name)", comment: "Voice preview sample text")
-        let utterance = AVSpeechUtterance(string: previewText)
+        let previewText = String(localized: "This is the voice of %@", comment: "Voice preview sample text")
+        let formattedText = String(format: previewText, voice.name)
+        let utterance = AVSpeechUtterance(string: formattedText)
         utterance.voice = voice
         utterance.rate = 0.5 // Normal speech rate (same as default for audio player)
 
