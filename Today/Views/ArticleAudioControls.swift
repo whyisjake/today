@@ -189,12 +189,16 @@ struct MiniAudioPlayer: View {
     @StateObject private var audioPlayer = ArticleAudioPlayer.shared
     @Environment(\.dismiss) private var dismiss
     @State private var showSpeedPicker = false
+    @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
 
     var body: some View {
         if let article = audioPlayer.currentArticle,
            audioPlayer.isPlaying || audioPlayer.isPaused {
             VStack(spacing: 0) {
-                Divider()
+                // Accent color divider
+                Rectangle()
+                    .fill(accentColor.color.opacity(0.3))
+                    .frame(height: 2)
 
                 VStack(spacing: 8) {
                     // Progress scrubber
@@ -204,7 +208,7 @@ struct MiniAudioPlayer: View {
                             audioPlayer.seek(to: newValue)
                         }
                     ), in: 0...1)
-                    .tint(.accentColor)
+                    .tint(accentColor.color)
 
                     HStack(spacing: 12) {
                         // Article thumbnail
@@ -254,8 +258,8 @@ struct MiniAudioPlayer: View {
                             showSpeedPicker.toggle()
                         } label: {
                             Text(formatSpeed(audioPlayer.playbackRate))
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.secondary)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(accentColor.color)
                                 .frame(minWidth: 36)
                         }
 
@@ -265,7 +269,7 @@ struct MiniAudioPlayer: View {
                         } label: {
                             Image(systemName: audioPlayer.isPaused ? "play.circle.fill" : "pause.circle.fill")
                                 .font(.title2)
-                                .foregroundStyle(Color.accentColor)
+                                .foregroundStyle(accentColor.color)
                         }
 
                         // Stop button
@@ -279,7 +283,10 @@ struct MiniAudioPlayer: View {
                     }
                 }
                 .padding()
-                .background(Color(.systemBackground))
+                .background(
+                    accentColor.color.opacity(0.05)
+                        .overlay(Color(.systemBackground).opacity(0.95))
+                )
             }
             .transition(.move(edge: .bottom).combined(with: .opacity))
             .sheet(isPresented: $showSpeedPicker) {
