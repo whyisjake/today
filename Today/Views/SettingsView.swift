@@ -261,6 +261,7 @@ struct SettingsView: View {
 struct VoicePickerView: View {
     @Binding var selectedVoiceIdentifier: String
     @Environment(\.dismiss) private var dismiss
+    @State private var synthesizer = AVSpeechSynthesizer()
 
     // Group voices by language (exclude novelty/low-quality voices)
     private var voicesByLanguage: [(language: String, voices: [AVSpeechSynthesisVoice])] {
@@ -332,8 +333,14 @@ struct VoicePickerView: View {
                 Section(header: Text(languageDisplayName(for: group.language))) {
                     ForEach(group.voices, id: \.identifier) { voice in
                         Button {
-                            selectedVoiceIdentifier = voice.identifier
-                            dismiss()
+                            // Preview the voice with a sample phrase
+                            previewVoice(voice)
+
+                            // Select the voice and dismiss after a short delay to allow preview
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                selectedVoiceIdentifier = voice.identifier
+                                dismiss()
+                            }
                         } label: {
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {
@@ -376,5 +383,20 @@ struct VoicePickerView: View {
         @unknown default:
             return "Standard"
         }
+    }
+
+    private func previewVoice(_ voice: AVSpeechSynthesisVoice) {
+        // Stop any currently playing preview
+        if synthesizer.isSpeaking {
+            synthesizer.stopSpeaking(at: .immediate)
+        }
+
+        // Create preview utterance with localized text
+        let previewText = String(localized: "This is the voice of \(voice.name)", comment: "Voice preview sample text")
+        let utterance = AVSpeechUtterance(string: previewText)
+        utterance.voice = voice
+        utterance.rate = 0.5 // Normal speech rate (same as default for audio player)
+
+        synthesizer.speak(utterance)
     }
 }
