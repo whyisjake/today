@@ -12,6 +12,10 @@ import SwiftUI
 
 @MainActor
 class ArticleAudioPlayer: NSObject, ObservableObject {
+    // Access selected voice from UserDefaults
+    private var selectedVoiceIdentifier: String {
+        UserDefaults.standard.string(forKey: "selectedVoiceIdentifier") ?? ""
+    }
     static let shared = ArticleAudioPlayer()
 
     private let synthesizer = AVSpeechSynthesizer()
@@ -73,7 +77,15 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
 
         // Create utterance
         let utterance = AVSpeechUtterance(string: fullText)
-        utterance.voice = AVSpeechSynthesisVoice(language: Locale.current.language.languageCode?.identifier ?? "en-US")
+
+        // Use selected voice if available, otherwise use default voice for current language
+        if !selectedVoiceIdentifier.isEmpty,
+           let voice = AVSpeechSynthesisVoice(identifier: selectedVoiceIdentifier) {
+            utterance.voice = voice
+        } else {
+            utterance.voice = AVSpeechSynthesisVoice(language: Locale.current.language.languageCode?.identifier ?? "en-US")
+        }
+
         utterance.rate = playbackRate
         utterance.pitchMultiplier = 1.0
         utterance.volume = 1.0
