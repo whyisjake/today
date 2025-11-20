@@ -63,6 +63,25 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
         }
     }
 
+    // MARK: - Helper Methods
+    
+    private func createUtterance(text: String) -> AVSpeechUtterance {
+        let utterance = AVSpeechUtterance(string: text)
+        
+        if !selectedVoiceIdentifier.isEmpty,
+           let voice = AVSpeechSynthesisVoice(identifier: selectedVoiceIdentifier) {
+            utterance.voice = voice
+        } else {
+            utterance.voice = AVSpeechSynthesisVoice(language: Locale.current.language.languageCode?.identifier ?? "en-US")
+        }
+        
+        utterance.rate = playbackRate
+        utterance.pitchMultiplier = 1.0
+        utterance.volume = 1.0
+        
+        return utterance
+    }
+
     // MARK: - Playback Control
 
     func play(article: Article) {
@@ -86,20 +105,7 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
         progress = 0.0
 
         // Create utterance
-        let utterance = AVSpeechUtterance(string: fullText)
-
-        // Use selected voice if available, otherwise use default voice for current language
-        if !selectedVoiceIdentifier.isEmpty,
-           let voice = AVSpeechSynthesisVoice(identifier: selectedVoiceIdentifier) {
-            utterance.voice = voice
-        } else {
-            utterance.voice = AVSpeechSynthesisVoice(language: Locale.current.language.languageCode?.identifier ?? "en-US")
-        }
-
-        utterance.rate = playbackRate
-        utterance.pitchMultiplier = 1.0
-        utterance.volume = 1.0
-
+        let utterance = createUtterance(text: fullText)
         currentUtterance = utterance
 
         // Update Now Playing info
@@ -175,20 +181,7 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
 
         // Create new utterance from seek position
         let remainingText = String(fullText.suffix(fullText.count - seekPosition))
-        let utterance = AVSpeechUtterance(string: remainingText)
-
-        // Use selected voice if available
-        if !selectedVoiceIdentifier.isEmpty,
-           let voice = AVSpeechSynthesisVoice(identifier: selectedVoiceIdentifier) {
-            utterance.voice = voice
-        } else {
-            utterance.voice = AVSpeechSynthesisVoice(language: Locale.current.language.languageCode?.identifier ?? "en-US")
-        }
-
-        utterance.rate = playbackRate
-        utterance.pitchMultiplier = 1.0
-        utterance.volume = 1.0
-
+        let utterance = createUtterance(text: remainingText)
         currentUtterance = utterance
         characterIndex = seekPosition
 
@@ -263,20 +256,7 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
 
             // Create new utterance from current position
             let remainingText = String(fullText.suffix(fullText.count - resumePosition))
-            let utterance = AVSpeechUtterance(string: remainingText)
-
-            // Use selected voice if available
-            if !selectedVoiceIdentifier.isEmpty,
-               let voice = AVSpeechSynthesisVoice(identifier: selectedVoiceIdentifier) {
-                utterance.voice = voice
-            } else {
-                utterance.voice = AVSpeechSynthesisVoice(language: Locale.current.language.languageCode?.identifier ?? "en-US")
-            }
-
-            utterance.rate = playbackRate
-            utterance.pitchMultiplier = 1.0
-            utterance.volume = 1.0
-
+            let utterance = createUtterance(text: remainingText)
             currentUtterance = utterance
             characterIndex = resumePosition
 
