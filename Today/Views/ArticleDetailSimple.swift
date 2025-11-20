@@ -37,8 +37,10 @@ struct ArticleDetailSimple: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("fontOption") private var fontOption: FontOption = .serif
     @State private var showAudioPlayer = false
+    @StateObject private var audioPlayer = ArticleAudioPlayer.shared
 
     var body: some View {
+        ZStack(alignment: .bottom) {
         GeometryReader { geometry in
             ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -77,6 +79,15 @@ struct ArticleDetailSimple: View {
             .padding()
         }
         }
+
+        // Mini player when audio is playing but sheet is dismissed
+        if !showAudioPlayer {
+            MiniAudioPlayer()
+                .onTapGesture {
+                    showAudioPlayer = true
+                }
+        }
+        }
         .navigationTitle(article.feed?.title ?? "Article")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -86,8 +97,9 @@ struct ArticleDetailSimple: View {
                     Button {
                         showAudioPlayer.toggle()
                     } label: {
-                        Image(systemName: "play.circle")
+                        Image(systemName: isPlayingThisArticle ? "waveform.circle.fill" : "play.circle")
                     }
+                    .foregroundStyle(isPlayingThisArticle ? Color.accentColor : .primary)
 
                     // Share button
                     ShareLink(item: URL(string: article.link)!, subject: Text(article.title)) {
@@ -194,6 +206,11 @@ struct ArticleDetailSimple: View {
         article.isRead = false
         try? modelContext.save()
         dismiss()
+    }
+
+    private var isPlayingThisArticle: Bool {
+        audioPlayer.currentArticle?.id == article.id &&
+        (audioPlayer.isPlaying || audioPlayer.isPaused)
     }
 }
 

@@ -265,8 +265,12 @@ extension Article {
         // Start with title
         var text = title + ". "
 
-        // Add description/content if available
-        if let description = articleDescription, !description.isEmpty {
+        // Prioritize full content over description (same order as ArticleDetailSimple view)
+        if let contentEncoded = contentEncoded, !contentEncoded.isEmpty {
+            text += stripHTML(contentEncoded)
+        } else if let content = content, !content.isEmpty {
+            text += stripHTML(content)
+        } else if let description = articleDescription, !description.isEmpty {
             text += stripHTML(description)
         }
 
