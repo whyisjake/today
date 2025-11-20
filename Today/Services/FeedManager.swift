@@ -173,9 +173,6 @@ class FeedManager: ObservableObject {
 
         defer {
             isSyncing = false
-            lastSyncDate = syncStartTime
-            // Save to persistent storage
-            UserDefaults.standard.set(syncStartTime, forKey: Self.lastGlobalSyncKey)
             let duration = Date().timeIntervalSince(syncStartTime)
             print("✅ Feed sync completed in \(String(format: "%.1f", duration))s")
         }
@@ -202,6 +199,15 @@ class FeedManager: ObservableObject {
             }
 
             print("📊 Sync results: \(successCount) succeeded, \(failureCount) failed")
+            
+            // Only update lastSyncDate if at least one feed synced successfully
+            if successCount > 0 {
+                lastSyncDate = syncStartTime
+                UserDefaults.standard.set(syncStartTime, forKey: Self.lastGlobalSyncKey)
+                print("✅ Updated last sync date (synced \(successCount)/\(feeds.count) feeds)")
+            } else {
+                print("⚠️ Not updating last sync date - all feeds failed to sync")
+            }
         } catch {
             syncError = error.localizedDescription
             print("❌ Sync error: \(error.localizedDescription)")
