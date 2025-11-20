@@ -19,6 +19,10 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
     static let shared = ArticleAudioPlayer()
 
     private let synthesizer = AVSpeechSynthesizer()
+    
+    // Playback rate limits
+    private static let minPlaybackRate: Float = 0.3
+    private static let maxPlaybackRate: Float = 2.0
 
     @Published var isPlaying = false
     @Published var isPaused = false
@@ -208,7 +212,7 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
     // MARK: - Playback Rate Control
 
     func setPlaybackRate(_ rate: Float) {
-        playbackRate = max(0.3, min(2.0, rate)) // Clamp between 0.3x and 2.0x
+        playbackRate = max(Self.minPlaybackRate, min(Self.maxPlaybackRate, rate))
 
         // If currently playing, restart with new rate while preserving position
         if isPlaying || isPaused, currentArticle != nil {
