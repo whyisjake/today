@@ -40,7 +40,6 @@ struct ArticleDetailSimple: View {
     @StateObject private var audioPlayer = ArticleAudioPlayer.shared
 
     var body: some View {
-        ZStack(alignment: .bottom) {
         GeometryReader { geometry in
             ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -77,16 +76,7 @@ struct ArticleDetailSimple: View {
                 }
             }
             .padding()
-        }
-        }
-
-        // Mini player when audio is playing but sheet is dismissed
-        if !showAudioPlayer {
-            MiniAudioPlayer()
-                .onTapGesture {
-                    showAudioPlayer = true
-                }
-        }
+            }
         }
         .navigationTitle(article.feed?.title ?? "Article")
         .navigationBarTitleDisplayMode(.inline)

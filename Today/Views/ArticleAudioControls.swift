@@ -195,35 +195,54 @@ struct MiniAudioPlayer: View {
             VStack(spacing: 0) {
                 Divider()
 
-                HStack(spacing: 12) {
-                    // Article info
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(article.title)
-                            .font(.subheadline.weight(.medium))
-                            .lineLimit(1)
-                        Text(article.feed?.title ?? "Today")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                VStack(spacing: 8) {
+                    // Progress scrubber
+                    Slider(value: Binding(
+                        get: { audioPlayer.progress },
+                        set: { newValue in
+                            audioPlayer.seek(to: newValue)
+                        }
+                    ), in: 0...1)
+                    .tint(.accentColor)
 
-                    Spacer()
+                    HStack(spacing: 12) {
+                        // Article info
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(article.title)
+                                .font(.subheadline.weight(.medium))
+                                .lineLimit(1)
+                            HStack(spacing: 8) {
+                                Text(article.feed?.title ?? "Today")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text("•")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text(formatTime(audioPlayer.progress * estimatedDuration))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
 
-                    // Play/Pause button
-                    Button {
-                        audioPlayer.togglePlayPause()
-                    } label: {
-                        Image(systemName: audioPlayer.isPaused ? "play.circle.fill" : "pause.circle.fill")
-                            .font(.title2)
-                            .foregroundStyle(Color.accentColor)
-                    }
+                        Spacer()
 
-                    // Stop button
-                    Button {
-                        audioPlayer.stop()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title3)
-                            .foregroundStyle(.secondary)
+                        // Play/Pause button
+                        Button {
+                            audioPlayer.togglePlayPause()
+                        } label: {
+                            Image(systemName: audioPlayer.isPaused ? "play.circle.fill" : "pause.circle.fill")
+                                .font(.title2)
+                                .foregroundStyle(Color.accentColor)
+                        }
+
+                        // Stop button
+                        Button {
+                            audioPlayer.stop()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.title3)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
                 .padding()
@@ -231,5 +250,19 @@ struct MiniAudioPlayer: View {
             }
             .transition(.move(edge: .bottom).combined(with: .opacity))
         }
+    }
+
+    private var estimatedDuration: TimeInterval {
+        guard let article = audioPlayer.currentArticle else { return 0 }
+        let wordCount = article.cleanText.split(separator: " ").count
+        let baseMinutes = Double(wordCount) / 150.0
+        return (baseMinutes * 60.0) / Double(audioPlayer.playbackRate)
+    }
+
+    private func formatTime(_ seconds: TimeInterval) -> String {
+        let totalSeconds = Int(seconds)
+        let minutes = totalSeconds / 60
+        let remainingSeconds = totalSeconds % 60
+        return String(format: "%d:%02d", minutes, remainingSeconds)
     }
 }

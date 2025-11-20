@@ -14,32 +14,37 @@ struct ContentView: View {
     @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
 
     var body: some View {
-        TabView {
-            TodayView()
-                .tabItem {
-                    Label("Today", systemImage: "newspaper")
-                }
+        ZStack(alignment: .bottom) {
+            TabView {
+                TodayView()
+                    .tabItem {
+                        Label("Today", systemImage: "newspaper")
+                    }
 
-            FeedListView(modelContext: modelContext)
-                .tabItem {
-                    Label("Feeds", systemImage: "list.bullet")
-                }
+                FeedListView(modelContext: modelContext)
+                    .tabItem {
+                        Label("Feeds", systemImage: "list.bullet")
+                    }
 
-            AIChatView()
-                .tabItem {
-                    Label("AI Summary", systemImage: "sparkles")
-                }
+                AIChatView()
+                    .tabItem {
+                        Label("AI Summary", systemImage: "sparkles")
+                    }
 
-            SettingsView()
-                .tabItem {
-                    Label("Settings", systemImage: "gear")
-                }
-        }
-        .preferredColorScheme(appearanceMode.colorScheme)
-        .tint(accentColor.color)
-        .onAppear {
-            // Pre-warm WebView pool for faster article loading
-            _ = WebViewPool.shared
+                SettingsView()
+                    .tabItem {
+                        Label("Settings", systemImage: "gear")
+                    }
+            }
+            .preferredColorScheme(appearanceMode.colorScheme)
+            .tint(accentColor.color)
+            .onAppear {
+                // Pre-warm WebView pool for faster article loading
+                _ = WebViewPool.shared
+            }
+
+            // Global mini audio player
+            MiniAudioPlayer()
         }
     }
 }
