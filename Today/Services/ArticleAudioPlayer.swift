@@ -143,7 +143,7 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
     // MARK: - Seeking Control
 
     func seek(to newProgress: Double) {
-        guard (isPlaying || isPaused), let article = currentArticle else { return }
+        guard (isPlaying || isPaused), currentArticle != nil else { return }
 
         let wasPlaying = isPlaying && !isPaused
 
@@ -193,7 +193,7 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
         playbackRate = max(0.3, min(2.0, rate)) // Clamp between 0.3x and 2.0x
 
         // If currently playing, restart with new rate while preserving position
-        if isPlaying || isPaused, let article = currentArticle {
+        if isPlaying || isPaused, currentArticle != nil {
             let wasPlaying = isPlaying && !isPaused
             let currentProgress = progress
 
