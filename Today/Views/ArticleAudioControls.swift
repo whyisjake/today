@@ -122,7 +122,7 @@ struct ArticleAudioControls: View {
         // Adjust for current playback rate
         guard let article = audioPlayer.currentArticle else { return 0 }
         let wordCount = article.cleanText.split(separator: " ").count
-        let baseMinutes = Double(wordCount) / 150.0
+        let baseMinutes = Double(wordCount) / ArticleAudioPlayer.averageWordsPerMinute
         return (baseMinutes * 60.0) / Double(audioPlayer.playbackRate)
     }
 
@@ -299,7 +299,7 @@ struct MiniAudioPlayer: View {
     private var estimatedDuration: TimeInterval {
         guard let article = audioPlayer.currentArticle else { return 0 }
         let wordCount = article.cleanText.split(separator: " ").count
-        let baseMinutes = Double(wordCount) / 150.0
+        let baseMinutes = Double(wordCount) / ArticleAudioPlayer.averageWordsPerMinute
         return (baseMinutes * 60.0) / Double(audioPlayer.playbackRate)
     }
 

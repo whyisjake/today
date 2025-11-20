@@ -12,6 +12,9 @@ import SwiftUI
 
 @MainActor
 class ArticleAudioPlayer: NSObject, ObservableObject {
+    // Average speaking rate in words per minute (at normal 1x speed)
+    static let averageWordsPerMinute: Double = 150.0
+    
     // Access selected voice from UserDefaults
     private var selectedVoiceIdentifier: String {
         UserDefaults.standard.string(forKey: "selectedVoiceIdentifier") ?? ""
@@ -274,7 +277,7 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
             MPMediaItemPropertyArtist: article.feed?.title ?? "Today RSS Reader",
             MPNowPlayingInfoPropertyElapsedPlaybackTime: progress * Double(fullText.count),
             MPNowPlayingInfoPropertyPlaybackRate: isPaused ? 0.0 : 1.0,
-            MPMediaItemPropertyPlaybackDuration: Double(fullText.count) / Double(playbackRate * 150) // Rough estimate
+            MPMediaItemPropertyPlaybackDuration: Double(fullText.count) / Double(playbackRate * ArticleAudioPlayer.averageWordsPerMinute) // Rough estimate
         ]
 
         // Add artwork if available (app icon as fallback)
