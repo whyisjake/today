@@ -195,10 +195,7 @@ struct MiniAudioPlayer: View {
         if let article = audioPlayer.currentArticle,
            audioPlayer.isPlaying || audioPlayer.isPaused {
             VStack(spacing: 0) {
-                // Accent color divider
-                Rectangle()
-                    .fill(accentColor.color.opacity(0.3))
-                    .frame(height: 2)
+                Divider()
 
                 VStack(spacing: 8) {
                     // Progress scrubber
