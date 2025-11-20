@@ -108,16 +108,17 @@ struct ArticleAudioControls: View {
     }
 
     private func formatSpeed(_ speed: Float) -> String {
-        // Check if it's a whole number
-        if speed.truncatingRemainder(dividingBy: 1.0) == 0 {
-            return "\(Int(speed))x"
+        // Display speed is 2x the actual rate (0.5 actual = "1x" display)
+        let displaySpeed = speed * 2
+        if displaySpeed.truncatingRemainder(dividingBy: 1.0) == 0 {
+            return "\(Int(displaySpeed))x"
         } else {
-            return String(format: "%.2fx", speed)
+            return String(format: "%.2fx", displaySpeed)
         }
     }
 
     private var estimatedDuration: TimeInterval {
-        // Rough estimate: average speaking rate is ~150 words per minute at 1.0x
+        // Rough estimate: average speaking rate is ~150 words per minute at 0.5x (normal "1x" speed)
         // Adjust for current playback rate
         guard let article = audioPlayer.currentArticle else { return 0 }
         let wordCount = article.cleanText.split(separator: " ").count
@@ -139,7 +140,8 @@ struct SpeedPickerView: View {
     @ObservedObject var audioPlayer: ArticleAudioPlayer
     @Environment(\.dismiss) private var dismiss
 
-    private let speeds: [Float] = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
+    // Actual AVSpeech rates (0.5 = "1x" normal speed)
+    private let speeds: [Float] = [0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0]
 
     var body: some View {
         NavigationStack {
@@ -174,11 +176,12 @@ struct SpeedPickerView: View {
     }
 
     private func formatSpeed(_ speed: Float) -> String {
-        // Check if it's a whole number
-        if speed.truncatingRemainder(dividingBy: 1.0) == 0 {
-            return "\(Int(speed))x"
+        // Display speed is 2x the actual rate (0.5 actual = "1x" display)
+        let displaySpeed = speed * 2
+        if displaySpeed.truncatingRemainder(dividingBy: 1.0) == 0 {
+            return "\(Int(displaySpeed))x"
         } else {
-            return String(format: "%.2fx", speed)
+            return String(format: "%.2fx", displaySpeed)
         }
     }
 }
@@ -308,11 +311,12 @@ struct MiniAudioPlayer: View {
     }
 
     private func formatSpeed(_ speed: Float) -> String {
-        // Check if it's a whole number
-        if speed.truncatingRemainder(dividingBy: 1.0) == 0 {
-            return "\(Int(speed))x"
+        // Display speed is 2x the actual rate (0.5 actual = "1x" display)
+        let displaySpeed = speed * 2
+        if displaySpeed.truncatingRemainder(dividingBy: 1.0) == 0 {
+            return "\(Int(displaySpeed))x"
         } else {
-            return String(format: "%.2fx", speed)
+            return String(format: "%.2fx", displaySpeed)
         }
     }
 }

@@ -24,11 +24,12 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
     @Published var isPaused = false
     @Published var currentArticle: Article?
     @Published var progress: Double = 0.0 // 0.0 to 1.0
-    @Published var playbackRate: Float = 1.0 // Default speaking rate (1.0 = normal speed)
+    @Published var playbackRate: Float = 0.5 // 0.5 actual rate = "1x" normal speed for display
 
     private var currentUtterance: AVSpeechUtterance?
     private var fullText: String = ""
     private var characterIndex: Int = 0
+    private var isAdjustingPlayback = false // Flag to prevent delegate interference during speed/seek changes
 
     override private init() {
         super.init()
@@ -147,6 +148,9 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
 
         let wasPlaying = isPlaying && !isPaused
 
+        // Set flag to prevent delegate from resetting state
+        isAdjustingPlayback = true
+
         // Stop current playback
         synthesizer.stopSpeaking(at: .immediate)
 
@@ -185,6 +189,9 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
         }
 
         updateNowPlayingInfo()
+
+        // Clear flag after playback adjustment is complete
+        isAdjustingPlayback = false
     }
 
     // MARK: - Playback Rate Control
@@ -196,6 +203,9 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
         if isPlaying || isPaused, currentArticle != nil {
             let wasPlaying = isPlaying && !isPaused
             let currentProgress = progress
+
+            // Set flag to prevent delegate from resetting state
+            isAdjustingPlayback = true
 
             // Preserve state explicitly before stopping (prevents mini player from disappearing)
             if wasPlaying {
@@ -237,6 +247,9 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
             }
 
             updateNowPlayingInfo()
+
+            // Clear flag after playback adjustment is complete
+            isAdjustingPlayback = false
         }
     }
 
@@ -347,8 +360,11 @@ extension ArticleAudioPlayer: AVSpeechSynthesizerDelegate {
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
         Task { @MainActor in
             print("🎙️ Cancelled speaking")
-            isPlaying = false
-            isPaused = false
+            // Don't reset state if we're in the middle of adjusting playback (speed/seek)
+            if !isAdjustingPlayback {
+                isPlaying = false
+                isPaused = false
+            }
         }
     }
 }
