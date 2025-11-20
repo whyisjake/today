@@ -66,9 +66,12 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
     func play(article: Article) {
         // Configure audio session for playback
         configureAudioSessionForPlayback()
-        // Stop current playback if any
-        if isPlaying {
-            stop()
+
+        // Set flag to prevent delegate from resetting state during article switch
+        let wasSwitchingArticles = isPlaying
+        if wasSwitchingArticles {
+            isAdjustingPlayback = true
+            synthesizer.stopSpeaking(at: .immediate)
         }
 
         currentArticle = article
@@ -100,6 +103,11 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
         synthesizer.speak(utterance)
         isPlaying = true
         isPaused = false
+
+        // Clear flag after article switch is complete
+        if wasSwitchingArticles {
+            isAdjustingPlayback = false
+        }
     }
 
     func pause() {

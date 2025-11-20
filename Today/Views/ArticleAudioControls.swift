@@ -276,9 +276,9 @@ struct MiniAudioPlayer: View {
                         Button {
                             audioPlayer.stop()
                         } label: {
-                            Image(systemName: "xmark.circle.fill")
+                            Image(systemName: "xmark.circle")
                                 .font(.title3)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(accentColor.color)
                         }
                     }
                 }
