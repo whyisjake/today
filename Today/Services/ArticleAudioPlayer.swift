@@ -205,6 +205,17 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
         isAdjustingPlayback = false
     }
 
+    // MARK: - Duration Estimation
+    
+    var estimatedDuration: TimeInterval {
+        // Rough estimate: average speaking rate is ~150 words per minute at 0.5x (normal "1x" speed)
+        // Adjust for current playback rate
+        guard let article = currentArticle else { return 0 }
+        let wordCount = article.cleanText.split(separator: " ").count
+        let baseMinutes = Double(wordCount) / 150.0
+        return (baseMinutes * 60.0) / Double(playbackRate)
+    }
+    
     // MARK: - Playback Rate Control
     
     /// Formats playback rate for display

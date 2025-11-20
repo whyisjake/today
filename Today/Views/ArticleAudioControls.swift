@@ -27,11 +27,11 @@ struct ArticleAudioControls: View {
                     .tint(.accentColor)
 
                     HStack {
-                        Text(formatTime(audioPlayer.progress * estimatedDuration))
+                        Text(formatTime(audioPlayer.progress * audioPlayer.estimatedDuration))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Spacer()
-                        Text(formatTime(estimatedDuration))
+                        Text(formatTime(audioPlayer.estimatedDuration))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -105,15 +105,6 @@ struct ArticleAudioControls: View {
         audioPlayer.currentArticle?.id == article.id &&
         audioPlayer.isPlaying &&
         !audioPlayer.isPaused
-    }
-
-    private var estimatedDuration: TimeInterval {
-        // Rough estimate: average speaking rate is ~150 words per minute at 0.5x (normal "1x" speed)
-        // Adjust for current playback rate
-        guard let article = audioPlayer.currentArticle else { return 0 }
-        let wordCount = article.cleanText.split(separator: " ").count
-        let baseMinutes = Double(wordCount) / 150.0
-        return (baseMinutes * 60.0) / Double(audioPlayer.playbackRate)
     }
 
     private func formatTime(_ seconds: TimeInterval) -> String {
@@ -225,7 +216,7 @@ struct MiniAudioPlayer: View {
                                 Text("•")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
-                                Text(formatTime(audioPlayer.progress * estimatedDuration))
+                                Text(formatTime(audioPlayer.progress * audioPlayer.estimatedDuration))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -274,13 +265,6 @@ struct MiniAudioPlayer: View {
                     .presentationDetents([.height(300)])
             }
         }
-    }
-
-    private var estimatedDuration: TimeInterval {
-        guard let article = audioPlayer.currentArticle else { return 0 }
-        let wordCount = article.cleanText.split(separator: " ").count
-        let baseMinutes = Double(wordCount) / 150.0
-        return (baseMinutes * 60.0) / Double(audioPlayer.playbackRate)
     }
 
     private func formatTime(_ seconds: TimeInterval) -> String {
