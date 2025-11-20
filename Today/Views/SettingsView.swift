@@ -314,7 +314,7 @@ struct VoicePickerView: View {
                     selectedVoiceIdentifier = ""
                 } label: {
                     HStack {
-                        Text("Default (System Voice)")
+                        Text(String(localized: "Default (System Voice)"))
                             .foregroundStyle(.primary)
                         Spacer()
                         if selectedVoiceIdentifier.isEmpty {
@@ -356,7 +356,7 @@ struct VoicePickerView: View {
                 }
             }
         }
-        .navigationTitle("Select Voice")
+        .navigationTitle(String(localized: "Select Voice"))
         .navigationBarTitleDisplayMode(.inline)
     }
 

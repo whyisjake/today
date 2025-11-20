@@ -50,7 +50,7 @@ struct ArticleAudioControls: View {
                     HStack(spacing: 8) {
                         Image(systemName: isCurrentlyPlaying ? "pause.circle.fill" : "play.circle.fill")
                             .font(.title2)
-                        Text(isCurrentlyPlaying ? "Pause" : "Listen")
+                        Text(isCurrentlyPlaying ? String(localized: "Pause") : String(localized: "Listen"))
                             .font(.subheadline.weight(.semibold))
                     }
                     .foregroundStyle(.white)
@@ -137,7 +137,7 @@ struct SpeedPickerView: View {
                     }
                 }
             }
-            .navigationTitle("Playback Speed")
+            .navigationTitle(String(localized: "Playback Speed"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
