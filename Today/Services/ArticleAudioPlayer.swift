@@ -271,13 +271,15 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
 
     private func updateNowPlayingInfo() {
         guard let article = currentArticle else { return }
+        
+        let wordCount = fullText.split(separator: " ").count
 
         var nowPlayingInfo: [String: Any] = [
             MPMediaItemPropertyTitle: article.title,
             MPMediaItemPropertyArtist: article.feed?.title ?? "Today RSS Reader",
-            MPNowPlayingInfoPropertyElapsedPlaybackTime: progress * Double(fullText.count),
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: progress * Double(wordCount),
             MPNowPlayingInfoPropertyPlaybackRate: isPaused ? 0.0 : 1.0,
-            MPMediaItemPropertyPlaybackDuration: Double(fullText.count) / Double(playbackRate * ArticleAudioPlayer.averageWordsPerMinute) // Rough estimate
+            MPMediaItemPropertyPlaybackDuration: Double(wordCount) / Double(playbackRate * ArticleAudioPlayer.averageWordsPerMinute) // Rough estimate
         ]
 
         // Add artwork if available (app icon as fallback)
