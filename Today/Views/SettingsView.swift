@@ -264,7 +264,17 @@ struct VoicePickerView: View {
 
     // Group voices by language (exclude novelty/low-quality voices)
     private var voicesByLanguage: [(language: String, voices: [AVSpeechSynthesisVoice])] {
-        // Unwanted voice identifiers (novelty voices)
+        // Hardcoded list of novelty voices to filter out (as of iOS 18)
+        //
+        // NOTE: This list uses name-based filtering rather than quality-based filtering because:
+        // 1. AVSpeechSynthesisVoice.Quality doesn't distinguish novelty voices from standard voices
+        // 2. Apple's voice quality enum only provides .default, .enhanced, and .premium tiers
+        // 3. Novelty voices (like Zarvox, Bells, etc.) are marked as .default quality alongside
+        //    legitimate standard voices, making quality-based filtering impractical
+        //
+        // This list may need periodic updates as Apple adds or removes voices in future iOS versions.
+        // The voices listed here are confirmed novelty/character voices that are inappropriate for
+        // article reading as of iOS 18.
         let unwantedVoiceNames = [
             "Zarvox", "Organ", "Bells", "Bad News", "Bahh", "Boing",
             "Bubbles", "Cellos", "Good News", "Trinoids", "Whisper",
