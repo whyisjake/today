@@ -61,6 +61,7 @@ struct TodayApp: App {
         .modelContainer(sharedModelContainer)
     }
 
+    @MainActor
     private func checkAndSyncIfNeeded() {
         // Check if a sync is already in progress before proceeding
         guard !FeedManager.isSyncInProgress() else {
@@ -89,6 +90,7 @@ struct TodayApp: App {
         }
     }
 
+    @MainActor
     private func addDefaultFeedsIfNeeded() {
         let context = sharedModelContainer.mainContext
 
