@@ -17,7 +17,8 @@ class FeedManager: ObservableObject {
     private static let lastGlobalSyncKey = "com.today.lastGlobalSyncDate"
     
     // Global sync state to prevent concurrent syncs across multiple FeedManager instances
-    private static var globalSyncInProgress = false
+    // MainActor-isolated to ensure thread-safe access
+    @MainActor private static var globalSyncInProgress = false
 
     @Published var isSyncing = false
     @Published var lastSyncDate: Date?
@@ -45,7 +46,7 @@ class FeedManager: ObservableObject {
     }
     
     /// Check if a sync is currently in progress (across all FeedManager instances)
-    static func isSyncInProgress() -> Bool {
+    @MainActor static func isSyncInProgress() -> Bool {
         return globalSyncInProgress
     }
 
