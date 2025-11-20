@@ -268,7 +268,8 @@ struct VoicePickerView: View {
         let unwantedVoiceNames = [
             "Zarvox", "Organ", "Bells", "Bad News", "Bahh", "Boing",
             "Bubbles", "Cellos", "Good News", "Trinoids", "Whisper",
-            "Albert", "Fred", "Hysterical", "Junior", "Ralph"
+            "Albert", "Fred", "Hysterical", "Junior", "Ralph",
+            "Wobble", "Superstar", "Jester"
         ]
 
         // Filter out unwanted voices, keep enhanced and premium
