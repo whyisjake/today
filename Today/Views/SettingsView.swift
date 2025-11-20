@@ -261,6 +261,7 @@ struct SettingsView: View {
 struct VoicePickerView: View {
     @Binding var selectedVoiceIdentifier: String
     @Environment(\.dismiss) private var dismiss
+    @State private var synthesizer = AVSpeechSynthesizer()
 
     // Group voices by language (exclude novelty/low-quality voices)
     private var voicesByLanguage: [(language: String, voices: [AVSpeechSynthesisVoice])] {
@@ -295,16 +296,13 @@ struct VoicePickerView: View {
             voice.language
         }
 
-        // Sort: current language first, then alphabetically
-        let sorted = grouped.sorted { first, second in
-            if first.key.hasPrefix(currentLanguage) && !second.key.hasPrefix(currentLanguage) {
-                return true
-            }
-            if !first.key.hasPrefix(currentLanguage) && second.key.hasPrefix(currentLanguage) {
-                return false
-            }
-            return first.key < second.key
+        // Filter to only show voices matching the device's current language
+        let currentLanguageVoices = grouped.filter { languageCode, _ in
+            languageCode.hasPrefix(currentLanguage)
         }
+
+        // Sort by language variant (e.g., en-US, en-GB, en-AU)
+        let sorted = currentLanguageVoices.sorted { $0.key < $1.key }
 
         return sorted.map { (language: $0.key, voices: $0.value.sorted { $0.name < $1.name }) }
     }
@@ -314,7 +312,6 @@ struct VoicePickerView: View {
             Section {
                 Button {
                     selectedVoiceIdentifier = ""
-                    dismiss()
                 } label: {
                     HStack {
                         Text("Default (System Voice)")
@@ -332,8 +329,11 @@ struct VoicePickerView: View {
                 Section(header: Text(languageDisplayName(for: group.language))) {
                     ForEach(group.voices, id: \.identifier) { voice in
                         Button {
+                            // Select the voice immediately (shows checkmark)
                             selectedVoiceIdentifier = voice.identifier
-                            dismiss()
+
+                            // Preview the voice with a sample phrase
+                            previewVoice(voice)
                         } label: {
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {
@@ -376,5 +376,21 @@ struct VoicePickerView: View {
         @unknown default:
             return "Standard"
         }
+    }
+
+    private func previewVoice(_ voice: AVSpeechSynthesisVoice) {
+        // Stop any currently playing preview
+        if synthesizer.isSpeaking {
+            synthesizer.stopSpeaking(at: .immediate)
+        }
+
+        // Create preview utterance with localized text
+        let previewText = String(localized: "This is the voice of %@", comment: "Voice preview sample text")
+        let formattedText = String(format: previewText, voice.name)
+        let utterance = AVSpeechUtterance(string: formattedText)
+        utterance.voice = voice
+        utterance.rate = 0.5 // Normal speech rate (same as default for audio player)
+
+        synthesizer.speak(utterance)
     }
 }

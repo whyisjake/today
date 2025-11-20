@@ -9,6 +9,7 @@ import AVFoundation
 import Combine
 import MediaPlayer
 import SwiftUI
+import SwiftData
 
 @MainActor
 class ArticleAudioPlayer: NSObject, ObservableObject {
@@ -34,6 +35,10 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
     private var fullText: String = ""
     private var characterIndex: Int = 0
     private var isAdjustingPlayback = false // Flag to prevent delegate interference during speed/seek changes
+
+    // Cache artwork to avoid reloading on every Now Playing update
+    private var cachedArtwork: MPMediaItemArtwork?
+    private var cachedArtworkArticleId: PersistentIdentifier?
 
     override private init() {
         super.init()
@@ -147,6 +152,10 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
         currentArticle = nil
         currentUtterance = nil
         clearNowPlayingInfo()
+
+        // Clear artwork cache
+        cachedArtwork = nil
+        cachedArtworkArticleId = nil
 
         // Restore ambient audio session for videos/GIFs
         restoreAmbientAudioSession()
@@ -280,14 +289,56 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
         var nowPlayingInfo: [String: Any] = [
             MPMediaItemPropertyTitle: article.title,
             MPMediaItemPropertyArtist: article.feed?.title ?? "Today RSS Reader",
-            MPNowPlayingInfoPropertyElapsedPlaybackTime: progress * Double(fullText.count),
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: progress * estimatedDuration,
             MPNowPlayingInfoPropertyPlaybackRate: isPaused ? 0.0 : 1.0,
-            MPMediaItemPropertyPlaybackDuration: Double(fullText.count) / Double(playbackRate * 150) // Rough estimate
+            MPMediaItemPropertyPlaybackDuration: estimatedDuration
         ]
 
-        // Add artwork if available (app icon as fallback)
-        if let image = UIImage(named: "AppIcon") {
-            nowPlayingInfo[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+        // Check if we have cached artwork for this article
+        if let cachedArtwork = cachedArtwork, cachedArtworkArticleId == article.id {
+            // Use cached artwork
+            nowPlayingInfo[MPMediaItemPropertyArtwork] = cachedArtwork
+        } else {
+            // Need to load artwork for this article
+
+            // Start loading article thumbnail asynchronously (only if we don't have it cached)
+            if cachedArtworkArticleId != article.id,
+               let imageUrlString = article.imageUrl,
+               let imageUrl = URL(string: imageUrlString) {
+                Task {
+                    do {
+                        let (data, _) = try await URLSession.shared.data(from: imageUrl)
+                        if let image = UIImage(data: data) {
+                            await MainActor.run {
+                                // Only cache and update if still playing the same article
+                                guard self.currentArticle?.id == article.id else { return }
+                                let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                                self.cachedArtwork = artwork
+                                self.cachedArtworkArticleId = article.id
+
+                                // Update Now Playing with the loaded artwork
+                                var updatedInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+                                updatedInfo[MPMediaItemPropertyArtwork] = artwork
+                                MPNowPlayingInfoCenter.default().nowPlayingInfo = updatedInfo
+                            }
+                        }
+                    } catch {
+                        // Failed to load thumbnail, will use app icon fallback
+                    }
+                }
+            }
+
+            // Use app icon as fallback (immediate)
+            if let image = UIImage(named: "AppIcon") {
+                let fallbackArtwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                nowPlayingInfo[MPMediaItemPropertyArtwork] = fallbackArtwork
+
+                // Cache the fallback if we don't have a thumbnail URL
+                if article.imageUrl == nil {
+                    cachedArtwork = fallbackArtwork
+                    cachedArtworkArticleId = article.id
+                }
+            }
         }
 
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
