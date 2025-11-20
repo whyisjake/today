@@ -205,7 +205,7 @@ class FeedManager: ObservableObject {
                 lastSyncDate = syncStartTime
                 UserDefaults.standard.set(syncStartTime, forKey: Self.lastGlobalSyncKey)
                 print("✅ Updated last sync date (synced \(successCount)/\(feeds.count) feeds)")
-            } else if failureCount > 0 {
+            } else {
                 print("⚠️ Not updating last sync date - all feeds failed to sync")
             }
         } catch {
