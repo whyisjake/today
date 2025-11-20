@@ -92,7 +92,7 @@ struct ArticleDetailSimple: View {
                     } label: {
                         Image(systemName: isPlayingThisArticle ? "waveform.circle.fill" : "play.circle")
                     }
-                    .foregroundStyle(isPlayingThisArticle ? Color.accentColor : .primary)
+                    .foregroundStyle(Color.accentColor)
 
                     // Share button
                     ShareLink(item: URL(string: article.link)!, subject: Text(article.title)) {

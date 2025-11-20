@@ -67,8 +67,12 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
         // Configure audio session for playback
         configureAudioSessionForPlayback()
 
-        // Set flag to prevent delegate from resetting state during article switch
+        // Set playing state immediately to keep mini player visible during transition
         let wasSwitchingArticles = isPlaying
+        isPlaying = true
+        isPaused = false
+
+        // Set flag to prevent delegate from resetting state during article switch
         if wasSwitchingArticles {
             isAdjustingPlayback = true
             synthesizer.stopSpeaking(at: .immediate)
@@ -101,12 +105,13 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
 
         // Start speaking
         synthesizer.speak(utterance)
-        isPlaying = true
-        isPaused = false
 
-        // Clear flag after article switch is complete
+        // Clear flag after delegate has processed - delay to ensure async didCancel completes
         if wasSwitchingArticles {
-            isAdjustingPlayback = false
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 second
+                isAdjustingPlayback = false
+            }
         }
     }
 
