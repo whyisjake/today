@@ -53,9 +53,34 @@ struct TodayApp: App {
                     Task {
                         await DatabaseMigration.shared.runMigrations(modelContext: sharedModelContainer.mainContext)
                     }
+
+                    // Check if we need to sync on launch (content older than 2 hours)
+                    checkAndSyncIfNeeded()
                 }
         }
         .modelContainer(sharedModelContainer)
+    }
+
+    private func checkAndSyncIfNeeded() {
+        if FeedManager.needsSync() {
+            let lastSync = FeedManager.getLastSyncDate()
+            if let lastSync = lastSync {
+                let hoursSince = Date().timeIntervalSince(lastSync) / 3600
+                print("⚠️ Content is stale (last sync: \(String(format: "%.1f", hoursSince))h ago). Triggering sync...")
+            } else {
+                print("⚠️ No previous sync detected. Triggering initial sync...")
+            }
+
+            Task {
+                let feedManager = FeedManager(modelContext: sharedModelContainer.mainContext)
+                await feedManager.syncAllFeeds()
+            }
+        } else {
+            if let lastSync = FeedManager.getLastSyncDate() {
+                let minutesSince = Date().timeIntervalSince(lastSync) / 60
+                print("✅ Content is fresh (last sync: \(String(format: "%.0f", minutesSince))m ago). No sync needed.")
+            }
+        }
     }
 
     private func addDefaultFeedsIfNeeded() {

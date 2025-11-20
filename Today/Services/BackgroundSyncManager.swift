@@ -27,12 +27,14 @@ class BackgroundSyncManager {
     func scheduleBackgroundSync() {
         let request = BGAppRefreshTaskRequest(identifier: syncTaskIdentifier)
         // Schedule for 1 hour from now (minimum is 15 minutes for BGAppRefreshTask)
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 60 * 60)
+        let scheduledDate = Date(timeIntervalSinceNow: 60 * 60)
+        request.earliestBeginDate = scheduledDate
 
         do {
             try BGTaskScheduler.shared.submit(request)
-            // Background sync scheduled successfully
+            print("⏰ Background sync scheduled for \(scheduledDate.formatted(date: .omitted, time: .standard))")
         } catch {
+            print("⚠️ Failed to schedule background sync: \(error.localizedDescription)")
             // Background sync not available (needs Info.plist configuration)
             // This is optional, so we silently ignore the error
         }
@@ -40,6 +42,8 @@ class BackgroundSyncManager {
 
     /// Handle background sync task
     private func handleBackgroundSync(task: BGAppRefreshTask) {
+        print("🔔 Background sync task triggered by iOS")
+
         // Schedule the next sync
         scheduleBackgroundSync()
 
@@ -50,6 +54,7 @@ class BackgroundSyncManager {
 
         // Handle task expiration
         task.expirationHandler = {
+            print("⏱️ Background sync task expired (iOS terminated it)")
             syncTask.cancel()
         }
 
@@ -57,13 +62,14 @@ class BackgroundSyncManager {
         Task {
             await syncTask.value
             task.setTaskCompleted(success: true)
+            print("✅ Background sync task completed successfully")
         }
     }
 
     /// Perform the actual background sync
     @MainActor
     private func performBackgroundSync() async {
-        print("Starting background sync...")
+        print("🔄 Performing background sync...")
 
         // Create a temporary model container for background work
         let schema = Schema([
@@ -73,17 +79,15 @@ class BackgroundSyncManager {
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
         guard let modelContainer = try? ModelContainer(for: schema, configurations: [modelConfiguration]) else {
-            print("Failed to create model container for background sync")
+            print("❌ Failed to create model container for background sync")
             return
         }
 
         let modelContext = ModelContext(modelContainer)
         let feedManager = FeedManager(modelContext: modelContext)
 
-        // Sync all feeds
+        // Sync all feeds (FeedManager.syncAllFeeds has detailed logging)
         await feedManager.syncAllFeeds()
-
-        print("Background sync completed")
     }
 
     /// Manually trigger a sync (useful for testing)

@@ -13,12 +13,32 @@ import Combine
 class FeedManager: ObservableObject {
     private let modelContext: ModelContext
 
+    // UserDefaults key for persistent last sync tracking
+    private static let lastGlobalSyncKey = "com.today.lastGlobalSyncDate"
+
     @Published var isSyncing = false
     @Published var lastSyncDate: Date?
     @Published var syncError: String?
 
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
+        // Load last sync date from persistent storage
+        self.lastSyncDate = UserDefaults.standard.object(forKey: Self.lastGlobalSyncKey) as? Date
+    }
+
+    /// Check if content needs syncing (hasn't been synced in the last 2 hours)
+    static func needsSync() -> Bool {
+        guard let lastSync = UserDefaults.standard.object(forKey: lastGlobalSyncKey) as? Date else {
+            return true // Never synced, needs sync
+        }
+
+        let twoHoursAgo = Date().addingTimeInterval(-2 * 60 * 60)
+        return lastSync < twoHoursAgo
+    }
+
+    /// Get last sync date from persistent storage
+    static func getLastSyncDate() -> Date? {
+        return UserDefaults.standard.object(forKey: lastGlobalSyncKey) as? Date
     }
 
     /// Add a new RSS feed subscription
@@ -148,9 +168,16 @@ class FeedManager: ObservableObject {
         isSyncing = true
         syncError = nil
 
+        let syncStartTime = Date()
+        print("📡 Starting feed sync at \(syncStartTime.formatted(date: .omitted, time: .standard))")
+
         defer {
             isSyncing = false
-            lastSyncDate = Date()
+            lastSyncDate = syncStartTime
+            // Save to persistent storage
+            UserDefaults.standard.set(syncStartTime, forKey: Self.lastGlobalSyncKey)
+            let duration = Date().timeIntervalSince(syncStartTime)
+            print("✅ Feed sync completed in \(String(format: "%.1f", duration))s")
         }
 
         do {
@@ -158,17 +185,26 @@ class FeedManager: ObservableObject {
                 predicate: #Predicate<Feed> { $0.isActive }
             )
             let feeds = try modelContext.fetch(descriptor)
+            print("📋 Syncing \(feeds.count) active feeds")
+
+            var successCount = 0
+            var failureCount = 0
 
             for feed in feeds {
                 do {
                     try await syncFeed(feed)
+                    successCount += 1
                 } catch {
-                    print("Error syncing feed \(feed.title): \(error.localizedDescription)")
+                    failureCount += 1
+                    print("❌ Error syncing feed \(feed.title): \(error.localizedDescription)")
                     // Continue with other feeds even if one fails
                 }
             }
+
+            print("📊 Sync results: \(successCount) succeeded, \(failureCount) failed")
         } catch {
             syncError = error.localizedDescription
+            print("❌ Sync error: \(error.localizedDescription)")
         }
     }
 
