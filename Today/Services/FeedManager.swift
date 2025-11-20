@@ -15,6 +15,9 @@ class FeedManager: ObservableObject {
 
     // UserDefaults key for persistent last sync tracking
     private static let lastGlobalSyncKey = "com.today.lastGlobalSyncDate"
+    
+    // Global sync state to prevent concurrent syncs across multiple FeedManager instances
+    private static var globalSyncInProgress = false
 
     @Published var isSyncing = false
     @Published var lastSyncDate: Date?
@@ -39,6 +42,11 @@ class FeedManager: ObservableObject {
     /// Get last sync date from persistent storage
     static func getLastSyncDate() -> Date? {
         return UserDefaults.standard.object(forKey: lastGlobalSyncKey) as? Date
+    }
+    
+    /// Check if a sync is currently in progress (across all FeedManager instances)
+    static func isSyncInProgress() -> Bool {
+        return globalSyncInProgress
     }
 
     /// Add a new RSS feed subscription
@@ -165,6 +173,13 @@ class FeedManager: ObservableObject {
 
     /// Sync all active feeds
     func syncAllFeeds() async {
+        // Check if a sync is already in progress globally
+        guard !Self.globalSyncInProgress else {
+            print("⚠️ Sync already in progress, skipping concurrent sync request")
+            return
+        }
+        
+        Self.globalSyncInProgress = true
         isSyncing = true
         syncError = nil
 
@@ -172,6 +187,7 @@ class FeedManager: ObservableObject {
         print("📡 Starting feed sync at \(syncStartTime.formatted(date: .omitted, time: .standard))")
 
         defer {
+            Self.globalSyncInProgress = false
             isSyncing = false
             lastSyncDate = syncStartTime
             // Save to persistent storage
