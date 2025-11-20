@@ -8,7 +8,7 @@
 import Foundation
 
 extension TimeInterval {
-    /// Format time interval as MM:SS string
+    /// Format time interval as M:SS or MM:SS string
     /// - Returns: Formatted string in the format "M:SS" or "MM:SS"
     func formatted() -> String {
         let totalSeconds = Int(self)
