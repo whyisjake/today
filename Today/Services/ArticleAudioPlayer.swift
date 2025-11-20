@@ -44,7 +44,6 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
             // Use .playback category for text-to-speech (allows background playback)
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
             try AVAudioSession.sharedInstance().setActive(true)
-            print("🎙️ Configured audio session for speech playback")
         } catch {
             print("Failed to configure audio session: \(error)")
         }
@@ -55,7 +54,6 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
             // Restore .ambient category (for videos/GIFs that mix with other audio)
             try AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default)
             try AVAudioSession.sharedInstance().setActive(true)
-            print("🎙️ Restored ambient audio session")
         } catch {
             print("Failed to restore audio session: \(error)")
         }
@@ -331,7 +329,7 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
 extension ArticleAudioPlayer: AVSpeechSynthesizerDelegate {
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didStart utterance: AVSpeechUtterance) {
         Task { @MainActor in
-            print("🎙️ Started speaking article")
+            // Speech started
         }
     }
 
@@ -348,31 +346,30 @@ extension ArticleAudioPlayer: AVSpeechSynthesizerDelegate {
 
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         Task { @MainActor in
-            print("🎙️ Finished speaking article")
-            isPlaying = false
-            isPaused = false
-            progress = 1.0
-            updateNowPlayingInfo()
+            // Don't reset state if we're switching articles or if this isn't the current utterance
+            if !isAdjustingPlayback && utterance === currentUtterance {
+                isPlaying = false
+                isPaused = false
+                progress = 1.0
+                updateNowPlayingInfo()
+            }
         }
     }
 
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didPause utterance: AVSpeechUtterance) {
         Task { @MainActor in
-            print("🎙️ Paused speaking")
             updateNowPlayingInfo()
         }
     }
 
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didContinue utterance: AVSpeechUtterance) {
         Task { @MainActor in
-            print("🎙️ Resumed speaking")
             updateNowPlayingInfo()
         }
     }
 
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
         Task { @MainActor in
-            print("🎙️ Cancelled speaking")
             // Don't reset state if we're in the middle of adjusting playback (speed/seek)
             if !isAdjustingPlayback {
                 isPlaying = false
