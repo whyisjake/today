@@ -13,12 +13,41 @@ import Combine
 class FeedManager: ObservableObject {
     private let modelContext: ModelContext
 
+    // UserDefaults key for persistent last sync tracking
+    private static let lastGlobalSyncKey = "com.today.lastGlobalSyncDate"
+    
+    // Global sync state to prevent concurrent syncs across multiple FeedManager instances
+    // MainActor-isolated to ensure thread-safe access
+    @MainActor private static var globalSyncInProgress = false
+
     @Published var isSyncing = false
     @Published var lastSyncDate: Date?
     @Published var syncError: String?
 
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
+        // Load last sync date from persistent storage
+        self.lastSyncDate = UserDefaults.standard.object(forKey: Self.lastGlobalSyncKey) as? Date
+    }
+
+    /// Check if content needs syncing (hasn't been synced in the last 2 hours)
+    static func needsSync() -> Bool {
+        guard let lastSync = UserDefaults.standard.object(forKey: lastGlobalSyncKey) as? Date else {
+            return true // Never synced, needs sync
+        }
+
+        let twoHoursAgo = Date().addingTimeInterval(-2 * 60 * 60)
+        return lastSync < twoHoursAgo
+    }
+
+    /// Get last sync date from persistent storage
+    static func getLastSyncDate() -> Date? {
+        return UserDefaults.standard.object(forKey: lastGlobalSyncKey) as? Date
+    }
+    
+    /// Check if a sync is currently in progress (across all FeedManager instances)
+    @MainActor static func isSyncInProgress() -> Bool {
+        return globalSyncInProgress
     }
 
     /// Add a new RSS feed subscription
@@ -145,12 +174,26 @@ class FeedManager: ObservableObject {
 
     /// Sync all active feeds
     func syncAllFeeds() async {
+        // Check if a sync is already in progress globally
+        // This check-and-set is atomic because both the check and set happen on the MainActor,
+        // preventing any interleaving from concurrent calls
+        guard !Self.globalSyncInProgress else {
+            print("⚠️ Sync already in progress, skipping concurrent sync request")
+            return
+        }
+        
+        Self.globalSyncInProgress = true
         isSyncing = true
         syncError = nil
 
+        let syncStartTime = Date()
+        print("📡 Starting feed sync at \(syncStartTime.formatted(date: .omitted, time: .standard))")
+
         defer {
+            Self.globalSyncInProgress = false
             isSyncing = false
-            lastSyncDate = Date()
+            let duration = Date().timeIntervalSince(syncStartTime)
+            print("✅ Feed sync completed in \(String(format: "%.1f", duration))s")
         }
 
         do {
@@ -158,17 +201,35 @@ class FeedManager: ObservableObject {
                 predicate: #Predicate<Feed> { $0.isActive }
             )
             let feeds = try modelContext.fetch(descriptor)
+            print("📋 Syncing \(feeds.count) active feeds")
+
+            var successCount = 0
+            var failureCount = 0
 
             for feed in feeds {
                 do {
                     try await syncFeed(feed)
+                    successCount += 1
                 } catch {
-                    print("Error syncing feed \(feed.title): \(error.localizedDescription)")
+                    failureCount += 1
+                    print("❌ Error syncing feed \(feed.title): \(error.localizedDescription)")
                     // Continue with other feeds even if one fails
                 }
             }
+
+            print("📊 Sync results: \(successCount) succeeded, \(failureCount) failed")
+            
+            // Only update lastSyncDate if at least one feed synced successfully
+            if successCount > 0 {
+                lastSyncDate = syncStartTime
+                UserDefaults.standard.set(syncStartTime, forKey: Self.lastGlobalSyncKey)
+                print("✅ Updated last sync date (synced \(successCount)/\(feeds.count) feeds)")
+            } else {
+                print("⚠️ Not updating last sync date - all feeds failed to sync")
+            }
         } catch {
             syncError = error.localizedDescription
+            print("❌ Sync error: \(error.localizedDescription)")
         }
     }
 
