@@ -17,6 +17,9 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
         UserDefaults.standard.string(forKey: "selectedVoiceIdentifier") ?? ""
     }
     static let shared = ArticleAudioPlayer()
+    
+    // Delay for utterance transitions to ensure async operations complete
+    private static let utteranceTransitionDelay: UInt64 = 100_000_000 // 0.1 seconds in nanoseconds
 
     private let synthesizer = AVSpeechSynthesizer()
 
@@ -107,7 +110,7 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
         // Clear flag after delegate has processed - delay to ensure async didCancel completes
         if wasSwitchingArticles {
             Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 second
+                try? await Task.sleep(nanoseconds: Self.utteranceTransitionDelay)
                 isAdjustingPlayback = false
             }
         }
