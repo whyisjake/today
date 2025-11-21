@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDisplayName</key>
-	<string>Today - RSS Reader</string>
+	<string>Today</string>
 	<key>CFBundleIconName</key>
 	<string>AppIcon</string>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
