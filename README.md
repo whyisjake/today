@@ -233,6 +233,12 @@ Today respects your privacy:
 
 ## Version History
 
+### v1.7.0 (Build 11) - November 2025
+**Brand Refresh**
+- 🎨 **New App Icon** - Fresh, modern icon with International Orange branding
+- 📱 **Simplified App Name** - Clean "Today" display name on home screen
+- ✨ **Polish & Refinement** - Enhanced visual identity and user experience
+
 ### v1.6.0 (Build 10) - November 20, 2025
 **Text-to-Speech Audio Player & Voice Enhancements**
 - 🎙️ **Text-to-Speech Audio Player** - Listen to articles with full-featured audio playback
