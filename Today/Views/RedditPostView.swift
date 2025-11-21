@@ -1005,7 +1005,13 @@ struct EmbeddedMediaWebView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.allowsInlineMediaPlayback = true
+        configuration.allowsPictureInPictureMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = []
+
+        // Enable fullscreen video playback
+        if #available(iOS 15.0, *) {
+            configuration.preferences.isElementFullscreenEnabled = true
+        }
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.isOpaque = false
