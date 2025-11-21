@@ -11,12 +11,16 @@ A modern, privacy-focused RSS reader for iOS with AI-powered content summarizati
 ### Core Functionality
 - 📰 **RSS Feed Management** - Subscribe to your favorite RSS feeds with OPML import/export support
 - 🤖 **AI-Powered Summaries** - Intelligent article summarization using Apple Intelligence (iOS 26+) with graceful fallback to NaturalLanguage framework
+- 🎙️ **Text-to-Speech Audio Player** - Listen to articles with full playback controls, variable speed (0.5x-2x), and background playback support
+- 🗣️ **Voice Selection** - Choose from high-quality voices in your language with preview functionality
+- 🔒 **Lock Screen Integration** - Rich Now Playing controls with article thumbnails and accurate duration estimates
 - 🔄 **Background Sync** - Automatic feed updates with hourly background refresh
 - 📅 **Day-Based Navigation** - Browse articles by Today, Yesterday, and older with infinite scroll
 - 🔍 **Smart Filtering** - Filter by category, search articles, and mark as read/unread
 - ⭐ **Favorites** - Save important articles for later
 - 🎨 **Typography** - WordPress-style smart quotes and em/en dashes for beautiful text rendering
 - 🔴 **Reddit RSS Support** - Native Reddit integration with JSON API, animated GIF/video playback, gallery images with zoom/pan, comments view, and author display
+- 🌐 **Multi-Language Support** - Full app localization in English, German, Spanish, and Japanese
 
 ### User Experience
 - 🌓 **Dark Mode Support** - Automatic light/dark theme with manual override
@@ -228,6 +232,31 @@ Today respects your privacy:
 - ✅ AI processing happens on-device (when using Apple Intelligence)
 
 ## Version History
+
+### v1.6.0 (Build 10) - November 20, 2025
+**Text-to-Speech Audio Player & Voice Enhancements**
+- 🎙️ **Text-to-Speech Audio Player** - Listen to articles with full-featured audio playback
+- ⏯️ **Playback Controls** - Play, pause, stop, and seek through articles with progress slider
+- 🎚️ **Variable Speed** - Adjustable playback speed from 0.5x to 2x
+- 📱 **Mini Player** - Persistent audio controls across all tabs
+- 🔇 **Background Playback** - Continue listening with screen off
+- 🔒 **Lock Screen Controls** - Full Now Playing integration with article thumbnails
+- 🗣️ **Voice Selection** - Choose from high-quality voices with live preview
+- 🌐 **Smart Filtering** - Only shows voices for your device language
+- 🎯 **Voice Quality** - Enhanced and Premium voice indicators
+- 🖼️ **Article Artwork** - Shows article thumbnails on lock screen with intelligent caching
+- ⏱️ **Accurate Duration** - Real-time estimates based on word count
+- 🌍 **Complete Localization** - All audio features translated to German, Spanish, and Japanese
+- 🔄 **Background Sync Improvements** - More reliable feed updates with persistent tracking
+- ⭐ **App Store Review System** - Respectful review prompts based on usage
+
+### v1.5.0 - November 2025
+**Multi-Language Support**
+- 🌐 **Complete Spanish localization** - Full app translation including AI features
+- 🌐 **Complete German localization** - Full app translation including AI features
+- 🌐 **Complete Japanese localization** - Full app translation including AI features
+- 🎨 **Localized Settings** - Theme and Font options translated
+- 🗣️ **Community Credit** - Special thanks to u/kikher for the multi-language suggestion
 
 ### v1.4.0 (Build 7) - November 15, 2025
 **Reddit RSS Support**
