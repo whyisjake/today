@@ -21,6 +21,8 @@ struct TodayView: View {
     @State private var isRefreshing = false
     @State private var showMarkAllReadConfirmation = false
     @State private var daysToLoad = 1 // Start with 1 day (today)
+    @AppStorage("showAltCategory") private var showAltCategory = false // Global setting for Alt category visibility
+    @State private var tapCount = 0
     @AppStorage("fontOption") private var fontOption: FontOption = .serif
 
     // Navigation state that bundles article ID with context
@@ -40,7 +42,16 @@ struct TodayView: View {
 
         // Get all unique categories from articles in the time window
         // This automatically excludes empty categories
-        let feedCategories = Set(timeFilteredArticles.compactMap { $0.feed?.category })
+        var feedCategories = Set(timeFilteredArticles.compactMap { $0.feed?.category })
+
+        // Filter based on Alt category visibility
+        if showAltCategory {
+            // When showing Alt, only show Alt category
+            feedCategories = feedCategories.filter { $0.lowercased() == "alt" }
+        } else {
+            // When not showing Alt, exclude Alt category
+            feedCategories = feedCategories.filter { $0.lowercased() != "alt" }
+        }
 
         return ["All"] + feedCategories.sorted()
     }
@@ -94,6 +105,11 @@ struct TodayView: View {
         allArticles.lazy.filter { $0.isFavorite }.count
     }
 
+    // Check if there are any Alt articles
+    private var hasAltArticles: Bool {
+        allArticles.contains { $0.feed?.category.lowercased() == "alt" }
+    }
+
     private var filteredArticles: [Article] {
         var articles = allArticles
 
@@ -103,6 +119,15 @@ struct TodayView: View {
         let cutoffDate = Calendar.current.date(byAdding: .day, value: -daysToLoad, to: startOfToday)!
 
         articles = articles.filter { $0.publishedDate >= cutoffDate }
+
+        // Filter based on Alt category visibility
+        if showAltCategory {
+            // When showing Alt, only show Alt articles
+            articles = articles.filter { $0.feed?.category.lowercased() == "alt" }
+        } else {
+            // When not showing Alt, exclude Alt articles
+            articles = articles.filter { $0.feed?.category.lowercased() != "alt" }
+        }
 
         // Filter by category
         if selectedCategory != "All" {
@@ -254,6 +279,25 @@ struct TodayView: View {
                                 }
                                 .tint(.yellow)
                             }
+                        }
+
+                        // Show toggle button if Alt articles exist
+                        if hasAltArticles {
+                            Button {
+                                toggleAltCategory()
+                            } label: {
+                                HStack {
+                                    Spacer()
+                                    Image(systemName: showAltCategory ? "eye.slash" : "eye.fill")
+                                    Text(showAltCategory ? "Hide Alt Articles" : "Show Alt Articles")
+                                        .font(.subheadline)
+                                    Spacer()
+                                }
+                                .foregroundStyle(.secondary)
+                                .padding()
+                            }
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
                         }
 
                         // Load more days button at the bottom
@@ -526,6 +570,13 @@ struct TodayView: View {
 
     private func resetToToday() {
         daysToLoad = 1
+    }
+
+    private func toggleAltCategory() {
+        showAltCategory.toggle()
+        // Reset filters when toggling Alt category
+        selectedCategory = "All"
+        resetToToday()
     }
 }
 

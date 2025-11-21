@@ -55,7 +55,10 @@ struct AIChatView: View {
         let cutoffDate = Calendar.current.date(byAdding: .day, value: -7, to: startOfToday)!
         let recentArticles = articles.filter { $0.publishedDate >= cutoffDate }
 
-        let feedCategories = Set(recentArticles.compactMap { $0.feed?.category })
+        // Exclude Alt category from AI features
+        var feedCategories = Set(recentArticles.compactMap { $0.feed?.category })
+        feedCategories = feedCategories.filter { $0.lowercased() != "alt" }
+
         return ["All"] + feedCategories.sorted()
     }
 
@@ -227,7 +230,9 @@ struct AIChatView: View {
 
         // Generate AI response
         Task {
-            let (response, recommendedArticles) = await AIService.shared.generateResponse(for: trimmed, articles: Array(articles))
+            // Exclude Alt category articles from AI features
+            let filteredArticles = articles.filter { $0.feed?.category.lowercased() != "alt" }
+            let (response, recommendedArticles) = await AIService.shared.generateResponse(for: trimmed, articles: Array(filteredArticles))
 
             await MainActor.run {
                 messages.append(ChatMessage(content: response, isUser: false, recommendedArticles: recommendedArticles))
@@ -242,24 +247,29 @@ struct AIChatView: View {
         // Filter articles by category if specified, with time and count limits
         let filteredArticles: [Article]
         if let category = category {
-            // Get recent articles (last 7 days) from this category
+            // Get recent articles (last 7 days) from this category, excluding Alt
             let now = Date.now
             let startOfToday = Calendar.current.startOfDay(for: now)
             let cutoffDate = Calendar.current.date(byAdding: .day, value: -7, to: startOfToday)!
 
             let categoryArticles = articles.filter { article in
-                article.feed?.category == category && article.publishedDate >= cutoffDate
+                article.feed?.category == category &&
+                article.publishedDate >= cutoffDate &&
+                article.feed?.category.lowercased() != "alt"
             }
 
             // Limit to most recent 15 articles to avoid context window issues
             filteredArticles = Array(categoryArticles.prefix(15))
         } else {
-            // For "All" newsletter, also apply time filter and limit
+            // For "All" newsletter, also apply time filter and limit, excluding Alt
             let now = Date.now
             let startOfToday = Calendar.current.startOfDay(for: now)
             let cutoffDate = Calendar.current.date(byAdding: .day, value: -7, to: startOfToday)!
 
-            let recentArticles = articles.filter { $0.publishedDate >= cutoffDate }
+            let recentArticles = articles.filter {
+                $0.publishedDate >= cutoffDate &&
+                $0.feed?.category.lowercased() != "alt"
+            }
             filteredArticles = Array(recentArticles.prefix(15))
         }
 

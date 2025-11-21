@@ -86,9 +86,26 @@ struct FeedListView: View {
     @State private var isImporting = false
     @State private var importError: String?
     @State private var showingExportConfirmation = false
+    @AppStorage("showAltCategory") private var showAltFeeds = false // Global setting for Alt category visibility
 
     init(modelContext: ModelContext) {
         _feedManager = StateObject(wrappedValue: FeedManager(modelContext: modelContext))
+    }
+
+    // Filter feeds based on Alt category visibility
+    private var visibleFeeds: [Feed] {
+        if showAltFeeds {
+            // When showing Alt, only show Alt feeds
+            return feeds.filter { $0.category.lowercased() == "alt" }
+        } else {
+            // When not showing Alt, exclude Alt feeds
+            return feeds.filter { $0.category.lowercased() != "alt" }
+        }
+    }
+
+    // Check if there are any Alt feeds
+    private var hasAltFeeds: Bool {
+        feeds.contains { $0.category.lowercased() == "alt" }
     }
 
     var body: some View {
@@ -124,8 +141,25 @@ struct FeedListView: View {
     @ViewBuilder
     private var feedListContent: some View {
         List {
-            ForEach(feeds) { feed in
+            ForEach(visibleFeeds) { feed in
                 feedRow(for: feed)
+            }
+
+            // Show toggle button at bottom if Alt feeds exist
+            if hasAltFeeds {
+                Button {
+                    toggleAltFeeds()
+                } label: {
+                    HStack {
+                        Spacer()
+                        Image(systemName: showAltFeeds ? "eye.slash" : "eye.fill")
+                        Text(showAltFeeds ? "Hide Alt Feeds" : "Show Alt Feeds")
+                            .font(.subheadline)
+                        Spacer()
+                    }
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 12)
+                }
             }
         }
     }
@@ -625,6 +659,10 @@ struct FeedListView: View {
         } else {
             throw NSError(domain: "OPML", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to parse OPML"])
         }
+    }
+
+    private func toggleAltFeeds() {
+        showAltFeeds.toggle()
     }
 }
 
