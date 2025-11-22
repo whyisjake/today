@@ -14,6 +14,11 @@ struct RedditCommentsView: View {
     @State private var errorMessage: String?
     @AppStorage("fontOption") private var fontOption: FontOption = .serif
 
+    // Filter out AutoModerator comments
+    private var filteredComments: [RedditComment] {
+        comments.filter { $0.author.lowercased() != "automoderator" }
+    }
+
     var body: some View {
         Group {
             if isLoading {
@@ -41,7 +46,7 @@ struct RedditCommentsView: View {
                     .buttonStyle(.borderedProminent)
                 }
                 .padding()
-            } else if comments.isEmpty {
+            } else if filteredComments.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "bubble.left")
                         .font(.system(size: 48))
@@ -56,7 +61,7 @@ struct RedditCommentsView: View {
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(comments) { comment in
+                        ForEach(filteredComments) { comment in
                             CommentRowView(comment: comment, fontOption: fontOption)
                         }
                     }
