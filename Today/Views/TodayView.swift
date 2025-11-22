@@ -281,25 +281,6 @@ struct TodayView: View {
                             }
                         }
 
-                        // Show toggle button if Alt articles exist
-                        if hasAltArticles {
-                            Button {
-                                toggleAltCategory()
-                            } label: {
-                                HStack {
-                                    Spacer()
-                                    Image(systemName: showAltCategory ? "eye.slash" : "eye.fill")
-                                    Text(showAltCategory ? "Hide Alt Articles" : "Show Alt Articles")
-                                        .font(.subheadline)
-                                    Spacer()
-                                }
-                                .foregroundStyle(.secondary)
-                                .padding()
-                            }
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
-                        }
-
                         // Load more days button at the bottom
                         Button {
                             loadMoreDays()
