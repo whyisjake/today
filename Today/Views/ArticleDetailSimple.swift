@@ -36,6 +36,7 @@ struct ArticleDetailSimple: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @AppStorage("fontOption") private var fontOption: FontOption = .serif
+    @AppStorage("shortArticleBehavior") private var shortArticleBehavior: ShortArticleBehavior = .openInAppBrowser
     @StateObject private var audioPlayer = ArticleAudioPlayer.shared
 
     var body: some View {
@@ -65,8 +66,14 @@ struct ArticleDetailSimple: View {
 
                 Divider()
 
-                // Show full content if available, otherwise show description
-                if let contentEncoded = article.contentEncoded {
+                // For short articles with "Open in Today Browser", show full web page
+                if article.hasMinimalContent && shortArticleBehavior == .openInAppBrowser,
+                   let url = URL(string: article.link) {
+                    WebViewRepresentable(url: url)
+                        .frame(height: geometry.size.height - 200)
+                }
+                // Otherwise show article content
+                else if let contentEncoded = article.contentEncoded {
                     ArticleContentWebView(htmlContent: contentEncoded)
                 } else if let content = article.content {
                     ArticleContentWebView(htmlContent: content)

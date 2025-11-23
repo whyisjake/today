@@ -25,6 +25,7 @@ struct TodayView: View {
     @AppStorage("showAltCategory") private var showAltCategory = false // Global setting for Alt category visibility
     @State private var tapCount = 0
     @AppStorage("fontOption") private var fontOption: FontOption =  .serif
+    @AppStorage("shortArticleBehavior") private var shortArticleBehavior: ShortArticleBehavior = .openInAppBrowser
 
     // Navigation state that bundles article ID with context
     struct NavigationState: Hashable {
@@ -235,16 +236,26 @@ struct TodayView: View {
                     List {
                         ForEach(filteredArticles, id: \.persistentModelID) { article in
                             Button {
-                                // Open short articles directly in Safari
+                                // Handle short articles based on user preference
                                 if article.hasMinimalContent && !article.isRedditPost {
-                                    if let url = URL(string: article.link) {
-                                        openURL(url)
-                                        // Mark as read when opening in browser
-                                        article.isRead = true
-                                        try? modelContext.save()
+                                    switch shortArticleBehavior {
+                                    case .openInBrowser:
+                                        // Open in default browser (Safari)
+                                        if let url = URL(string: article.link) {
+                                            openURL(url)
+                                            article.isRead = true
+                                            try? modelContext.save()
+                                        }
+                                    case .openInAppBrowser, .openInArticleView:
+                                        // Open in-app (either web view or article detail)
+                                        let context = filteredArticles.map { $0.persistentModelID }
+                                        navigationState = NavigationState(
+                                            articleID: article.persistentModelID,
+                                            context: context
+                                        )
                                     }
                                 } else {
-                                    // Capture the navigation context when an article is selected
+                                    // Regular articles always open in-app
                                     let context = filteredArticles.map { $0.persistentModelID }
                                     navigationState = NavigationState(
                                         articleID: article.persistentModelID,

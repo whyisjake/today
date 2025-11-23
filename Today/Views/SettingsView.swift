@@ -53,6 +53,30 @@ enum FontOption: String, CaseIterable, Identifiable {
     }
 }
 
+enum ShortArticleBehavior: String, CaseIterable, Identifiable {
+    case openInBrowser = "Open in Browser"
+    case openInAppBrowser = "Open in Today Browser"
+    case openInArticleView = "Open in Article View"
+
+    var id: String { rawValue }
+
+    var localizedName: String {
+        switch self {
+        case .openInBrowser: return String(localized: "Open in Browser")
+        case .openInAppBrowser: return String(localized: "Open in Today Browser")
+        case .openInArticleView: return String(localized: "Open in Article View")
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .openInBrowser: return String(localized: "Opens short articles directly in your default browser")
+        case .openInAppBrowser: return String(localized: "Opens short articles in Today's built-in browser")
+        case .openInArticleView: return String(localized: "Shows short articles in the article detail view")
+        }
+    }
+}
+
 enum AccentColorOption: String, CaseIterable, Identifiable {
     case red = "Red"
     case orange = "International Orange"
@@ -86,6 +110,7 @@ struct SettingsView: View {
     @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
     @AppStorage("fontOption") private var fontOption: FontOption = .serif
     @AppStorage("selectedVoiceIdentifier") private var selectedVoiceIdentifier: String = ""
+    @AppStorage("shortArticleBehavior") private var shortArticleBehavior: ShortArticleBehavior = .openInAppBrowser
     @Environment(\.openURL) private var openURL
 
     // Get app version dynamically
@@ -149,6 +174,22 @@ struct SettingsView: View {
                         }
                     }
                     .padding(.vertical, 8)
+                }
+
+                Section {
+                    Picker("Short Article Behavior", selection: $shortArticleBehavior) {
+                        ForEach(ShortArticleBehavior.allCases) { option in
+                            Text(option.localizedName).tag(option)
+                        }
+                    }
+                    Text(shortArticleBehavior.description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } header: {
+                    Text("Reading")
+                } footer: {
+                    Text("Short articles have minimal content (less than 300 characters) and are indicated by an external link icon.")
+                        .font(.caption)
                 }
 
                 Section("Audio") {
