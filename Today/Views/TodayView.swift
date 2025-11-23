@@ -23,7 +23,7 @@ struct TodayView: View {
     @State private var daysToLoad = 1 // Start with 1 day (today)
     @AppStorage("showAltCategory") private var showAltCategory = false // Global setting for Alt category visibility
     @State private var tapCount = 0
-    @AppStorage("fontOption") private var fontOption: FontOption = .serif
+    @AppStorage("fontOption") private var fontOption: FontOption =  .serif
 
     // Navigation state that bundles article ID with context
     struct NavigationState: Hashable {
@@ -272,6 +272,7 @@ struct TodayView: View {
                                 Button {
                                     toggleFavorite(article)
                                 } label: {
+
                                     Label(
                                         article.isFavorite ? "Unfavorite" : "Favorite",
                                         systemImage: article.isFavorite ? "star.slash" : "star.fill"
@@ -279,25 +280,6 @@ struct TodayView: View {
                                 }
                                 .tint(.yellow)
                             }
-                        }
-
-                        // Show toggle button if Alt articles exist
-                        if hasAltArticles {
-                            Button {
-                                toggleAltCategory()
-                            } label: {
-                                HStack {
-                                    Spacer()
-                                    Image(systemName: showAltCategory ? "eye.slash" : "eye.fill")
-                                    Text(showAltCategory ? "Hide Alt Articles" : "Show Alt Articles")
-                                        .font(.subheadline)
-                                    Spacer()
-                                }
-                                .foregroundStyle(.secondary)
-                                .padding()
-                            }
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
                         }
 
                         // Load more days button at the bottom
@@ -587,7 +569,7 @@ struct ArticleRowView: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
-                Text(article.title)
+                Text(article.title.decodeHTMLEntities())
                     .font(fontOption == .serif ?
                         .system(.headline, design: .serif) :
                         .system(.headline, design: .default))

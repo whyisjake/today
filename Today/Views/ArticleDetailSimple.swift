@@ -115,9 +115,15 @@ struct ArticleDetailSimple: View {
                     .disabled(previousArticleID == nil)
 
                     // Reddit Comments button (if this is a Reddit post)
-                    if article.isRedditPost, let commentsUrl = article.redditCommentsUrl {
+                    if article.isRedditPost {
                         NavigationLink {
-                            RedditCommentsView(commentsUrl: commentsUrl)
+                            RedditPostView(
+                                article: article,
+                                previousArticleID: previousArticleID,
+                                nextArticleID: nextArticleID,
+                                onNavigateToPrevious: onNavigateToPrevious,
+                                onNavigateToNext: onNavigateToNext
+                            )
                         } label: {
                             Label("Comments", systemImage: "bubble.left.and.bubble.right")
                         }

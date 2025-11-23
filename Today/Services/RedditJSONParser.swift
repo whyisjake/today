@@ -7,6 +7,27 @@
 
 import Foundation
 
+// MARK: - Reddit Comment Model
+
+struct RedditComment: Identifiable {
+    let id: String
+    let author: String
+    let body: String
+    let bodyHtml: String? // Reddit's pre-rendered HTML (includes images, links, formatting)
+    let score: Int
+    let createdUtc: Date
+    let depth: Int
+    var replies: [RedditComment]
+
+    var timeAgo: String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: createdUtc, relativeTo: Date())
+    }
+}
+
+// MARK: - Reddit JSON Parser
+
 class RedditJSONParser {
 
     /// Parse a subreddit JSON feed (list of posts)
@@ -59,12 +80,19 @@ class RedditJSONParser {
         }
 
         var comments: [RedditComment] = []
+        var totalParsed = 0
+        var filteredCount = 0
+
         for child in commentChildren {
+            totalParsed += 1
             if let comment = parseComment(from: child, depth: 0) {
                 comments.append(comment)
+            } else {
+                filteredCount += 1
             }
         }
 
+        print("📊 [Parser] Parsed \(totalParsed) comments, kept \(comments.count), filtered \(filteredCount)")
         return (post, comments)
     }
 
@@ -209,7 +237,7 @@ class RedditJSONParser {
 
         return ParsedRedditPost(
             id: id,
-            title: title,
+            title: title.decodeHTMLEntities(),
             author: author,
             subreddit: subreddit,
             url: url,
@@ -235,6 +263,13 @@ class RedditJSONParser {
               let id = data["id"] as? String,
               let author = data["author"] as? String,
               let body = data["body"] as? String else {
+            return nil
+        }
+
+        // Filter out AutoModerator and deleted comments
+        let cleanAuthor = author.trimmingCharacters(in: .whitespaces).lowercased()
+        if cleanAuthor == "automoderator" || cleanAuthor == "[deleted]" {
+            print("🔴 [Parser] Filtering out comment from '\(author)' (cleaned: '\(cleanAuthor)') at depth \(depth)")
             return nil
         }
 
