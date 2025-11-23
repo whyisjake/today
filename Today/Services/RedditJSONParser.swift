@@ -269,7 +269,7 @@ class RedditJSONParser {
         // Filter out AutoModerator and deleted comments
         let cleanAuthor = author.trimmingCharacters(in: .whitespaces).lowercased()
         if cleanAuthor == "automoderator" || cleanAuthor == "[deleted]" {
-            NSLog("🔴 [Parser] Filtering out comment from '\(author)' (cleaned: '\(cleanAuthor)') at depth \(depth)")
+            print("🔴 [Parser] Filtering out comment from '\(author)' (cleaned: '\(cleanAuthor)') at depth \(depth)")
             return nil
         }
 
