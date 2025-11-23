@@ -248,7 +248,7 @@ struct PostContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             // Title
-            Text(post.title)
+            Text(post.title.decodeHTMLEntities())
                 .font(fontOption == .serif ?
                     .system(.title2, design: .serif, weight: .bold) :
                     .system(.title2, design: .default, weight: .bold))
@@ -369,20 +369,7 @@ struct PostWebView: UIViewRepresentable {
 
     func updateUIView(_ webView: WKWebView, context: Context) {
         // Decode HTML entities (Reddit double-encodes, so decode twice)
-        var decodedHTML = html
-            .replacingOccurrences(of: "&lt;", with: "<")
-            .replacingOccurrences(of: "&gt;", with: ">")
-            .replacingOccurrences(of: "&amp;", with: "&")
-            .replacingOccurrences(of: "&quot;", with: "\"")
-            .replacingOccurrences(of: "&#39;", with: "'")
-
-        // Second pass to handle double-encoded entities like &amp;amp;
-        decodedHTML = decodedHTML
-            .replacingOccurrences(of: "&lt;", with: "<")
-            .replacingOccurrences(of: "&gt;", with: ">")
-            .replacingOccurrences(of: "&amp;", with: "&")
-            .replacingOccurrences(of: "&quot;", with: "\"")
-            .replacingOccurrences(of: "&#39;", with: "'")
+        let decodedHTML = html.decodeHTMLEntities().decodeHTMLEntities()
 
         let styledHTML = createStyledHTML(from: decodedHTML, colorScheme: colorScheme, accentColor: accentColor, fontOption: fontOption)
         context.coordinator.parent = self
@@ -1101,26 +1088,6 @@ struct CommentRowView: View {
         return colors[comment.depth % colors.count]
     }
 
-    // Decode HTML entities from plain text
-    private func decodeHTMLEntities(_ text: String) -> String {
-        var decoded = text
-            .replacingOccurrences(of: "&lt;", with: "<")
-            .replacingOccurrences(of: "&gt;", with: ">")
-            .replacingOccurrences(of: "&amp;", with: "&")
-            .replacingOccurrences(of: "&quot;", with: "\"")
-            .replacingOccurrences(of: "&#39;", with: "'")
-
-        // Second pass for double-encoded entities
-        decoded = decoded
-            .replacingOccurrences(of: "&lt;", with: "<")
-            .replacingOccurrences(of: "&gt;", with: ">")
-            .replacingOccurrences(of: "&amp;", with: "&")
-            .replacingOccurrences(of: "&quot;", with: "\"")
-            .replacingOccurrences(of: "&#39;", with: "'")
-
-        return decoded
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 8) {
@@ -1182,7 +1149,7 @@ struct CommentRowView: View {
                             CommentHTMLView(html: bodyHtml, fontOption: fontOption)
                         } else {
                             // Fallback to plain text if body_html is not available
-                            Text(decodeHTMLEntities(comment.body))
+                            Text(comment.body.decodeHTMLEntities().decodeHTMLEntities())
                                 .font(fontOption == .serif ?
                                     .system(.subheadline, design: .serif) :
                                     .system(.subheadline, design: .default))
@@ -1249,20 +1216,7 @@ struct CommentWebView: UIViewRepresentable {
 
     func updateUIView(_ webView: WKWebView, context: Context) {
         // Decode HTML entities (Reddit double-encodes, so decode twice)
-        var decodedHTML = html
-            .replacingOccurrences(of: "&lt;", with: "<")
-            .replacingOccurrences(of: "&gt;", with: ">")
-            .replacingOccurrences(of: "&amp;", with: "&")
-            .replacingOccurrences(of: "&quot;", with: "\"")
-            .replacingOccurrences(of: "&#39;", with: "'")
-
-        // Second pass to handle double-encoded entities like &amp;amp;
-        decodedHTML = decodedHTML
-            .replacingOccurrences(of: "&lt;", with: "<")
-            .replacingOccurrences(of: "&gt;", with: ">")
-            .replacingOccurrences(of: "&amp;", with: "&")
-            .replacingOccurrences(of: "&quot;", with: "\"")
-            .replacingOccurrences(of: "&#39;", with: "'")
+        let decodedHTML = html.decodeHTMLEntities().decodeHTMLEntities()
 
         let styledHTML = createStyledHTML(from: decodedHTML, colorScheme: colorScheme, accentColor: accentColor, fontOption: fontOption)
         context.coordinator.parent = self
