@@ -454,10 +454,10 @@ struct ShortArticleBehaviorPickerView: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(behavior.localizedName)
-                                .foregroundStyle(accentColor.color)
+                                .foregroundStyle(.primary)
                             Text(behavior.description)
                                 .font(.caption)
-                                .foregroundStyle(accentColor.color.opacity(0.7))
+                                .foregroundStyle(.secondary)
                         }
                         Spacer()
                         if selectedBehavior == behavior {
