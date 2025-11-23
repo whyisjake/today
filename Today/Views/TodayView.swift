@@ -10,6 +10,7 @@ import SwiftData
 
 struct TodayView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.openURL) private var openURL
 
     @Query(sort: \Article.publishedDate, order: .reverse) private var allArticles: [Article]
 
@@ -234,12 +235,22 @@ struct TodayView: View {
                     List {
                         ForEach(filteredArticles, id: \.persistentModelID) { article in
                             Button {
-                                // Capture the navigation context when an article is selected
-                                let context = filteredArticles.map { $0.persistentModelID }
-                                navigationState = NavigationState(
-                                    articleID: article.persistentModelID,
-                                    context: context
-                                )
+                                // Open short articles directly in Safari
+                                if article.hasMinimalContent && !article.isRedditPost {
+                                    if let url = URL(string: article.link) {
+                                        openURL(url)
+                                        // Mark as read when opening in browser
+                                        article.isRead = true
+                                        try? modelContext.save()
+                                    }
+                                } else {
+                                    // Capture the navigation context when an article is selected
+                                    let context = filteredArticles.map { $0.persistentModelID }
+                                    navigationState = NavigationState(
+                                        articleID: article.persistentModelID,
+                                        context: context
+                                    )
+                                }
                             } label: {
                                 HStack {
                                     ArticleRowView(article: article, fontOption: fontOption)
