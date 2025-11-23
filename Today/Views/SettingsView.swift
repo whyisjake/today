@@ -466,6 +466,7 @@ struct ShortArticleBehaviorPickerView: View {
                         }
                     }
                 }
+                .buttonStyle(.plain)
             }
         }
         .navigationTitle(String(localized: "Short Article Behavior"))
