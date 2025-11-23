@@ -1121,48 +1121,6 @@ struct CommentRowView: View {
         return decoded
     }
 
-    // Parse simple HTML to AttributedString (lightweight alternative to WebView)
-    private func parseSimpleHTML(_ html: String) -> AttributedString {
-        // Decode HTML entities first
-        let decoded = decodeHTMLEntities(html)
-
-        // Use NSAttributedString.DocumentType.html for parsing
-        guard let data = decoded.data(using: .utf8) else {
-            return AttributedString(decoded)
-        }
-
-        do {
-            let nsAttributed = try NSAttributedString(
-                data: data,
-                options: [.documentType: NSAttributedString.DocumentType.html,
-                         .characterEncoding: String.Encoding.utf8.rawValue],
-                documentAttributes: nil
-            )
-            return AttributedString(nsAttributed)
-        } catch {
-            // Fallback to plain text if parsing fails
-            return AttributedString(decoded)
-        }
-    }
-
-    // Check if HTML contains images or other rich content worth rendering
-    private func hasRichContent(_ html: String) -> Bool {
-        // Check for images
-        if html.contains("<img") {
-            return true
-        }
-        // Check for GIFs/videos
-        if html.contains("<video") || html.contains("giphy") || html.contains(".gif") {
-            return true
-        }
-        // Check for tables
-        if html.contains("<table") {
-            return true
-        }
-        // Otherwise use plain text (covers bold, italic, links - which look fine as plain text)
-        return false
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 8) {
