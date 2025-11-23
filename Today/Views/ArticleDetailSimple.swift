@@ -67,7 +67,7 @@ struct ArticleDetailSimple: View {
                 Divider()
 
                 // For short articles with "Open in Today Browser", show full web page
-                if article.hasMinimalContent && shortArticleBehavior == .openInAppBrowser,
+                if article.hasMinimalContent && shortArticleBehavior == .openInAppBrowser && !article.isRedditPost,
                    let url = URL(string: article.link) {
                     WebViewRepresentable(url: url)
                         .frame(height: geometry.size.height - 200)
