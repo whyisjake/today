@@ -233,6 +233,19 @@ Today respects your privacy:
 
 ## Version History
 
+### v1.8.0 (Build 12) - November 2025
+**Reddit Improvements & Content Filtering**
+- 🔴 **Consolidated Reddit Views** - Unified post and comment viewing for streamlined experience
+- 🤖 **AutoModerator Filtering** - Automatically hide AutoModerator and deleted comments
+- 📺 **Fullscreen Video Playback** - Reddit embedded videos now support fullscreen mode
+- 🔤 **HTML Entity Decoding** - Proper display of special characters (&, <, >, etc.) in all content
+- 🎯 **Discrete Content Filtering** - New system for filtering unwanted content
+- 🐛 **Bug Fixes**:
+  - Fixed HTML entities (`&amp;`, `&lt;`, etc.) displaying in article titles
+  - Fixed Reddit posts in AI summaries opening in wrong view
+  - Fixed video/GIF playback interrupting background audio
+- 🛠️ **Code Quality** - Removed 381 lines of duplicate code for better maintainability
+
 ### v1.7.0 (Build 11) - November 2025
 **Brand Refresh**
 - 🎨 **New App Icon** - Fresh, modern icon with International Orange branding
