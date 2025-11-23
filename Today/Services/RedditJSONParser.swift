@@ -237,7 +237,7 @@ class RedditJSONParser {
 
         return ParsedRedditPost(
             id: id,
-            title: title,
+            title: title.decodeHTMLEntities(),
             author: author,
             subreddit: subreddit,
             url: url,
