@@ -177,14 +177,16 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Picker("Short Article Behavior", selection: $shortArticleBehavior) {
-                        ForEach(ShortArticleBehavior.allCases) { option in
-                            Text(option.localizedName).tag(option)
+                    NavigationLink {
+                        ShortArticleBehaviorPickerView(selectedBehavior: $shortArticleBehavior)
+                    } label: {
+                        HStack {
+                            Text("Short Article Behavior")
+                            Spacer()
+                            Text(shortArticleBehavior.localizedName)
+                                .foregroundStyle(.secondary)
                         }
                     }
-                    Text(shortArticleBehavior.description)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 } header: {
                     Text("Reading")
                 } footer: {
@@ -433,5 +435,39 @@ struct VoicePickerView: View {
         utterance.rate = 0.5 // Normal speech rate (same as default for audio player)
 
         synthesizer.speak(utterance)
+    }
+}
+
+// MARK: - Short Article Behavior Picker View
+
+struct ShortArticleBehaviorPickerView: View {
+    @Binding var selectedBehavior: ShortArticleBehavior
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        List {
+            ForEach(ShortArticleBehavior.allCases) { behavior in
+                Button {
+                    selectedBehavior = behavior
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(behavior.localizedName)
+                                .foregroundStyle(.primary)
+                            Text(behavior.description)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if selectedBehavior == behavior {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(Color.accentColor)
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle(String(localized: "Short Article Behavior"))
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
