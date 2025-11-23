@@ -92,7 +92,7 @@ class RedditJSONParser {
             }
         }
 
-        NSLog("📊 [Parser] Parsed \(totalParsed) comments, kept \(comments.count), filtered \(filteredCount)")
+        print("📊 [Parser] Parsed \(totalParsed) comments, kept \(comments.count), filtered \(filteredCount)")
         return (post, comments)
     }
 
