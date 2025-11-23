@@ -443,6 +443,7 @@ struct VoicePickerView: View {
 struct ShortArticleBehaviorPickerView: View {
     @Binding var selectedBehavior: ShortArticleBehavior
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
 
     var body: some View {
         List {
@@ -453,15 +454,15 @@ struct ShortArticleBehaviorPickerView: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(behavior.localizedName)
-                                .foregroundStyle(.primary)
+                                .foregroundStyle(accentColor.color)
                             Text(behavior.description)
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(accentColor.color.opacity(0.7))
                         }
                         Spacer()
                         if selectedBehavior == behavior {
                             Image(systemName: "checkmark")
-                                .foregroundStyle(Color.accentColor)
+                                .foregroundStyle(accentColor.color)
                         }
                     }
                 }
