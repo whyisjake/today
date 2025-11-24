@@ -1,9 +1,7 @@
-name: Today RSS Release Announcer
+name: Today RSS Feed Recommender
 version: 1.0.0
-description: Automatically posts Today RSS Reader releases to r/TodayRSS
+description: Community-driven RSS feed recommendations for Today RSS Reader users
 
 permissions:
   - submit
-
-events:
-  - http
+  - flair

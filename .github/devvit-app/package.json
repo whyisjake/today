@@ -1,7 +1,7 @@
 {
-  "name": "today-rss-release-announcer",
+  "name": "today-rss-feed-recommender",
   "version": "1.0.0",
-  "description": "Devvit app to post Today RSS Reader releases to r/TodayRSS",
+  "description": "Devvit app for community RSS feed recommendations on r/TodayRSS",
   "main": "src/main.ts",
   "scripts": {
     "dev": "devvit dev",
@@ -11,8 +11,9 @@
   "keywords": [
     "devvit",
     "reddit",
-    "release",
-    "announcements"
+    "rss",
+    "feeds",
+    "community"
   ],
   "author": "Jake Spurlock",
   "license": "MIT",

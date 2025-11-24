@@ -1,14 +1,29 @@
-# Today RSS Release Announcer - Devvit App
+# Today RSS Feed Recommender - Devvit App
 
-This Devvit app automatically posts release announcements to r/TodayRSS when new versions are published on GitHub.
+A community-powered RSS feed recommendation system for r/TodayRSS. Users can share their favorite feeds with structured information, making it easy for others to discover great content!
 
-## What is Devvit?
+## What It Does
 
-Devvit is Reddit's platform for building apps that run directly on Reddit. Unlike the traditional Reddit API, Devvit apps:
-- Don't require API credentials
-- Run on Reddit's infrastructure
-- Are easier to approve for subreddit moderators
-- Can receive HTTP webhooks
+Adds a "📡 Recommend RSS Feed" menu item to r/TodayRSS that opens a form where users can:
+- Submit feed name and URL
+- Select a category (Tech, News, Gaming, etc.)
+- Describe why they recommend it
+- Automatically creates a formatted post with all the details
+
+## Features
+
+### For Users
+- **Easy Submission**: Simple form accessible from the subreddit menu
+- **13 Categories**: News, Tech, Gaming, Sports, Entertainment, Business, Science, Design, Mobile, World News, Podcasts, Blogs, Other
+- **Formatted Posts**: Auto-formatted with emoji, category, feed URL, and description
+- **Copy-Paste Ready**: Feed URLs are formatted for easy copying into Today app
+- **Success Feedback**: Toast notification confirms successful submission
+
+### For Moderators
+- **Organized Content**: Consistent post format makes moderation easier
+- **Auto-Flaired**: Posts tagged with "📰 Feed Recommendation" flair (if configured)
+- **Community Building**: Encourages engagement and content sharing
+- **Quality Control**: Required fields ensure complete information
 
 ## Setup Instructions
 
@@ -24,9 +39,7 @@ npm install -g devvit
 devvit login
 ```
 
-This will open a browser window to authenticate with Reddit.
-
-### 3. Navigate to the Devvit App Directory
+### 3. Navigate to the App Directory
 
 ```bash
 cd .github/devvit-app
@@ -38,138 +51,156 @@ cd .github/devvit-app
 npm install
 ```
 
-### 5. Test the App Locally (Optional)
+### 5. Test Locally (Optional)
 
 ```bash
 npm run dev
 ```
 
-This starts a local development server where you can test the webhook.
+Visit the local dev URL to test the form.
 
-### 6. Upload the App to Reddit
+### 6. Upload to Reddit
 
 ```bash
 npm run upload
 ```
 
-This uploads the app to Reddit's platform.
-
-### 7. Install the App on r/TodayRSS
+### 7. Install on r/TodayRSS
 
 1. Go to https://developers.reddit.com/apps
-2. Find "Today RSS Release Announcer"
+2. Find "Today RSS Feed Recommender"
 3. Click "Install"
-4. Select r/TodayRSS as the installation subreddit
-5. Approve the permissions (submit posts)
+4. Select r/TodayRSS
+5. Approve permissions (submit, flair)
 
-### 8. Get the Webhook URL
+### 8. Configure Post Flair (Optional but Recommended)
 
-After installing, Devvit will provide a webhook URL that looks like:
+1. Go to r/TodayRSS mod tools
+2. Navigate to Post Flair settings
+3. Create a flair with text: "📰 Feed Recommendation"
+4. The app will auto-apply this flair to recommendations
+
+## How Users Access It
+
+Once installed, users will see "📡 Recommend RSS Feed" in two places:
+
+1. **Subreddit Menu** (3 dots on desktop, menu on mobile)
+2. **Mod Tools** (for moderators)
+
+Clicking it opens the submission form!
+
+## Example Post Format
+
+**Title:**
 ```
-https://developers.reddit.com/v1/webhooks/YOUR_APP_ID/YOUR_INSTALLATION_ID
-```
-
-### 9. Add the Webhook URL to GitHub Secrets
-
-1. Go to your GitHub repository
-2. Navigate to **Settings** → **Secrets and variables** → **Actions**
-3. Click **New repository secret**
-4. Name: `DEVVIT_WEBHOOK_URL`
-5. Value: The webhook URL from step 8
-6. Click **Add secret**
-
-## How It Works
-
-1. You publish a release on GitHub
-2. GitHub Actions sends a webhook to the Devvit app
-3. The Devvit app receives the webhook
-4. The app formats the release information
-5. The app posts to r/TodayRSS using Reddit's API
-
-## Webhook Payload Format
-
-The GitHub Action sends this JSON payload:
-
-```json
-{
-  "version": "v1.8.0",
-  "name": "Reddit Improvements",
-  "notes": "Release notes in markdown...",
-  "url": "https://github.com/whyisjake/today/releases/tag/v1.8.0"
-}
+💻 Feed Recommendation: The Verge
 ```
 
-## Testing
+**Body:**
+```markdown
+## The Verge
 
-To test the webhook locally:
+**Category:** Technology
 
-```bash
-curl -X POST http://localhost:3000/webhook \
-  -H "Content-Type: application/json" \
-  -d '{
-    "version": "v1.0.0-test",
-    "name": "Test Release",
-    "notes": "This is a test release",
-    "url": "https://github.com/whyisjake/today/releases/tag/v1.0.0-test"
-  }'
+**Feed URL:** https://www.theverge.com/rss/index.xml
+
+**Why I recommend it:**
+Great coverage of tech news, gadgets, and reviews. Updates multiple times daily with in-depth articles and breaking news.
+
+---
+
+*Want to add this feed to Today? Copy the feed URL above and add it in the app!*
+
+*Have a feed to recommend? Click "Recommend RSS Feed" to share your favorite!*
 ```
 
-## Troubleshooting
+## Categories Available
 
-**App not showing up in developers.reddit.com:**
-- Make sure you're logged in with the correct Reddit account
-- Verify the upload completed successfully
-- Check `devvit logs` for any errors
+- 📰 News
+- 💻 Technology
+- 🎮 Gaming
+- ⚽ Sports
+- 🎬 Entertainment
+- 💼 Business
+- 🔬 Science
+- 🎨 Design
+- 📱 Mobile
+- 🌍 World News
+- 🎧 Podcasts
+- 📚 Blogs
+- 🔮 Other
 
-**Webhook returns 500 error:**
-- Check the app logs: `devvit logs`
-- Verify the JSON payload is properly formatted
-- Ensure you have posting permissions on r/TodayRSS
+## Benefits
 
-**Post doesn't appear on r/TodayRSS:**
-- Check Reddit's spam filters
-- Verify the app is installed on the correct subreddit
-- Check that the installation has "submit" permissions
+### Community Engagement
+- **Low Barrier**: Easy for anyone to contribute
+- **Valuable Content**: Builds a curated feed library
+- **Social Proof**: Community votes on recommendations
+- **Discovery**: New users find quality feeds quickly
+
+### Content Quality
+- **Structured Data**: Consistent format for all submissions
+- **URL Validation**: Ensures proper feed URLs
+- **Required Fields**: No incomplete submissions
+- **Categorization**: Easy browsing by topic
+
+### App Promotion
+- **Shows Value**: Demonstrates what Today can do
+- **User Generated**: Community creates the content
+- **Engagement Loop**: Users find feeds → add to Today → share more feeds
+- **Resource Building**: Creates a valuable community asset
 
 ## Updating the App
 
-When you make changes to the code:
+Make changes to `src/main.ts` and run:
 
 ```bash
 npm run upload
 ```
 
-The app will be updated on Reddit's platform.
+The app updates instantly on Reddit!
 
-## Development Commands
+## Common Use Cases
 
-- `npm run dev` - Start local development server
-- `npm run build` - Build the TypeScript code
-- `npm run upload` - Upload to Reddit
+1. **New User Onboarding**: "What feeds should I start with?"
+2. **Topic Discovery**: "Show me all the Tech feeds people love"
+3. **Community Building**: "Share your favorite niche feed"
+4. **Resource Creation**: Export to OPML file (future feature)
+5. **Quality Curation**: Upvote the best recommendations
 
-## File Structure
+## Future Enhancements
 
-```
-.github/devvit-app/
-├── devvit.yaml       # App configuration
-├── package.json      # Dependencies
-├── src/
-│   └── main.ts      # Main app code
-└── README.md        # This file
-```
+Ideas for v2:
+- Export all recommendations to OPML file
+- Search/filter recommendations by category
+- Leaderboard of most-recommended feeds
+- Integration with GitHub to auto-update feed list
+- Duplicate detection
+- Feed validation (check if URL actually works)
 
-## Advantages Over Traditional Reddit API
+## Troubleshooting
 
-1. **No API Credentials Required** - No need to create a Reddit app or manage OAuth tokens
-2. **Faster Approval** - Moderators can install apps without Reddit API approval
-3. **Native Integration** - Runs directly on Reddit's platform
-4. **Automatic Updates** - Push updates without redeploying
-5. **Better Reliability** - Reddit hosts and maintains the infrastructure
+**"📡 Recommend RSS Feed" doesn't appear:**
+- Make sure the app is installed on r/TodayRSS
+- Check you have the latest version
+- Try refreshing Reddit
+
+**Form submission fails:**
+- Check the feed URL starts with http:// or https://
+- Ensure all required fields are filled
+- Check Devvit logs: `devvit logs`
+
+**Flair not applied:**
+- Create the "📰 Feed Recommendation" flair in mod tools
+- Ensure the app has flair permissions
+- Flair is optional - posts work without it
 
 ## Support
 
-For Devvit-specific questions:
 - Devvit Docs: https://developers.reddit.com/docs
 - Devvit Discord: https://discord.gg/devvit
+- Issues: File on the GitHub repository
 
-For app-specific issues, file an issue on the GitHub repository.
+## License
+
+MIT
