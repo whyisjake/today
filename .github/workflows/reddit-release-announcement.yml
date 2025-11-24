@@ -1,35 +1,28 @@
-name: Post Release to Reddit
+name: Post Release to Reddit via Devvit
 
 on:
   release:
     types: [published]
 
 jobs:
-  post-to-reddit:
+  notify-devvit:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
+      - name: Send webhook to Devvit app
         run: |
-          pip install praw
+          curl -X POST "${{ secrets.DEVVIT_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -H "X-GitHub-Event: release" \
+            -d @- <<EOF
+          {
+            "version": "${{ github.event.release.tag_name }}",
+            "name": "${{ github.event.release.name }}",
+            "notes": $(echo '${{ github.event.release.body }}' | jq -Rs .),
+            "url": "${{ github.event.release.html_url }}"
+          }
+          EOF
 
-      - name: Post to Reddit
-        env:
-          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
-          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
-          REDDIT_USERNAME: ${{ secrets.REDDIT_USERNAME }}
-          REDDIT_PASSWORD: ${{ secrets.REDDIT_PASSWORD }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-          RELEASE_NAME: ${{ github.event.release.name }}
-          RELEASE_BODY: ${{ github.event.release.body }}
-          RELEASE_URL: ${{ github.event.release.html_url }}
-        run: |
-          python .github/scripts/post_to_reddit.py
+      - name: Check response
+        if: always()
+        run: echo "Webhook sent to Devvit app"

@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.devvit/
+*.log
+.DS_Store

@@ -4,6 +4,22 @@
 
 Automatically posts to [r/TodayRSS](https://www.reddit.com/r/TodayRSS/) when a new release is published on GitHub.
 
+**Current Implementation:** Devvit App (recommended)
+
+### Two Approaches Available
+
+1. **Devvit App (Current)** - Uses Reddit's Devvit platform via webhooks
+   - ✅ No Reddit API credentials needed
+   - ✅ Faster setup for subreddit moderators
+   - ✅ Runs on Reddit's infrastructure
+   - 📝 Setup guide: [devvit-app/README.md](../devvit-app/README.md)
+
+2. **Traditional Reddit API** - Uses PRAW with OAuth (legacy/fallback)
+   - ❌ Requires Reddit API approval
+   - ❌ Need to manage credentials
+   - ✅ Works if Devvit isn't available
+   - 📝 Python script: [scripts/post_to_reddit.py](../scripts/post_to_reddit.py)
+
 ### Setup Instructions
 
 #### 1. Create a Reddit App

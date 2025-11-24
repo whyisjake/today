@@ -1,0 +1,23 @@
+{
+  "name": "today-rss-release-announcer",
+  "version": "1.0.0",
+  "description": "Devvit app to post Today RSS Reader releases to r/TodayRSS",
+  "main": "src/main.ts",
+  "scripts": {
+    "dev": "devvit dev",
+    "build": "devvit build",
+    "upload": "devvit upload"
+  },
+  "keywords": [
+    "devvit",
+    "reddit",
+    "release",
+    "announcements"
+  ],
+  "author": "Jake Spurlock",
+  "license": "MIT",
+  "devDependencies": {
+    "@devvit/public-api": "^0.10.0",
+    "typescript": "^5.0.0"
+  }
+}

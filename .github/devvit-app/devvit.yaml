@@ -1,0 +1,9 @@
+name: Today RSS Release Announcer
+version: 1.0.0
+description: Automatically posts Today RSS Reader releases to r/TodayRSS
+
+permissions:
+  - submit
+
+events:
+  - http
