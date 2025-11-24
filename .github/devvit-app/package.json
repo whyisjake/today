@@ -1,6 +1,6 @@
 {
-  "name": "today-rss-feed-recommender",
-  "version": "1.0.0",
+  "name": "today-feeds",
+  "version": "0.0.0",
   "description": "Devvit app for community RSS feed recommendations on r/TodayRSS",
   "main": "src/main.ts",
   "scripts": {
@@ -16,9 +16,11 @@
     "community"
   ],
   "author": "Jake Spurlock",
-  "license": "MIT",
+  "license": "BSD-3-Clause",
   "devDependencies": {
-    "@devvit/public-api": "^0.10.0",
+    "@devvit/public-api": "0.12.3",
     "typescript": "^5.0.0"
-  }
+  },
+  "type": "module",
+  "private": true
 }

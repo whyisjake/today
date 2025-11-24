@@ -151,6 +151,27 @@ struct SettingsView: View {
                     .padding(.vertical, 8)
                 }
 
+                Section {
+                    Button {
+                        if let url = URL(string: "https://www.reddit.com/r/TodayRSS/") {
+                            openURL(url)
+                        }
+                    } label: {
+                        HStack {
+                            Label("Visit r/TodayRSS", systemImage: "person.2")
+                            Spacer()
+                            Image(systemName: "arrow.up.right")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } header: {
+                    Text("Community")
+                } footer: {
+                    Text("Join our Reddit community to discover new feeds, share recommendations, and connect with other users.")
+                        .font(.caption)
+                }
+
                 Section("Audio") {
                     NavigationLink {
                         VoicePickerView(selectedVoiceIdentifier: $selectedVoiceIdentifier)

@@ -10,36 +10,75 @@ import SwiftData
 
 // MARK: - Feed Category
 enum FeedCategory: String, CaseIterable {
+    case news = "News"
+    case technology = "Technology"
+    case gaming = "Gaming"
+    case sports = "Sports"
+    case entertainment = "Entertainment"
+    case business = "Business"
+    case science = "Science"
+    case design = "Design"
+    case mobile = "Mobile"
+    case worldNews = "World News"
+    case podcasts = "Podcasts"
+    case blogs = "Blogs"
+    case other = "Other"
+
+    // Legacy categories (kept for backward compatibility)
     case general = "General"
     case work = "Work"
     case social = "Social"
     case tech = "Tech"
-    case news = "News"
     case politics = "Politics"
     case personal = "Personal"
     case comics = "Comics"
-    case technology = "Technology"
 
     var localizedName: String {
         switch self {
+        case .news: return String(localized: "News")
+        case .technology: return String(localized: "Technology")
+        case .gaming: return String(localized: "Gaming")
+        case .sports: return String(localized: "Sports")
+        case .entertainment: return String(localized: "Entertainment")
+        case .business: return String(localized: "Business")
+        case .science: return String(localized: "Science")
+        case .design: return String(localized: "Design")
+        case .mobile: return String(localized: "Mobile")
+        case .worldNews: return String(localized: "World News")
+        case .podcasts: return String(localized: "Podcasts")
+        case .blogs: return String(localized: "Blogs")
+        case .other: return String(localized: "Other")
+
+        // Legacy categories
         case .general: return String(localized: "General")
         case .work: return String(localized: "Work")
         case .social: return String(localized: "Social")
         case .tech: return String(localized: "Tech")
-        case .news: return String(localized: "News")
         case .politics: return String(localized: "Politics")
         case .personal: return String(localized: "Personal")
         case .comics: return String(localized: "Comics")
-        case .technology: return String(localized: "Technology")
         }
     }
 
-    /// Standard categories shown in pickers (excludes legacy/duplicate categories)
-    /// Note: `.personal`, `.comics`, and `.technology` are legacy categories kept for backward compatibility.
-    /// They are intentionally excluded from the picker and cannot be selected for new feeds,
-    /// but may still appear for existing feeds created before this change.
+    /// Standard categories shown in pickers (matches r/TodayRSS community categories)
+    /// Legacy categories are kept for backward compatibility but excluded from picker
     static var pickerCategories: [FeedCategory] {
-        [.general, .work, .social, .tech, .news, .politics]
+        [.news, .technology, .gaming, .sports, .entertainment, .business,
+         .science, .design, .mobile, .worldNews, .podcasts, .blogs, .other]
+    }
+
+    /// Normalize a category string to match known categories (case-insensitive)
+    /// or return title-cased custom category
+    static func normalize(_ category: String) -> String {
+        // Try to find matching category (case-insensitive)
+        let lowercased = category.lowercased()
+        for feedCategory in FeedCategory.allCases {
+            if feedCategory.rawValue.lowercased() == lowercased {
+                return feedCategory.rawValue
+            }
+        }
+        // If no match, return capitalized version for custom categories
+        return category.capitalized
     }
 }
 
@@ -52,7 +91,7 @@ struct FeedListView: View {
     @State private var feedType: FeedType = .rss
     @State private var newFeedURL = ""
     @State private var subredditName = ""
-    @State private var newFeedCategory = "General"
+    @State private var newFeedCategory = "News"
     @State private var customCategory = ""
     @State private var useCustomCategory = false
     @State private var isAddingFeed = false
@@ -223,6 +262,14 @@ struct FeedListView: View {
             editingFeedID = feed.id
         } label: {
             Label("Edit Feed", systemImage: "pencil")
+        }
+
+        Button {
+            if let url = URL(string: "https://www.reddit.com/r/TodayRSS/") {
+                UIApplication.shared.open(url)
+            }
+        } label: {
+            Label("Recommend to Community", systemImage: "arrow.up.message")
         }
 
         Button(role: .destructive) {
@@ -505,6 +552,7 @@ struct FeedListView: View {
         Task {
             do {
                 let category = useCustomCategory ? customCategory : newFeedCategory
+                let normalizedCategory = FeedCategory.normalize(category)
 
                 // Construct the URL based on feed type
                 let feedURL: String
@@ -519,7 +567,7 @@ struct FeedListView: View {
                     feedURL = newFeedURL
                 }
 
-                _ = try await feedManager.addFeed(url: feedURL, category: category)
+                _ = try await feedManager.addFeed(url: feedURL, category: normalizedCategory)
                 showingAddFeed = false
                 resetAddFeedForm()
             } catch {
@@ -549,7 +597,7 @@ struct FeedListView: View {
         feedType = .rss
         newFeedURL = ""
         subredditName = ""
-        newFeedCategory = "general"
+        newFeedCategory = "News"
         customCategory = ""
         useCustomCategory = false
         addFeedError = nil
@@ -767,7 +815,7 @@ struct EditFeedView: View {
     private func saveFeed() {
         feed.title = title
         feed.url = url
-        feed.category = category
+        feed.category = FeedCategory.normalize(category)
 
         do {
             try modelContext.save()

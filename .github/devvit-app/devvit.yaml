@@ -1,7 +1,6 @@
-name: Today RSS Feed Recommender
+name: today-feeds
 version: 1.0.0
 description: Community-driven RSS feed recommendations for Today RSS Reader users
-
 permissions:
   - submit
   - flair
