@@ -1,0 +1,24 @@
+{
+  "name": "today-rss-feed-recommender",
+  "version": "1.0.0",
+  "description": "Devvit app for community RSS feed recommendations on r/TodayRSS",
+  "main": "src/main.ts",
+  "scripts": {
+    "dev": "devvit dev",
+    "build": "devvit build",
+    "upload": "devvit upload"
+  },
+  "keywords": [
+    "devvit",
+    "reddit",
+    "rss",
+    "feeds",
+    "community"
+  ],
+  "author": "Jake Spurlock",
+  "license": "MIT",
+  "devDependencies": {
+    "@devvit/public-api": "^0.10.0",
+    "typescript": "^5.0.0"
+  }
+}

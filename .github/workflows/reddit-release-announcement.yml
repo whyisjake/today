@@ -1,0 +1,28 @@
+name: Post Release to Reddit via Devvit
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  notify-devvit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send webhook to Devvit app
+        run: |
+          curl -X POST "${{ secrets.DEVVIT_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -H "X-GitHub-Event: release" \
+            -d @- <<EOF
+          {
+            "version": "${{ github.event.release.tag_name }}",
+            "name": "${{ github.event.release.name }}",
+            "notes": $(echo '${{ github.event.release.body }}' | jq -Rs .),
+            "url": "${{ github.event.release.html_url }}"
+          }
+          EOF
+
+      - name: Check response
+        if: always()
+        run: echo "Webhook sent to Devvit app"
