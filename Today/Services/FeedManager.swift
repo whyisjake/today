@@ -139,10 +139,15 @@ class FeedManager: ObservableObject {
         }
         
         let lowercased = url.lowercased()
+        // Match common JSON Feed URL patterns:
+        // - Ends with .json (e.g., /feed.json)
+        // - Ends with .jsonfeed (e.g., /newest.jsonfeed)
+        // - Contains feed.json in path
+        // - Contains /feeds/json (e.g., daringfireball.net/feeds/json)
         return lowercased.hasSuffix(".json") || 
                lowercased.hasSuffix(".jsonfeed") ||
                lowercased.contains("feed.json") ||
-               lowercased.contains("/json")
+               lowercased.contains("/feeds/json")
     }
     
     /// Fetch a JSON Feed

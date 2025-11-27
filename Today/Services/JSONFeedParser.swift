@@ -47,9 +47,10 @@ class JSONFeedParser {
     }
     
     private func parseItem(_ item: [String: Any]) -> RSSParser.ParsedArticle? {
-        // id is required in JSON Feed spec
+        // id is required in JSON Feed spec (https://www.jsonfeed.org/version/1.1/)
         guard let id = item["id"] as? String else {
-            // Fallback to url if id is missing (some feeds do this)
+            // Fallback to url if id is missing - this violates the JSON Feed spec
+            // which requires an id field, but some non-compliant feeds omit it
             guard let url = item["url"] as? String else {
                 return nil
             }
