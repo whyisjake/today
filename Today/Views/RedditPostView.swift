@@ -288,9 +288,16 @@ struct PostContentView: View {
             else if let mediaEmbedHtml = post.mediaEmbedHtml,
                     let width = post.mediaEmbedWidth,
                     let height = post.mediaEmbedHeight {
-                EmbeddedMediaView(html: mediaEmbedHtml, width: width, height: height)
-                    .frame(height: CGFloat(height) * (UIScreen.main.bounds.width / CGFloat(width)))
-                    .cornerRadius(8)
+                // Try to extract native media first (Giphy, Redgifs, etc.)
+                if let extractedMedia = MediaExtractor.shared.extractMedia(from: mediaEmbedHtml) {
+                    NativeMediaView(media: extractedMedia)
+                        .cornerRadius(8)
+                } else {
+                    // Fallback to iframe embed for unsupported services
+                    EmbeddedMediaView(html: mediaEmbedHtml, width: width, height: height)
+                        .frame(height: CGFloat(height) * (UIScreen.main.bounds.width / CGFloat(width)))
+                        .cornerRadius(8)
+                }
             }
             // Single post image (if available and no gallery or embed)
             else if let imageUrl = post.imageUrl, let url = URL(string: imageUrl) {
