@@ -422,8 +422,11 @@ struct FeedListView: View {
                 if let error = importError {
                     Section {
                         Text(error)
-                            .foregroundStyle(.red)
+                            .foregroundColor(error.contains("✅") ? .primary : .red)
                             .font(.caption)
+                            .textSelection(.enabled)
+                    } header: {
+                        Text("Import Summary")
                     }
                 }
 
@@ -692,16 +695,44 @@ struct FeedListView: View {
                     isImporting = false
                     importProgress = nil
 
-                    // Show summary
-                    var summary = "Imported \(successCount) feeds"
+                    // Show detailed summary
+                    var summary = "✅ Imported \(successCount) feeds"
                     if skippedCount > 0 {
-                        summary += ", skipped \(skippedCount) duplicates"
-                    }
-                    if failedCount > 0 {
-                        summary += ", \(failedCount) failed"
+                        summary += "\n⏭️  Skipped \(skippedCount) duplicates"
                     }
 
-                    // Always show summary (not just when there are issues)
+                    if failedCount > 0 {
+                        summary += "\n\n❌ \(failedCount) feeds failed:"
+
+                        // Show up to 10 failed feeds with reasons
+                        for (title, error) in failedFeeds.prefix(10) {
+                            // Simplify common error messages
+                            let simplifiedError: String
+                            if error.contains("Invalid RSS") || error.contains("not a valid RSS") {
+                                simplifiedError = "Invalid RSS feed"
+                            } else if error.contains("network") || error.contains("Network") {
+                                simplifiedError = "Network error"
+                            } else if error.contains("timeout") || error.contains("timed out") {
+                                simplifiedError = "Connection timeout"
+                            } else if error.contains("404") {
+                                simplifiedError = "Feed not found"
+                            } else if error.contains("403") || error.contains("401") {
+                                simplifiedError = "Access denied"
+                            } else if error.contains("500") {
+                                simplifiedError = "Server error"
+                            } else {
+                                // Keep short error message (first 50 chars)
+                                simplifiedError = String(error.prefix(50))
+                            }
+                            summary += "\n  • \(title): \(simplifiedError)"
+                        }
+
+                        if failedCount > 10 {
+                            summary += "\n  ... and \(failedCount - 10) more"
+                        }
+                    }
+
+                    // Always show summary
                     importError = summary
                     print("📥 OPML Import: Showing summary: \(summary)")
                 }
