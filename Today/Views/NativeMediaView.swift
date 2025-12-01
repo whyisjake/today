@@ -14,6 +14,7 @@ struct NativeMediaView: View {
     @State private var player: AVPlayer?
     @State private var isLoading = true
     @State private var loadError = false
+    @State private var statusObserver: NSKeyValueObservation?
 
     var body: some View {
         Group {
@@ -115,30 +116,29 @@ struct NativeMediaView: View {
         let newPlayer = AVPlayer(playerItem: playerItem)
 
         // Observe player item status
-        let statusObserver = playerItem.observe(\.status, options: [.new]) { item, _ in
-            print("🎬 NativeMediaView: Player status changed: \(item.status.rawValue)")
-            switch item.status {
-            case .unknown:
-                print("⏳ NativeMediaView: Status - Unknown")
-            case .readyToPlay:
-                print("✅ NativeMediaView: Status - Ready to play")
-            case .failed:
-                if let error = item.error {
-                    print("❌ NativeMediaView: Status - Failed with error: \(error)")
-                    print("   Error domain: \((error as NSError).domain)")
-                    print("   Error code: \((error as NSError).code)")
-                    print("   Error description: \(error.localizedDescription)")
+        await MainActor.run {
+            self.statusObserver = playerItem.observe(\.status, options: [.new, .initial]) { item, _ in
+                print("🎬 NativeMediaView: Player status changed: \(item.status.rawValue)")
+                switch item.status {
+                case .unknown:
+                    print("⏳ NativeMediaView: Status - Unknown")
+                case .readyToPlay:
+                    print("✅ NativeMediaView: Status - Ready to play")
+                case .failed:
+                    if let error = item.error {
+                        print("❌ NativeMediaView: Status - Failed with error: \(error)")
+                        print("   Error domain: \((error as NSError).domain)")
+                        print("   Error code: \((error as NSError).code)")
+                        print("   Error description: \(error.localizedDescription)")
+                    }
+                    Task { @MainActor in
+                        self.loadError = true
+                    }
+                @unknown default:
+                    print("⚠️ NativeMediaView: Status - Unknown status value")
                 }
-                Task { @MainActor in
-                    self.loadError = true
-                }
-            @unknown default:
-                print("⚠️ NativeMediaView: Status - Unknown status value")
             }
         }
-
-        // Keep the observer alive
-        withUnsafePointer(to: statusObserver) { _ in }
 
         // Enable looping
         newPlayer.actionAtItemEnd = .none

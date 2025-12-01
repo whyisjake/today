@@ -119,18 +119,20 @@ class MediaExtractor {
 
     private func extractRedgifs(from html: String) -> ExtractedMedia? {
         // Redgifs embed: https://www.redgifs.com/ifr/ID
-        // Direct video: https://thumbs2.redgifs.com/ID-mobile.mp4 or ID.mp4
+        // Note: Redgifs requires using their API to get actual video URLs
+        // Direct CDN URLs don't work without proper authentication
 
         if let gifId = extractPattern(from: html, pattern: "redgifs\\.com/ifr/([a-zA-Z0-9]+)") {
-            // Try mobile MP4 first (smaller, better for mobile)
-            let mp4Url = "https://thumbs2.redgifs.com/\(gifId)-mobile.mp4"
-            if let url = URL(string: mp4Url) {
-                return ExtractedMedia(url: url, type: .video, width: nil, height: nil)
-            }
+            print("🔍 MediaExtractor: Extracted Redgifs ID: \(gifId)")
+            print("⚠️ MediaExtractor: Redgifs requires API call - falling back to iframe")
+            // Return nil to use iframe embed instead
+            // TODO: Implement Redgifs API v2 to get actual video URL
+            return nil
         }
 
-        // Try extracting direct video URLs from iframe src
+        // Try extracting direct video URLs from iframe src (unlikely to work)
         if let videoUrl = extractPattern(from: html, pattern: "(https://[^\"\\s]+redgifs[^\"\\s]+\\.mp4)") {
+            print("🔍 MediaExtractor: Found direct Redgifs URL in iframe: \(videoUrl)")
             if let url = URL(string: videoUrl) {
                 return ExtractedMedia(url: url, type: .video, width: nil, height: nil)
             }
