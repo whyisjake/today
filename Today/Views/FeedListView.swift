@@ -421,10 +421,25 @@ struct FeedListView: View {
 
                 if let error = importError {
                     Section {
-                        Text(error)
-                            .foregroundColor(error.contains("✅") ? .primary : .red)
-                            .font(.caption)
-                            .textSelection(.enabled)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(error)
+                                .foregroundColor(error.contains("✅") ? .primary : .red)
+                                .font(.caption)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Button {
+                                UIPasteboard.general.string = error
+                            } label: {
+                                HStack {
+                                    Image(systemName: "doc.on.doc")
+                                    Text("Copy Summary")
+                                }
+                                .font(.caption)
+                                .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                        }
                     } header: {
                         Text("Import Summary")
                     }
