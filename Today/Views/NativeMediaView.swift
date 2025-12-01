@@ -26,10 +26,19 @@ struct NativeMediaView: View {
                         image
                             .resizable()
                             .aspectRatio(contentMode: .fit)
-                    case .failure:
+                            .onAppear {
+                                print("✅ NativeMediaView: GIF loaded successfully")
+                            }
+                    case .failure(let error):
                         mediaErrorView
+                            .onAppear {
+                                print("❌ NativeMediaView: GIF load failed - \(error)")
+                            }
                     case .empty:
                         mediaLoadingView
+                            .onAppear {
+                                print("⏳ NativeMediaView: Loading GIF from \(media.url)")
+                            }
                     @unknown default:
                         EmptyView()
                     }
@@ -41,15 +50,23 @@ struct NativeMediaView: View {
                     VideoPlayer(player: player)
                         .aspectRatio(contentMode: .fit)
                         .onAppear {
+                            print("▶️ NativeMediaView: Playing video")
                             player.play()
                         }
                         .onDisappear {
+                            print("⏸️ NativeMediaView: Pausing video")
                             player.pause()
                         }
                 } else if loadError {
                     mediaErrorView
+                        .onAppear {
+                            print("❌ NativeMediaView: Video player error")
+                        }
                 } else {
                     mediaLoadingView
+                        .onAppear {
+                            print("⏳ NativeMediaView: Initializing video player")
+                        }
                 }
             }
         }
@@ -87,12 +104,41 @@ struct NativeMediaView: View {
 
     private func loadMedia() async {
         guard media.type == .video || media.type == .image else {
+            print("⏭️ NativeMediaView: Skipping video load for non-video media type")
             return
         }
+
+        print("🎬 NativeMediaView: Loading video from \(media.url)")
 
         // Create AVPlayer for video
         let playerItem = AVPlayerItem(url: media.url)
         let newPlayer = AVPlayer(playerItem: playerItem)
+
+        // Observe player item status
+        let statusObserver = playerItem.observe(\.status, options: [.new]) { item, _ in
+            print("🎬 NativeMediaView: Player status changed: \(item.status.rawValue)")
+            switch item.status {
+            case .unknown:
+                print("⏳ NativeMediaView: Status - Unknown")
+            case .readyToPlay:
+                print("✅ NativeMediaView: Status - Ready to play")
+            case .failed:
+                if let error = item.error {
+                    print("❌ NativeMediaView: Status - Failed with error: \(error)")
+                    print("   Error domain: \((error as NSError).domain)")
+                    print("   Error code: \((error as NSError).code)")
+                    print("   Error description: \(error.localizedDescription)")
+                }
+                Task { @MainActor in
+                    self.loadError = true
+                }
+            @unknown default:
+                print("⚠️ NativeMediaView: Status - Unknown status value")
+            }
+        }
+
+        // Keep the observer alive
+        withUnsafePointer(to: statusObserver) { _ in }
 
         // Enable looping
         newPlayer.actionAtItemEnd = .none
@@ -101,16 +147,19 @@ struct NativeMediaView: View {
             object: playerItem,
             queue: .main
         ) { _ in
+            print("🔄 NativeMediaView: Video ended, looping...")
             newPlayer.seek(to: .zero)
             newPlayer.play()
         }
 
         // Mute audio for autoplay (many Reddit videos are just GIFs with sound)
         newPlayer.isMuted = true
+        print("🔇 NativeMediaView: Video muted for autoplay")
 
         await MainActor.run {
             self.player = newPlayer
             self.isLoading = false
+            print("✅ NativeMediaView: Player initialized")
         }
     }
 }

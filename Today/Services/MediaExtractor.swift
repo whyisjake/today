@@ -27,31 +27,67 @@ class MediaExtractor {
     /// Extract direct media URL from embed HTML
     /// Returns nil if no supported media found or if iframe should be used
     func extractMedia(from html: String) -> ExtractedMedia? {
+        print("🎬 MediaExtractor: Processing embed HTML (\(html.count) chars)")
+
         // Giphy
         if html.contains("giphy.com") {
-            return extractGiphy(from: html)
+            print("🎬 MediaExtractor: Detected Giphy embed")
+            let result = extractGiphy(from: html)
+            if let media = result {
+                print("✅ MediaExtractor: Extracted Giphy URL: \(media.url)")
+            } else {
+                print("❌ MediaExtractor: Failed to extract Giphy URL")
+                print("   HTML: \(html)")
+            }
+            return result
         }
 
         // Redgifs
         if html.contains("redgifs.com") {
-            return extractRedgifs(from: html)
+            print("🎬 MediaExtractor: Detected Redgifs embed")
+            let result = extractRedgifs(from: html)
+            if let media = result {
+                print("✅ MediaExtractor: Extracted Redgifs URL: \(media.url)")
+            } else {
+                print("❌ MediaExtractor: Failed to extract Redgifs URL")
+                print("   HTML: \(html)")
+            }
+            return result
         }
 
         // Gfycat
         if html.contains("gfycat.com") {
-            return extractGfycat(from: html)
+            print("🎬 MediaExtractor: Detected Gfycat embed")
+            let result = extractGfycat(from: html)
+            if let media = result {
+                print("✅ MediaExtractor: Extracted Gfycat URL: \(media.url)")
+            } else {
+                print("❌ MediaExtractor: Failed to extract Gfycat URL")
+                print("   HTML: \(html)")
+            }
+            return result
         }
 
         // Imgur (gifv/mp4)
         if html.contains("imgur.com") {
-            return extractImgur(from: html)
+            print("🎬 MediaExtractor: Detected Imgur embed")
+            let result = extractImgur(from: html)
+            if let media = result {
+                print("✅ MediaExtractor: Extracted Imgur URL: \(media.url)")
+            } else {
+                print("❌ MediaExtractor: Failed to extract Imgur URL")
+                print("   HTML: \(html)")
+            }
+            return result
         }
 
         // Streamable
         if html.contains("streamable.com") {
+            print("🎬 MediaExtractor: Detected Streamable embed (not supported)")
             return extractStreamable(from: html)
         }
 
+        print("🎬 MediaExtractor: No supported service detected")
         return nil
     }
 
