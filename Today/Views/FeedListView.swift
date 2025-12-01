@@ -300,12 +300,19 @@ struct FeedListView: View {
     @ViewBuilder
     private var syncingOverlay: some View {
         if feedManager.isSyncing {
-            VStack {
-                ProgressView("Syncing feeds...")
-                    .padding()
-                    .background(.regularMaterial)
-                    .cornerRadius(10)
+            VStack(spacing: 8) {
+                ProgressView()
+                if let progress = feedManager.syncProgress {
+                    Text(progress)
+                        .font(.subheadline)
+                } else {
+                    Text("Syncing feeds...")
+                        .font(.subheadline)
+                }
             }
+            .padding()
+            .background(.regularMaterial)
+            .cornerRadius(10)
         }
     }
 
