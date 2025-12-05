@@ -41,6 +41,25 @@ enum FeedCategory: String, CaseIterable {
     static var pickerCategories: [FeedCategory] {
         [.general, .work, .social, .tech, .news, .politics]
     }
+
+    /// Get all categories including custom ones from feeds
+    /// - Parameter feeds: Array of feeds to extract custom categories from
+    /// - Returns: Array of category strings with predefined categories first (in standard order),
+    ///            followed by custom categories sorted alphabetically
+    static func allCategories(from feeds: [Feed]) -> [String] {
+        // Get predefined category values
+        let predefinedCategories = Set(pickerCategories.map { $0.rawValue })
+
+        // Get all unique categories from existing feeds that are not predefined
+        let customCategories = Set(feeds.map { $0.category })
+            .subtracting(predefinedCategories)
+            .subtracting(FeedCategory.allCases.map { $0.rawValue }) // Also exclude legacy categories
+
+        // Predefined categories first (in standard order), then custom categories alphabetically
+        let allCategories = pickerCategories.map { $0.rawValue } + customCategories.sorted()
+
+        return allCategories
+    }
 }
 
 struct FeedListView: View {
@@ -355,8 +374,8 @@ struct FeedListView: View {
                             .textInputAutocapitalization(.never)
                     } else {
                         Picker("Category", selection: $newFeedCategory) {
-                            ForEach(FeedCategory.pickerCategories, id: \.self) { category in
-                                Text(category.localizedName).tag(category.rawValue)
+                            ForEach(FeedCategory.allCategories(from: feeds), id: \.self) { category in
+                                Text(FeedCategory(rawValue: category)?.localizedName ?? category).tag(category)
                             }
                         }
                     }
@@ -366,7 +385,7 @@ struct FeedListView: View {
                     if useCustomCategory {
                         Text("Enter a custom category name for this feed")
                     } else {
-                        Text("Select from predefined categories")
+                        Text("Select from predefined or previously used categories")
                     }
                 }
 
@@ -698,6 +717,7 @@ class OPMLParserDelegate: NSObject, XMLParserDelegate {
 // MARK: - Edit Feed View
 struct EditFeedView: View {
     @Environment(\.dismiss) private var dismiss
+    @Query(sort: \Feed.title) private var feeds: [Feed]
     let feed: Feed
     let modelContext: ModelContext
 
@@ -705,6 +725,7 @@ struct EditFeedView: View {
     @State private var url: String
     @State private var category: String
     @State private var useCustomCategory: Bool
+    @State private var hasInitializedCustomCategory = false
 
     init(feed: Feed, modelContext: ModelContext) {
         self.feed = feed
@@ -712,9 +733,15 @@ struct EditFeedView: View {
         _title = State(initialValue: feed.title)
         _url = State(initialValue: feed.url)
         _category = State(initialValue: feed.category)
-        // Check if current category is a predefined one
-        let isPredefined = FeedCategory(rawValue: feed.category) != nil
-        _useCustomCategory = State(initialValue: !isPredefined)
+        // Initialize useCustomCategory to false; we'll update it in onAppear
+        // since we need access to the @Query feeds property
+        _useCustomCategory = State(initialValue: false)
+        _hasInitializedCustomCategory = State(initialValue: false)
+    }
+
+    /// Check if the current category is available in the picker (predefined or custom from other feeds)
+    private var categoryInPicker: Bool {
+        FeedCategory.allCategories(from: feeds).contains(category)
     }
 
     var body: some View {
@@ -737,8 +764,8 @@ struct EditFeedView: View {
                         .textInputAutocapitalization(.never)
                 } else {
                     Picker("Category", selection: $category) {
-                        ForEach(FeedCategory.pickerCategories, id: \.self) { category in
-                            Text(category.localizedName).tag(category.rawValue)
+                        ForEach(FeedCategory.allCategories(from: feeds), id: \.self) { category in
+                            Text(FeedCategory(rawValue: category)?.localizedName ?? category).tag(category)
                         }
                     }
                 }
@@ -748,7 +775,7 @@ struct EditFeedView: View {
                 if useCustomCategory {
                     Text("Enter a custom category name for this feed")
                 } else {
-                    Text("Select from predefined categories")
+                    Text("Select from predefined or previously used categories")
                 }
             }
         }
@@ -760,6 +787,13 @@ struct EditFeedView: View {
                     saveFeed()
                 }
                 .disabled(title.isEmpty || url.isEmpty || category.isEmpty)
+            }
+        }
+        .onAppear {
+            // Only set useCustomCategory on first appearance to avoid resetting user's choice
+            if !hasInitializedCustomCategory {
+                useCustomCategory = !categoryInPicker
+                hasInitializedCustomCategory = true
             }
         }
     }
