@@ -154,109 +154,169 @@ struct SpeedPickerView: View {
 
 struct MiniAudioPlayer: View {
     @StateObject private var audioPlayer = ArticleAudioPlayer.shared
+    @StateObject private var podcastPlayer = PodcastAudioPlayer.shared
     @Environment(\.dismiss) private var dismiss
     @State private var showSpeedPicker = false
     @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
 
     var body: some View {
+        // Show TTS mini player
         if let article = audioPlayer.currentArticle,
            audioPlayer.isPlaying || audioPlayer.isPaused {
-            VStack(spacing: 0) {
-                Divider()
+            miniPlayerView(
+                article: article,
+                progress: audioPlayer.progress,
+                isPaused: audioPlayer.isPaused,
+                playbackRate: ArticleAudioPlayer.formatSpeed(audioPlayer.playbackRate),
+                currentTimeText: (audioPlayer.progress * audioPlayer.estimatedDuration).formatted(),
+                onSeek: { newValue in audioPlayer.seek(to: newValue) },
+                onTogglePlayPause: { audioPlayer.togglePlayPause() },
+                onStop: { audioPlayer.stop() },
+                onShowSpeedPicker: { showSpeedPicker = true },
+                isPodcast: false
+            )
+        }
+        // Show podcast mini player
+        else if let article = podcastPlayer.currentArticle,
+                podcastPlayer.isPlaying || podcastPlayer.isPaused {
+            miniPlayerView(
+                article: article,
+                progress: podcastPlayer.progress,
+                isPaused: podcastPlayer.isPaused,
+                playbackRate: PodcastAudioPlayer.formatSpeed(podcastPlayer.playbackRate),
+                currentTimeText: formatDuration(podcastPlayer.currentTime),
+                onSeek: { newValue in podcastPlayer.seek(to: newValue) },
+                onTogglePlayPause: { podcastPlayer.togglePlayPause() },
+                onStop: { podcastPlayer.stop() },
+                onShowSpeedPicker: { showSpeedPicker = true },
+                isPodcast: true
+            )
+        }
+    }
+    
+    @ViewBuilder
+    private func miniPlayerView(
+        article: Article,
+        progress: Double,
+        isPaused: Bool,
+        playbackRate: String,
+        currentTimeText: String,
+        onSeek: @escaping (Double) -> Void,
+        onTogglePlayPause: @escaping () -> Void,
+        onStop: @escaping () -> Void,
+        onShowSpeedPicker: @escaping () -> Void,
+        isPodcast: Bool
+    ) -> some View {
+        VStack(spacing: 0) {
+            Divider()
 
-                VStack(spacing: 8) {
-                    // Progress scrubber
-                    Slider(value: Binding(
-                        get: { audioPlayer.progress },
-                        set: { newValue in
-                            audioPlayer.seek(to: newValue)
+            VStack(spacing: 8) {
+                // Progress scrubber
+                Slider(value: Binding(
+                    get: { progress },
+                    set: { newValue in onSeek(newValue) }
+                ), in: 0...1)
+                .tint(accentColor.color)
+
+                HStack(spacing: 12) {
+                    // Article thumbnail
+                    if let imageUrl = article.imageUrl, let url = URL(string: imageUrl) {
+                        AsyncImage(url: url) { image in
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                        } placeholder: {
+                            Rectangle()
+                                .fill(Color(.systemGray5))
                         }
-                    ), in: 0...1)
-                    .tint(accentColor.color)
+                        .frame(width: 48, height: 48)
+                        .cornerRadius(6)
+                    }
 
-                    HStack(spacing: 12) {
-                        // Article thumbnail
-                        if let imageUrl = article.imageUrl, let url = URL(string: imageUrl) {
-                            AsyncImage(url: url) { image in
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                            } placeholder: {
-                                Rectangle()
-                                    .fill(Color(.systemGray5))
-                            }
-                            .frame(width: 48, height: 48)
-                            .cornerRadius(6)
-                        }
-
-                        // Article info
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(article.title)
-                                .font(.subheadline.weight(.medium))
-                                .lineLimit(1)
-                            HStack(spacing: 4) {
-                                // Feed name - Author (if available)
-                                if let author = article.author {
-                                    Text("\(article.feed?.title ?? "Today") - \(author)")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                } else {
-                                    Text(article.feed?.title ?? "Today")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Text("•")
+                    // Article info
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(article.title)
+                            .font(.subheadline.weight(.medium))
+                            .lineLimit(1)
+                        HStack(spacing: 4) {
+                            // Feed name - Author (if available)
+                            if let author = article.author {
+                                Text("\(article.feed?.title ?? "Today") - \(author)")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
-                                Text((audioPlayer.progress * audioPlayer.estimatedDuration).formatted())
+                                    .lineLimit(1)
+                            } else {
+                                Text(article.feed?.title ?? "Today")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
-                        }
-
-                        Spacer()
-
-                        // Speed control button
-                        Button {
-                            showSpeedPicker.toggle()
-                        } label: {
-                            Text(ArticleAudioPlayer.formatSpeed(audioPlayer.playbackRate))
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(accentColor.color)
-                                .frame(minWidth: 36)
-                        }
-
-                        // Play/Pause button
-                        Button {
-                            audioPlayer.togglePlayPause()
-                        } label: {
-                            Image(systemName: audioPlayer.isPaused ? "play.circle.fill" : "pause.circle.fill")
-                                .font(.title2)
-                                .foregroundStyle(accentColor.color)
-                        }
-
-                        // Stop button
-                        Button {
-                            audioPlayer.stop()
-                        } label: {
-                            Image(systemName: "xmark.circle")
-                                .font(.title3)
-                                .foregroundStyle(accentColor.color)
+                            Text("•")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(currentTimeText)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                     }
+
+                    Spacer()
+
+                    // Speed control button
+                    Button {
+                        onShowSpeedPicker()
+                    } label: {
+                        Text(playbackRate)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(accentColor.color)
+                            .frame(minWidth: 36)
+                    }
+
+                    // Play/Pause button
+                    Button {
+                        onTogglePlayPause()
+                    } label: {
+                        Image(systemName: isPaused ? "play.circle.fill" : "pause.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(accentColor.color)
+                    }
+
+                    // Stop button
+                    Button {
+                        onStop()
+                    } label: {
+                        Image(systemName: "xmark.circle")
+                            .font(.title3)
+                            .foregroundStyle(accentColor.color)
+                    }
                 }
-                .padding()
-                .background(
-                    accentColor.color.opacity(0.05)
-                        .overlay(Color(.systemBackground).opacity(0.95))
-                )
             }
-            .transition(.move(edge: .bottom).combined(with: .opacity))
-            .sheet(isPresented: $showSpeedPicker) {
+            .padding()
+            .background(
+                accentColor.color.opacity(0.05)
+                    .overlay(Color(.systemBackground).opacity(0.95))
+            )
+        }
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .sheet(isPresented: $showSpeedPicker) {
+            if isPodcast {
+                PodcastSpeedPickerView(podcastPlayer: podcastPlayer)
+                    .presentationDetents([.height(300)])
+            } else {
                 SpeedPickerView(audioPlayer: audioPlayer)
                     .presentationDetents([.height(300)])
             }
+        }
+    }
+    
+    private func formatDuration(_ duration: TimeInterval) -> String {
+        let hours = Int(duration) / 3600
+        let minutes = Int(duration) / 60 % 60
+        let seconds = Int(duration) % 60
+        
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        } else {
+            return String(format: "%d:%02d", minutes, seconds)
         }
     }
 }
