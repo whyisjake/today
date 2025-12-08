@@ -38,6 +38,7 @@ struct ArticleDetailSimple: View {
     @AppStorage("fontOption") private var fontOption: FontOption = .serif
     @AppStorage("shortArticleBehavior") private var shortArticleBehavior: ShortArticleBehavior = .openInAppBrowser
     @StateObject private var audioPlayer = ArticleAudioPlayer.shared
+    @StateObject private var podcastPlayer = PodcastAudioPlayer.shared
 
     var body: some View {
         GeometryReader { geometry in
@@ -65,6 +66,11 @@ struct ArticleDetailSimple: View {
                 }
 
                 Divider()
+                
+                // Show podcast audio controls if article has audio enclosure
+                if article.hasPodcastAudio {
+                    PodcastAudioControls(article: article)
+                }
 
                 // For short articles with "Open in Today Browser", show full web page
                 if article.hasMinimalContent && shortArticleBehavior == .openInAppBrowser && !article.isRedditPost,
@@ -89,18 +95,32 @@ struct ArticleDetailSimple: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: 16) {
-                    // Audio player button
+                    // Audio player button (podcast or TTS)
                     Button {
-                        if audioPlayer.currentArticle?.id == article.id {
-                            audioPlayer.togglePlayPause()
+                        if article.hasPodcastAudio {
+                            // Use podcast player for audio enclosures
+                            if podcastPlayer.currentArticle?.id == article.id {
+                                podcastPlayer.togglePlayPause()
+                            } else {
+                                podcastPlayer.play(article: article)
+                            }
                         } else {
-                            audioPlayer.play(article: article)
+                            // Use TTS player for text articles
+                            if audioPlayer.currentArticle?.id == article.id {
+                                audioPlayer.togglePlayPause()
+                            } else {
+                                audioPlayer.play(article: article)
+                            }
                         }
                     } label: {
-                        Image(systemName: isPlayingThisArticle ? "waveform.circle.fill" : "play.circle")
+                        let isPodcastPlaying = podcastPlayer.currentArticle?.id == article.id && podcastPlayer.isPlaying
+                        let isTTSPlaying = audioPlayer.currentArticle?.id == article.id && audioPlayer.isPlaying
+                        let isPlaying = isPodcastPlaying || isTTSPlaying
+                        
+                        Image(systemName: isPlaying ? "waveform.circle.fill" : (article.hasPodcastAudio ? "play.circle.fill" : "play.circle"))
                     }
                     .foregroundStyle(Color.accentColor)
-                    .accessibilityLabel(isPlayingThisArticle ? "Pause article audio" : "Play article audio")
+                    .accessibilityLabel(isPlayingThisArticle ? "Pause audio" : "Play audio")
 
                     // Share button
                     ShareLink(item: URL(string: article.link)!, subject: Text(article.title)) {
@@ -200,8 +220,11 @@ struct ArticleDetailSimple: View {
     }
 
     private var isPlayingThisArticle: Bool {
-        audioPlayer.currentArticle?.id == article.id &&
-        (audioPlayer.isPlaying || audioPlayer.isPaused)
+        let isTTSPlaying = audioPlayer.currentArticle?.id == article.id &&
+                          (audioPlayer.isPlaying || audioPlayer.isPaused)
+        let isPodcastPlaying = podcastPlayer.currentArticle?.id == article.id &&
+                               (podcastPlayer.isPlaying || podcastPlayer.isPaused)
+        return isTTSPlaying || isPodcastPlaying
     }
 }
 
