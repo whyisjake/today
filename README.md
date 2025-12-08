@@ -12,8 +12,9 @@ A modern, privacy-focused RSS reader for iOS with AI-powered content summarizati
 - 📰 **RSS Feed Management** - Subscribe to your favorite RSS feeds with OPML import/export support
 - 🤖 **AI-Powered Summaries** - Intelligent article summarization using Apple Intelligence (iOS 26+) with graceful fallback to NaturalLanguage framework
 - 🎙️ **Text-to-Speech Audio Player** - Listen to articles with full playback controls, variable speed (0.5x-2x), and background playback support
+- 🎧 **Podcast Support** - Native playback of podcast audio enclosures from RSS feeds with play/pause, seek, speed control (0.5x-2x), and skip forward/backward
 - 🗣️ **Voice Selection** - Choose from high-quality voices in your language with preview functionality
-- 🔒 **Lock Screen Integration** - Rich Now Playing controls with article thumbnails and accurate duration estimates
+- 🔒 **Lock Screen Integration** - Rich Now Playing controls with article thumbnails and accurate duration estimates for both podcasts and TTS
 - 🔄 **Background Sync** - Automatic feed updates with hourly background refresh
 - 📅 **Day-Based Navigation** - Browse articles by Today, Yesterday, and older with infinite scroll
 - 🔍 **Smart Filtering** - Filter by category, search articles, and mark as read/unread

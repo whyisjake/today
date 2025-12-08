@@ -70,18 +70,20 @@ Today/
 Models are located in `Today/Models/`:
 
 - **Feed.swift**: RSS feed subscriptions with title, URL, category, and relationship to articles. Uses `@Relationship(deleteRule: .cascade)` to auto-delete articles when feed is deleted.
-- **Article.swift**: Individual RSS articles with metadata (title, link, description, published date, author, guid). Includes `isRead`, `isFavorite`, and `aiSummary` properties.
+- **Article.swift**: Individual RSS articles with metadata (title, link, description, published date, author, guid). Includes `isRead`, `isFavorite`, `aiSummary`, and podcast audio enclosure properties (`audioUrl`, `audioDuration`, `audioType`).
 - **ModelContainer**: Initialized in `TodayApp.swift` with schema containing `Feed` and `Article`. Configured for persistent storage.
 
 ### Service Layer
 
 Services are located in `Today/Services/`:
 
-- **RSSParser.swift**: XMLParser-based RSS feed parser. Handles RSS and Atom formats with multiple date format support. Returns parsed article data without direct database access.
+- **RSSParser.swift**: XMLParser-based RSS feed parser. Handles RSS and Atom formats with multiple date format support. Extracts both image and audio enclosures (podcasts). Returns parsed article data without direct database access.
 - **FeedManager.swift**: `@MainActor` class managing feed subscriptions and syncing. Handles duplicate detection using article GUIDs. Owns ModelContext for database operations.
 - **AIService.swift**: Uses Apple's NaturalLanguage framework for content analysis. Provides article summarization, keyword extraction, trend analysis, and conversational responses.
 - **OnDeviceAIService.swift**: Uses Apple Intelligence (iOS 26+) for advanced AI summaries with graceful fallback to NaturalLanguage framework.
 - **BackgroundSyncManager.swift**: Manages `BGAppRefreshTask` for background feed syncing. Registers background tasks on app launch and schedules periodic syncs (minimum 15 min intervals).
+- **ArticleAudioPlayer.swift**: Text-to-speech player using AVSpeechSynthesizer for reading article content aloud.
+- **PodcastAudioPlayer.swift**: AVPlayer-based audio player for podcast/audio enclosures with full playback controls and lock screen integration.
 
 ### View Layer
 
@@ -141,6 +143,8 @@ When adding new SwiftData models:
 - Duplicate articles are prevented using GUID matching in `FeedManager`
 - Feed sync is idempotent - safe to call multiple times
 - Support both RSS 2.0 and Atom formats
+- Automatically extracts audio enclosures (podcasts) from `<enclosure>` tags with audio/* MIME types
+- Parses iTunes podcast duration format (HH:MM:SS, MM:SS, or seconds)
 
 ### AI Integration
 
@@ -150,6 +154,16 @@ When adding new SwiftData models:
 - Analyzes trends by grouping articles by feed and category
 - Pattern matching for conversational queries in `generateResponse()`
 - To integrate more advanced AI: Consider Core ML models or MLX Swift
+
+### Audio and Podcast Support
+
+- **Two separate audio systems**:
+  - `ArticleAudioPlayer`: TTS (text-to-speech) using AVSpeechSynthesizer for reading article content
+  - `PodcastAudioPlayer`: Podcast playback using AVPlayer for audio enclosures
+- Both support playback controls, speed adjustment, seeking, and lock screen integration
+- `AudioFormatters` utility provides shared formatting functions for duration and speed display
+- Articles with `audioUrl` automatically show podcast controls instead of TTS
+- Podcast player supports skip forward (30s) and backward (15s) via lock screen controls
 
 ### Typography and Text Processing
 
