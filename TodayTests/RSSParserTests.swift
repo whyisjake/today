@@ -133,7 +133,7 @@ final class RSSParserTests: XCTestCase {
         """
 
         let parser = RSSParser()
-        parser.parse(data: rssXML.data(using: .utf8)!)
+        _ = parser.parse(data: rssXML.data(using: .utf8)!)
 
         XCTAssertEqual(parser.articles.count, 1)
         // When no GUID provided, should use link as GUID
@@ -159,7 +159,7 @@ final class RSSParserTests: XCTestCase {
         """
 
         let parser = RSSParser()
-        parser.parse(data: rssXML.data(using: .utf8)!)
+        _ = parser.parse(data: rssXML.data(using: .utf8)!)
 
         let article = parser.articles[0]
         XCTAssertEqual(article.description, "Short description")
@@ -184,7 +184,7 @@ final class RSSParserTests: XCTestCase {
         """
 
         let parser = RSSParser()
-        parser.parse(data: rssXML.data(using: .utf8)!)
+        _ = parser.parse(data: rssXML.data(using: .utf8)!)
 
         XCTAssertEqual(parser.articles[0].author, "Jane Smith")
     }
@@ -207,7 +207,7 @@ final class RSSParserTests: XCTestCase {
         """
 
         let parser = RSSParser()
-        parser.parse(data: rssXML.data(using: .utf8)!)
+        _ = parser.parse(data: rssXML.data(using: .utf8)!)
 
         let article = parser.articles[0]
         XCTAssertNotNil(article.publishedDate)
@@ -236,7 +236,7 @@ final class RSSParserTests: XCTestCase {
         """
 
         let parser = RSSParser()
-        parser.parse(data: atomXML.data(using: .utf8)!)
+        _ = parser.parse(data: atomXML.data(using: .utf8)!)
 
         let article = parser.articles[0]
         XCTAssertNotNil(article.publishedDate)
@@ -262,7 +262,7 @@ final class RSSParserTests: XCTestCase {
         """
 
         let parser = RSSParser()
-        parser.parse(data: rssXML.data(using: .utf8)!)
+        _ = parser.parse(data: rssXML.data(using: .utf8)!)
 
         let article = parser.articles[0]
         XCTAssertEqual(article.title, "Title with multiple spaces")
@@ -287,7 +287,7 @@ final class RSSParserTests: XCTestCase {
         """
 
         let parser = RSSParser()
-        parser.parse(data: rssXML.data(using: .utf8)!)
+        _ = parser.parse(data: rssXML.data(using: .utf8)!)
 
         let article = parser.articles[0]
         XCTAssertEqual(article.imageUrl, "https://example.com/image.jpg")
@@ -309,7 +309,7 @@ final class RSSParserTests: XCTestCase {
         """
 
         let parser = RSSParser()
-        parser.parse(data: rssXML.data(using: .utf8)!)
+        _ = parser.parse(data: rssXML.data(using: .utf8)!)
 
         let article = parser.articles[0]
         XCTAssertEqual(article.imageUrl, "https://example.com/media-image.jpg")
@@ -361,7 +361,7 @@ final class RSSParserTests: XCTestCase {
         """
 
         let parser = RSSParser()
-        parser.parse(data: rssXML.data(using: .utf8)!)
+        _ = parser.parse(data: rssXML.data(using: .utf8)!)
 
         XCTAssertEqual(parser.articles.count, 1)
         let article = parser.articles[0]
@@ -389,7 +389,7 @@ final class RSSParserTests: XCTestCase {
         """
 
         let parser = RSSParser()
-        parser.parse(data: rssXML.data(using: .utf8)!)
+        _ = parser.parse(data: rssXML.data(using: .utf8)!)
 
         let article = parser.articles[0]
         // XMLParser decodes entities and preserves spaces around them
