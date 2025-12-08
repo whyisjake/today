@@ -363,7 +363,10 @@ struct ParsedRedditPost {
             guid: "t3_\(id)",
             redditSubreddit: subreddit,
             redditCommentsUrl: commentsUrl,
-            redditPostId: "t3_\(id)"
+            redditPostId: "t3_\(id)",
+            audioUrl: nil,
+            audioDuration: nil,
+            audioType: nil
         )
     }
 }
