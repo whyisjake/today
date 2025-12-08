@@ -690,7 +690,7 @@ class OPMLParserDelegate: NSObject, XMLParserDelegate {
             } else if let text = attributeDict["text"] {
                 // This is a category
                 categoryStack.append(currentCategory)
-                currentCategory = text.lowercased()
+                currentCategory = text
             }
         }
     }
