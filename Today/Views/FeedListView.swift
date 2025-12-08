@@ -556,7 +556,7 @@ struct FeedListView: View {
         feedType = .rss
         newFeedURL = ""
         subredditName = ""
-        newFeedCategory = "general"
+        newFeedCategory = "General"
         customCategory = ""
         useCustomCategory = false
         addFeedError = nil
@@ -676,7 +676,7 @@ struct FeedListView: View {
 // MARK: - OPML Parser Delegate
 class OPMLParserDelegate: NSObject, XMLParserDelegate {
     var feeds: [(url: String, title: String, category: String)] = []
-    private var currentCategory = "general"
+    private var currentCategory = "General"
     private var categoryStack: [String] = []
 
     func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String : String] = [:]) {
