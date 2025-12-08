@@ -13,6 +13,7 @@ struct TodayView: View {
     @Environment(\.openURL) private var openURL
 
     @Query(sort: \Article.publishedDate, order: .reverse) private var allArticles: [Article]
+    @StateObject private var categoryManager = CategoryManager.shared
 
     @State private var selectedCategory: String = "All"
     @State private var searchText = ""
@@ -34,7 +35,7 @@ struct TodayView: View {
     }
 
     // Cache expensive computations
-    // Only show categories that have articles in the current time window
+    // Show categories that have articles in the current time window OR are custom categories
     private var categories: [String] {
         // Apply time filter (same as filteredArticles)
         let now = Date.now
@@ -43,8 +44,12 @@ struct TodayView: View {
         let timeFilteredArticles = allArticles.filter { $0.publishedDate >= cutoffDate }
 
         // Get all unique categories from articles in the time window
-        // This automatically excludes empty categories
         var feedCategories = Set(timeFilteredArticles.compactMap { $0.feed?.category })
+
+        // Add custom categories from CategoryManager (even if they don't have articles yet)
+        for customCategory in categoryManager.customCategories {
+            feedCategories.insert(customCategory)
+        }
 
         // Filter based on Alt category visibility
         if showAltCategory {

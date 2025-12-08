@@ -47,6 +47,7 @@ struct FeedListView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Feed.title) private var feeds: [Feed]
     @StateObject private var feedManager: FeedManager
+    @StateObject private var categoryManager = CategoryManager.shared
 
     @State private var showingAddFeed = false
     @State private var feedType: FeedType = .rss
@@ -355,8 +356,8 @@ struct FeedListView: View {
                             .textInputAutocapitalization(.never)
                     } else {
                         Picker("Category", selection: $newFeedCategory) {
-                            ForEach(FeedCategory.pickerCategories, id: \.self) { category in
-                                Text(category.localizedName).tag(category.rawValue)
+                            ForEach(categoryManager.allCategories, id: \.self) { category in
+                                Text(category).tag(category)
                             }
                         }
                     }
@@ -520,6 +521,12 @@ struct FeedListView: View {
                 }
 
                 _ = try await feedManager.addFeed(url: feedURL, category: category)
+
+                // Save custom category to CategoryManager if it's a custom category
+                if useCustomCategory {
+                    _ = categoryManager.addCustomCategory(category)
+                }
+
                 showingAddFeed = false
                 resetAddFeedForm()
             } catch {
@@ -700,6 +707,7 @@ struct EditFeedView: View {
     @Environment(\.dismiss) private var dismiss
     let feed: Feed
     let modelContext: ModelContext
+    @StateObject private var categoryManager = CategoryManager.shared
 
     @State private var title: String
     @State private var url: String
@@ -737,8 +745,8 @@ struct EditFeedView: View {
                         .textInputAutocapitalization(.never)
                 } else {
                     Picker("Category", selection: $category) {
-                        ForEach(FeedCategory.pickerCategories, id: \.self) { category in
-                            Text(category.localizedName).tag(category.rawValue)
+                        ForEach(categoryManager.allCategories, id: \.self) { category in
+                            Text(category).tag(category)
                         }
                     }
                 }
@@ -768,6 +776,11 @@ struct EditFeedView: View {
         feed.title = title
         feed.url = url
         feed.category = category
+
+        // Save custom category to CategoryManager if it's a custom category
+        if useCustomCategory {
+            _ = categoryManager.addCustomCategory(category)
+        }
 
         do {
             try modelContext.save()
