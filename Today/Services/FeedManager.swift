@@ -150,7 +150,10 @@ class FeedManager: ObservableObject {
                     feed: feed,
                     redditSubreddit: parsedArticle.redditSubreddit,
                     redditCommentsUrl: parsedArticle.redditCommentsUrl,
-                    redditPostId: parsedArticle.redditPostId
+                    redditPostId: parsedArticle.redditPostId,
+                    audioUrl: parsedArticle.audioUrl,
+                    audioDuration: parsedArticle.audioDuration,
+                    audioType: parsedArticle.audioType
                 )
 
                 modelContext.insert(article)
