@@ -222,6 +222,38 @@ final class RSSParserTests: XCTestCase {
         }
     }
 
+    func testParseRFC822DateWithTimezoneAbbreviation() {
+        // Test date format used by The Talk Show podcast: "Thu, 22 May 2014 18:00:00 EDT"
+        let rssXML = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <title>Timezone Abbrev Test</title>
+                    <link>https://example.com/tz</link>
+                    <pubDate>Thu, 22 May 2014 18:00:00 EDT</pubDate>
+                    <guid>tz-1</guid>
+                </item>
+            </channel>
+        </rss>
+        """
+
+        let parser = RSSParser()
+        _ = parser.parse(data: rssXML.data(using: .utf8)!)
+
+        let article = parser.articles[0]
+        XCTAssertNotNil(article.publishedDate, "Should parse date with timezone abbreviation like EDT")
+
+        // Verify it's the right date (May 22, 2014)
+        if let date = article.publishedDate {
+            let calendar = Calendar.current
+            let components = calendar.dateComponents([.year, .month, .day], from: date)
+            XCTAssertEqual(components.year, 2014)
+            XCTAssertEqual(components.month, 5)
+            XCTAssertEqual(components.day, 22)
+        }
+    }
+
     func testParseISO8601Date() {
         let atomXML = """
         <?xml version="1.0" encoding="UTF-8"?>
