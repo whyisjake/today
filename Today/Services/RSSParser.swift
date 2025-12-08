@@ -28,6 +28,7 @@ class RSSParser: NSObject, XMLParserDelegate {
     private(set) var articles: [ParsedArticle] = []
     private(set) var feedTitle = ""
     private(set) var feedDescription = ""
+    private(set) var feedImageUrl = ""  // Channel-level image (e.g., itunes:image for podcasts)
 
     struct ParsedArticle {
         let title: String
@@ -101,7 +102,7 @@ class RSSParser: NSObject, XMLParserDelegate {
             }
         }
 
-        // Check for image in attributes (media:content, enclosure, etc.)
+        // Check for image in attributes (media:content, enclosure, itunes:image, etc.)
         if insideItem {
             // Handle <enclosure> tag (common for podcasts and images)
             if elementName == "enclosure", let url = attributeDict["url"], let type = attributeDict["type"] {
@@ -126,6 +127,21 @@ class RSSParser: NSObject, XMLParserDelegate {
             if elementName == "media:thumbnail" || elementName == "thumbnail", let url = attributeDict["url"] {
                 if currentImageUrl.isEmpty {
                     currentImageUrl = url
+                }
+            }
+
+            // Handle <itunes:image> tag (common for podcast episode artwork)
+            if elementName == "itunes:image", let href = attributeDict["href"] {
+                if currentImageUrl.isEmpty {
+                    currentImageUrl = href
+                }
+            }
+        } else {
+            // Feed-level tags (outside of items)
+            // Handle channel-level <itunes:image> (podcast feed artwork)
+            if elementName == "itunes:image", let href = attributeDict["href"] {
+                if feedImageUrl.isEmpty {
+                    feedImageUrl = href
                 }
             }
         }
@@ -204,7 +220,7 @@ class RSSParser: NSObject, XMLParserDelegate {
             // Use link as guid if guid is not provided
             let finalGuid = currentGuid.isEmpty ? currentLink : currentGuid
 
-            // If no explicit image found, try to extract from HTML content
+            // If no explicit image found, try to extract from HTML content or use feed-level image
             var finalImageUrl = currentImageUrl
             if finalImageUrl.isEmpty {
                 // Try content:encoded first, then content, then description
@@ -215,6 +231,11 @@ class RSSParser: NSObject, XMLParserDelegate {
                 } else if !currentDescription.isEmpty {
                     finalImageUrl = extractFirstImageUrl(from: currentDescription)
                 }
+            }
+
+            // Fall back to feed-level image (e.g., podcast artwork from itunes:image)
+            if finalImageUrl.isEmpty && !feedImageUrl.isEmpty {
+                finalImageUrl = feedImageUrl
             }
 
             // Debug: log title processing steps
