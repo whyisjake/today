@@ -82,6 +82,6 @@ class CategoryManager: ObservableObject {
 
     /// Get all categories (standard + custom) for display in pickers
     var allCategories: [String] {
-        Self.pickerCategories + customCategories.sorted()
+        Self.pickerCategories + customCategories
     }
 }
