@@ -775,11 +775,12 @@ struct EditFeedView: View {
     private func saveFeed() {
         feed.title = title
         feed.url = url
-        feed.category = category
-
-        // Save custom category to CategoryManager if it's a custom category
         if useCustomCategory {
-            _ = categoryManager.addCustomCategory(category)
+            let trimmed = category.trimmingCharacters(in: .whitespacesAndNewlines)
+            feed.category = trimmed
+            _ = categoryManager.addCustomCategory(trimmed)
+        } else {
+            feed.category = category
         }
 
         do {
