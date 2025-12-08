@@ -131,7 +131,8 @@ final class CategoryManagerTests: XCTestCase {
         let manager = CategoryManager.shared
         UserDefaults.standard.removeObject(forKey: testKey)
 
-        let standardCategories = ["General", "Work", "Social", "Tech", "News", "Politics", "Personal", "Comics", "Technology"]
+        // Use the static property to ensure test stays in sync
+        let standardCategories = CategoryManager.allStandardCategories
 
         for category in standardCategories {
             let result = manager.addCustomCategory(category)

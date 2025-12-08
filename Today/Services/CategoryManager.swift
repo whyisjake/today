@@ -13,12 +13,12 @@ import Combine
 class CategoryManager: ObservableObject {
     static let shared = CategoryManager()
 
-    /// Standard categories shown in pickers (matches FeedCategory.pickerCategories)
-    static let pickerCategories = ["General", "Work", "Social", "Tech", "News", "Politics"]
+    /// Standard categories shown in pickers (matches FeedCategory.pickerCategories + Alt)
+    static let pickerCategories = ["General", "Work", "Social", "Tech", "News", "Politics", "Alt"]
 
-    /// All standard categories including legacy ones (matches FeedCategory.allCases)
+    /// All standard categories including legacy ones (matches FeedCategory.allCases + Alt)
     /// Used to prevent users from creating custom categories that conflict with standard ones
-    static let allStandardCategories = ["General", "Work", "Social", "Tech", "News", "Politics", "Personal", "Comics", "Technology"]
+    static let allStandardCategories = ["General", "Work", "Social", "Tech", "News", "Politics", "Personal", "Comics", "Technology", "Alt"]
 
     @Published private(set) var customCategories: [String] = []
 
