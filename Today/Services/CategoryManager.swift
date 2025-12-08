@@ -13,6 +13,13 @@ import Combine
 class CategoryManager: ObservableObject {
     static let shared = CategoryManager()
 
+    /// Standard categories shown in pickers (matches FeedCategory.pickerCategories)
+    static let pickerCategories = ["General", "Work", "Social", "Tech", "News", "Politics"]
+
+    /// All standard categories including legacy ones (matches FeedCategory.allCases)
+    /// Used to prevent users from creating custom categories that conflict with standard ones
+    static let allStandardCategories = ["General", "Work", "Social", "Tech", "News", "Politics", "Personal", "Comics", "Technology"]
+
     @Published private(set) var customCategories: [String] = []
 
     private let customCategoriesKey = "com.today.customCategories"
@@ -48,9 +55,7 @@ class CategoryManager: ObservableObject {
         }
 
         // Check if it's a standard category (case-insensitive)
-        // Matches FeedCategory.allCases raw values
-        let standardCategories = ["General", "Work", "Social", "Tech", "News", "Politics", "Personal", "Comics", "Technology"]
-        if standardCategories.contains(where: { $0.lowercased() == trimmed.lowercased() }) {
+        if Self.allStandardCategories.contains(where: { $0.lowercased() == trimmed.lowercased() }) {
             print("ℹ️ CategoryManager: '\(trimmed)' is a standard category, not adding to custom")
             return false
         }
@@ -76,9 +81,7 @@ class CategoryManager: ObservableObject {
     }
 
     /// Get all categories (standard + custom) for display in pickers
-    /// Matches FeedCategory.pickerCategories raw values
     var allCategories: [String] {
-        let standard = ["General", "Work", "Social", "Tech", "News", "Politics"]
-        return standard + customCategories.sorted()
+        Self.pickerCategories + customCategories.sorted()
     }
 }
