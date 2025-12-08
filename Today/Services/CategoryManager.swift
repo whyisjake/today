@@ -48,7 +48,8 @@ class CategoryManager: ObservableObject {
         }
 
         // Check if it's a standard category (case-insensitive)
-        let standardCategories = ["general", "work", "social", "tech", "news", "politics", "personal", "comics", "technology"]
+        // Matches FeedCategory.allCases raw values
+        let standardCategories = ["General", "Work", "Social", "Tech", "News", "Politics", "Personal", "Comics", "Technology"]
         if standardCategories.contains(where: { $0.lowercased() == trimmed.lowercased() }) {
             print("ℹ️ CategoryManager: '\(trimmed)' is a standard category, not adding to custom")
             return false
@@ -75,9 +76,9 @@ class CategoryManager: ObservableObject {
     }
 
     /// Get all categories (standard + custom) for display in pickers
+    /// Matches FeedCategory.pickerCategories raw values
     var allCategories: [String] {
         let standard = ["General", "Work", "Social", "Tech", "News", "Politics"]
-        let combined = standard + customCategories
-        return combined.sorted()
+        return standard + customCategories.sorted()
     }
 }
