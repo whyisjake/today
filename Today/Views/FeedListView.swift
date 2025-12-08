@@ -509,7 +509,9 @@ struct FeedListView: View {
 
         Task {
             do {
-                let category = useCustomCategory ? customCategory : newFeedCategory
+                let category = useCustomCategory 
+                    ? customCategory.trimmingCharacters(in: .whitespacesAndNewlines)
+                    : newFeedCategory
 
                 // Construct the URL based on feed type
                 let feedURL: String
@@ -779,12 +781,16 @@ struct EditFeedView: View {
     private func saveFeed() {
         feed.title = title
         feed.url = url
+
+        // Trim custom category to ensure consistency with CategoryManager
+        let trimmedCategory = useCustomCategory
+            ? category.trimmingCharacters(in: .whitespacesAndNewlines)
+            : category
+        feed.category = trimmedCategory
+
+        // Save custom category to CategoryManager if it's a custom category
         if useCustomCategory {
-            let trimmed = category.trimmingCharacters(in: .whitespacesAndNewlines)
-            feed.category = trimmed
-            _ = categoryManager.addCustomCategory(trimmed)
-        } else {
-            feed.category = category
+            _ = categoryManager.addCustomCategory(trimmedCategory)
         }
 
         do {
