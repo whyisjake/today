@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A00757B14BCD4CD9AE5FBEF0 /* OutcastID3 in Frameworks */ = {isa = PBXBuildFile; productRef = C8F8F70FAE5B4385B02D848B /* OutcastID3 */; };
 		C29AB72AB8D4FBBB6DB2D8A3 /* TodayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22D7D03FBA667C69848C3AAC /* TodayTests.swift */; };
 		F52BB6272EAC23870054AEC5 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F52BB6262EAC23870054AEC5 /* XCTest.framework */; platformFilter = ios; };
 		F540A5ED2ECD930F00CCF1B9 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = F540A5EC2ECD930F00CCF1B9 /* Localizable.xcstrings */; };
@@ -76,6 +77,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A00757B14BCD4CD9AE5FBEF0 /* OutcastID3 in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -164,6 +166,7 @@
 			);
 			name = Today;
 			packageProductDependencies = (
+				C8F8F70FAE5B4385B02D848B /* OutcastID3 */,
 			);
 			productName = Today;
 			productReference = F54DF4022EA9AB9F00FBDC60 /* Today.app */;
@@ -207,6 +210,9 @@
 			);
 			mainGroup = F54DF3F92EA9AB9F00FBDC60;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A00757B14BCD4CD9AE5FBEFB /* XCRemoteSwiftPackageReference "OutcastID3" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = F54DF4032EA9AB9F00FBDC60 /* Products */;
 			projectDirPath = "";
@@ -543,6 +549,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A00757B14BCD4CD9AE5FBEFB /* XCRemoteSwiftPackageReference "OutcastID3" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/CrunchyBagel/OutcastID3";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.7.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		C8F8F70FAE5B4385B02D848B /* OutcastID3 */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A00757B14BCD4CD9AE5FBEFB /* XCRemoteSwiftPackageReference "OutcastID3" */;
+			productName = OutcastID3;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = F54DF3FA2EA9AB9F00FBDC60 /* Project object */;
 }

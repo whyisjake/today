@@ -663,8 +663,12 @@ struct ArticleRowView: View {
             }
 
             // Display article image if available
-            if let imageUrl = article.imageUrl, let url = URL(string: imageUrl) {
-                AsyncImage(url: url) { phase in
+            if let imageUrl = article.imageUrl {
+                // Convert HTTP to HTTPS for ATS compliance
+                let secureUrl = imageUrl.hasPrefix("http://")
+                    ? imageUrl.replacingOccurrences(of: "http://", with: "https://")
+                    : imageUrl
+                AsyncImage(url: URL(string: secureUrl)) { phase in
                     switch phase {
                     case .empty:
                         ProgressView()

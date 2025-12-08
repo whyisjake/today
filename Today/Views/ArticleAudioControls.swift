@@ -158,6 +158,7 @@ struct MiniAudioPlayer: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showTTSSpeedPicker = false
     @State private var showPodcastSpeedPicker = false
+    @State private var showNowPlaying = false
     @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
 
     private var isTTSActive: Bool {
@@ -183,6 +184,7 @@ struct MiniAudioPlayer: View {
                     onTogglePlayPause: { audioPlayer.togglePlayPause() },
                     onStop: { audioPlayer.stop() },
                     onShowSpeedPicker: { showTTSSpeedPicker = true },
+                    onTapContent: { }, // TTS doesn't have a full Now Playing view yet
                     isPodcast: false
                 )
             }
@@ -200,6 +202,7 @@ struct MiniAudioPlayer: View {
                     onTogglePlayPause: { podcastPlayer.togglePlayPause() },
                     onStop: { podcastPlayer.stop() },
                     onShowSpeedPicker: { showPodcastSpeedPicker = true },
+                    onTapContent: { showNowPlaying = true },
                     isPodcast: true
                 )
             }
@@ -211,6 +214,9 @@ struct MiniAudioPlayer: View {
         .sheet(isPresented: $showPodcastSpeedPicker) {
             PodcastSpeedPickerView(podcastPlayer: podcastPlayer)
                 .presentationDetents([.height(300)])
+        }
+        .fullScreenCover(isPresented: $showNowPlaying) {
+            NowPlayingView()
         }
     }
     
@@ -225,6 +231,7 @@ struct MiniAudioPlayer: View {
         onTogglePlayPause: @escaping () -> Void,
         onStop: @escaping () -> Void,
         onShowSpeedPicker: @escaping () -> Void,
+        onTapContent: @escaping () -> Void,
         isPodcast: Bool
     ) -> some View {
         VStack(spacing: 0) {
@@ -239,45 +246,58 @@ struct MiniAudioPlayer: View {
                 .tint(accentColor.color)
 
                 HStack(spacing: 12) {
-                    // Article thumbnail
-                    if let imageUrl = article.imageUrl, let url = URL(string: imageUrl) {
-                        AsyncImage(url: url) { image in
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                        } placeholder: {
-                            Rectangle()
-                                .fill(Color(.systemGray5))
-                        }
-                        .frame(width: 48, height: 48)
-                        .cornerRadius(6)
-                    }
-
-                    // Article info
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(article.title)
-                            .font(.subheadline.weight(.medium))
-                            .lineLimit(1)
-                        HStack(spacing: 4) {
-                            // Feed name - Author (if available)
-                            if let author = article.author {
-                                Text("\(article.feed?.title ?? "Today") - \(author)")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            } else {
-                                Text(article.feed?.title ?? "Today")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                    // Tappable content area (thumbnail + info)
+                    Button {
+                        onTapContent()
+                    } label: {
+                        HStack(spacing: 12) {
+                            // Article thumbnail
+                            if let imageUrl = article.imageUrl {
+                                // Convert HTTP to HTTPS for ATS compliance
+                                let secureUrl = imageUrl.hasPrefix("http://")
+                                    ? imageUrl.replacingOccurrences(of: "http://", with: "https://")
+                                    : imageUrl
+                                AsyncImage(url: URL(string: secureUrl)) { image in
+                                    image
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                } placeholder: {
+                                    Rectangle()
+                                        .fill(Color(.systemGray5))
+                                }
+                                .frame(width: 48, height: 48)
+                                .cornerRadius(6)
                             }
-                            Text("•")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text(currentTimeText)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+
+                            // Article info
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(article.title)
+                                    .font(.subheadline.weight(.medium))
+                                    .lineLimit(1)
+                                    .foregroundStyle(.primary)
+                                HStack(spacing: 4) {
+                                    // Feed name - Author (if available)
+                                    if let author = article.author {
+                                        Text("\(article.feed?.title ?? "Today") - \(author)")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    } else {
+                                        Text(article.feed?.title ?? "Today")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Text("•")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    Text(currentTimeText)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
                         }
                     }
+                    .buttonStyle(.plain)
 
                     Spacer()
 
@@ -431,6 +451,10 @@ struct PodcastAudioControls: View {
             PodcastSpeedPickerView(podcastPlayer: podcastPlayer)
                 .presentationDetents([.height(300)])
         }
+        .onAppear {
+            // Prefetch chapters in the background so they're ready when playback starts
+            podcastPlayer.prefetchChapters(for: article)
+        }
     }
 
     private var isCurrentlyPlaying: Bool {
@@ -438,7 +462,7 @@ struct PodcastAudioControls: View {
         podcastPlayer.isPlaying &&
         !podcastPlayer.isPaused
     }
-    
+
     private func formatDuration(_ duration: TimeInterval) -> String {
         AudioFormatters.formatDuration(duration)
     }
