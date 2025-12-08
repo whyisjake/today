@@ -285,4 +285,40 @@ final class CategoryManagerTests: XCTestCase {
         let stored = UserDefaults.standard.array(forKey: testKey) as? [String]
         XCTAssertFalse(stored?.contains("WillBeRemoved") ?? true, "Removal should persist to UserDefaults")
     }
+
+    // MARK: - Sync Categories Tests
+
+    func testSyncCategoriesAddsCustomCategories() {
+        let manager = CategoryManager.shared
+        UserDefaults.standard.removeObject(forKey: testKey)
+
+        let feedCategories = ["General", "a8c", "MyCustom", "Tech"]
+        manager.syncCategories(from: feedCategories)
+
+        XCTAssertTrue(manager.customCategories.contains("a8c"), "Should add custom category 'a8c'")
+        XCTAssertTrue(manager.customCategories.contains("MyCustom"), "Should add custom category 'MyCustom'")
+        XCTAssertFalse(manager.customCategories.contains("General"), "Should not add standard category 'General'")
+        XCTAssertFalse(manager.customCategories.contains("Tech"), "Should not add standard category 'Tech'")
+    }
+
+    func testSyncCategoriesSkipsDuplicates() {
+        let manager = CategoryManager.shared
+        UserDefaults.standard.removeObject(forKey: testKey)
+
+        _ = manager.addCustomCategory("Existing")
+        manager.syncCategories(from: ["Existing", "existing", "EXISTING"])
+
+        let count = manager.customCategories.filter { $0.lowercased() == "existing" }.count
+        XCTAssertEqual(count, 1, "Should only have one instance of 'Existing'")
+    }
+
+    func testSyncCategoriesPersists() {
+        let manager = CategoryManager.shared
+        UserDefaults.standard.removeObject(forKey: testKey)
+
+        manager.syncCategories(from: ["CustomFromFeed"])
+
+        let stored = UserDefaults.standard.array(forKey: testKey) as? [String]
+        XCTAssertTrue(stored?.contains("CustomFromFeed") ?? false, "Synced categories should persist to UserDefaults")
+    }
 }

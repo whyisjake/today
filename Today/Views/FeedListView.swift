@@ -136,6 +136,10 @@ struct FeedListView: View {
                 } message: {
                     Text("Your OPML feed list has been copied to the clipboard.")
                 }
+                .onAppear {
+                    // Sync custom categories from existing feeds
+                    categoryManager.syncCategories(from: feeds.map { $0.category })
+                }
         }
     }
 

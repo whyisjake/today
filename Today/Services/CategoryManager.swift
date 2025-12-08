@@ -84,4 +84,26 @@ class CategoryManager: ObservableObject {
     var allCategories: [String] {
         Self.pickerCategories + customCategories
     }
+
+    /// Sync custom categories from existing feed categories
+    /// Call this on app launch to ensure all existing custom categories are registered
+    func syncCategories(from feedCategories: [String]) {
+        var addedCount = 0
+        for category in feedCategories {
+            // Skip standard categories
+            if Self.allStandardCategories.contains(where: { $0.lowercased() == category.lowercased() }) {
+                continue
+            }
+            // Add if not already in custom categories
+            if !customCategories.contains(where: { $0.lowercased() == category.lowercased() }) {
+                customCategories.append(category)
+                addedCount += 1
+            }
+        }
+        if addedCount > 0 {
+            customCategories.sort()
+            saveCustomCategories()
+            print("📂 CategoryManager: Synced \(addedCount) custom categories from existing feeds")
+        }
+    }
 }
