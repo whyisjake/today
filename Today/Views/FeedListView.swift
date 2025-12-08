@@ -505,7 +505,9 @@ struct FeedListView: View {
 
         Task {
             do {
-                let category = useCustomCategory ? customCategory : newFeedCategory
+                let category = useCustomCategory 
+                    ? customCategory.trimmingCharacters(in: .whitespacesAndNewlines)
+                    : newFeedCategory
 
                 // Construct the URL based on feed type
                 let feedURL: String
