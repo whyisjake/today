@@ -22,6 +22,8 @@ struct AudioFormatters {
     }
     
     /// Formats playback speed for display (e.g., "1x", "1.25x", "2x")
+    /// Note: This is for podcast/audio player. TTS uses ArticleAudioPlayer.formatSpeed()
+    /// which applies a 2x multiplier since AVSpeechSynthesizer's normal speed is 0.5
     static func formatSpeed(_ speed: Float) -> String {
         if speed.truncatingRemainder(dividingBy: 1.0) == 0 {
             return "\(Int(speed))x"
