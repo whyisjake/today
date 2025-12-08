@@ -60,7 +60,7 @@ struct TodayView: View {
             feedCategories = feedCategories.filter { $0.lowercased() != "alt" }
         }
 
-        return ["All"] + feedCategories.sorted()
+        return ["All"] + feedCategories.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     // Count unread/favorites in the current time window and category

@@ -31,7 +31,7 @@ class CategoryManager: ObservableObject {
     /// Load custom categories from UserDefaults
     private func loadCustomCategories() {
         if let stored = UserDefaults.standard.array(forKey: customCategoriesKey) as? [String] {
-            customCategories = stored.sorted()
+            customCategories = stored.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
             print("📂 CategoryManager: Loaded \(customCategories.count) custom categories")
         } else {
             customCategories = []
@@ -67,7 +67,7 @@ class CategoryManager: ObservableObject {
         }
 
         customCategories.append(trimmed)
-        customCategories.sort()
+        customCategories.sort { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
         saveCustomCategories()
         print("✅ CategoryManager: Added custom category '\(trimmed)'")
         return true
@@ -101,7 +101,7 @@ class CategoryManager: ObservableObject {
             }
         }
         if addedCount > 0 {
-            customCategories.sort()
+            customCategories.sort { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
             saveCustomCategories()
             print("📂 CategoryManager: Synced \(addedCount) custom categories from existing feeds")
         }
