@@ -47,6 +47,7 @@ struct FeedListView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Feed.title) private var feeds: [Feed]
     @StateObject private var feedManager: FeedManager
+    @StateObject private var categoryManager = CategoryManager.shared
 
     @State private var showingAddFeed = false
     @State private var feedType: FeedType = .rss
@@ -134,6 +135,10 @@ struct FeedListView: View {
                     Button("OK", role: .cancel) { }
                 } message: {
                     Text("Your OPML feed list has been copied to the clipboard.")
+                }
+                .onAppear {
+                    // Sync custom categories from existing feeds
+                    categoryManager.syncCategories(from: feeds.map { $0.category })
                 }
         }
     }
@@ -355,8 +360,8 @@ struct FeedListView: View {
                             .textInputAutocapitalization(.never)
                     } else {
                         Picker("Category", selection: $newFeedCategory) {
-                            ForEach(FeedCategory.pickerCategories, id: \.self) { category in
-                                Text(category.localizedName).tag(category.rawValue)
+                            ForEach(categoryManager.allCategories, id: \.self) { category in
+                                Text(category).tag(category)
                             }
                         }
                     }
@@ -504,7 +509,9 @@ struct FeedListView: View {
 
         Task {
             do {
-                let category = useCustomCategory ? customCategory : newFeedCategory
+                let category = useCustomCategory 
+                    ? customCategory.trimmingCharacters(in: .whitespacesAndNewlines)
+                    : newFeedCategory
 
                 // Construct the URL based on feed type
                 let feedURL: String
@@ -520,6 +527,12 @@ struct FeedListView: View {
                 }
 
                 _ = try await feedManager.addFeed(url: feedURL, category: category)
+
+                // Save custom category to CategoryManager if it's a custom category
+                if useCustomCategory {
+                    _ = categoryManager.addCustomCategory(category)
+                }
+
                 showingAddFeed = false
                 resetAddFeedForm()
             } catch {
@@ -549,7 +562,7 @@ struct FeedListView: View {
         feedType = .rss
         newFeedURL = ""
         subredditName = ""
-        newFeedCategory = "general"
+        newFeedCategory = "General"
         customCategory = ""
         useCustomCategory = false
         addFeedError = nil
@@ -669,7 +682,7 @@ struct FeedListView: View {
 // MARK: - OPML Parser Delegate
 class OPMLParserDelegate: NSObject, XMLParserDelegate {
     var feeds: [(url: String, title: String, category: String)] = []
-    private var currentCategory = "general"
+    private var currentCategory = "General"
     private var categoryStack: [String] = []
 
     func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String : String] = [:]) {
@@ -683,7 +696,7 @@ class OPMLParserDelegate: NSObject, XMLParserDelegate {
             } else if let text = attributeDict["text"] {
                 // This is a category
                 categoryStack.append(currentCategory)
-                currentCategory = text.lowercased()
+                currentCategory = text
             }
         }
     }
@@ -700,6 +713,7 @@ struct EditFeedView: View {
     @Environment(\.dismiss) private var dismiss
     let feed: Feed
     let modelContext: ModelContext
+    @StateObject private var categoryManager = CategoryManager.shared
 
     @State private var title: String
     @State private var url: String
@@ -737,8 +751,8 @@ struct EditFeedView: View {
                         .textInputAutocapitalization(.never)
                 } else {
                     Picker("Category", selection: $category) {
-                        ForEach(FeedCategory.pickerCategories, id: \.self) { category in
-                            Text(category.localizedName).tag(category.rawValue)
+                        ForEach(categoryManager.allCategories, id: \.self) { category in
+                            Text(category).tag(category)
                         }
                     }
                 }
@@ -767,7 +781,17 @@ struct EditFeedView: View {
     private func saveFeed() {
         feed.title = title
         feed.url = url
-        feed.category = category
+
+        // Trim custom category to ensure consistency with CategoryManager
+        let trimmedCategory = useCustomCategory
+            ? category.trimmingCharacters(in: .whitespacesAndNewlines)
+            : category
+        feed.category = trimmedCategory
+
+        // Save custom category to CategoryManager if it's a custom category
+        if useCustomCategory {
+            _ = categoryManager.addCustomCategory(trimmedCategory)
+        }
 
         do {
             try modelContext.save()

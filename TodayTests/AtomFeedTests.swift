@@ -52,7 +52,7 @@ final class AtomFeedTests: XCTestCase {
         """
 
         let parser = RSSParser()
-        parser.parse(data: atomXML.data(using: .utf8)!)
+        _ = parser.parse(data: atomXML.data(using: .utf8)!)
 
         XCTAssertEqual(parser.articles.count, 1)
         let article = parser.articles[0]
@@ -77,7 +77,7 @@ final class AtomFeedTests: XCTestCase {
         """
 
         let parser = RSSParser()
-        parser.parse(data: atomXML.data(using: .utf8)!)
+        _ = parser.parse(data: atomXML.data(using: .utf8)!)
 
         let article = parser.articles[0]
         // &#8220; and &#8221; are left/right double curly quotes
@@ -104,7 +104,7 @@ final class AtomFeedTests: XCTestCase {
         """
 
         let parser = RSSParser()
-        parser.parse(data: atomXML.data(using: .utf8)!)
+        _ = parser.parse(data: atomXML.data(using: .utf8)!)
 
         let article = parser.articles[0]
         XCTAssertNotNil(article.content)
@@ -129,7 +129,7 @@ final class AtomFeedTests: XCTestCase {
         """
 
         let parser = RSSParser()
-        parser.parse(data: atomXML.data(using: .utf8)!)
+        _ = parser.parse(data: atomXML.data(using: .utf8)!)
 
         let article = parser.articles[0]
         XCTAssertNotNil(article.imageUrl)
@@ -153,7 +153,7 @@ final class AtomFeedTests: XCTestCase {
         """
 
         let parser = RSSParser()
-        parser.parse(data: atomXML.data(using: .utf8)!)
+        _ = parser.parse(data: atomXML.data(using: .utf8)!)
 
         let article = parser.articles[0]
         // Should extract from src attribute
@@ -178,7 +178,7 @@ final class AtomFeedTests: XCTestCase {
         """
 
         let parser = RSSParser()
-        parser.parse(data: atomXML.data(using: .utf8)!)
+        _ = parser.parse(data: atomXML.data(using: .utf8)!)
 
         let article = parser.articles[0]
         XCTAssertNotNil(article.content)
@@ -203,7 +203,7 @@ final class AtomFeedTests: XCTestCase {
         """
 
         let parser = RSSParser()
-        parser.parse(data: atomXML.data(using: .utf8)!)
+        _ = parser.parse(data: atomXML.data(using: .utf8)!)
 
         let article = parser.articles[0]
         XCTAssertEqual(article.author, "Jason Kottke")
@@ -223,7 +223,7 @@ final class AtomFeedTests: XCTestCase {
         """
 
         let parser = RSSParser()
-        parser.parse(data: atomXML.data(using: .utf8)!)
+        _ = parser.parse(data: atomXML.data(using: .utf8)!)
 
         let article = parser.articles[0]
         // &#8216; and &#8217; are left/right single curly quotes
@@ -275,7 +275,7 @@ final class AtomFeedTests: XCTestCase {
         """
 
         let parser = RSSParser()
-        parser.parse(data: atomXML.data(using: .utf8)!)
+        _ = parser.parse(data: atomXML.data(using: .utf8)!)
 
         XCTAssertEqual(parser.articles.count, 3)
         XCTAssertEqual(parser.articles[0].title, "First Article")
@@ -301,7 +301,7 @@ final class AtomFeedTests: XCTestCase {
         """
 
         let parser = RSSParser()
-        parser.parse(data: atomXML.data(using: .utf8)!)
+        _ = parser.parse(data: atomXML.data(using: .utf8)!)
 
         let article = parser.articles[0]
         XCTAssertNotNil(article.content)
@@ -326,7 +326,7 @@ final class AtomFeedTests: XCTestCase {
         """
 
         let parser = RSSParser()
-        parser.parse(data: atomXML.data(using: .utf8)!)
+        _ = parser.parse(data: atomXML.data(using: .utf8)!)
 
         let article = parser.articles[0]
         // Title should be empty or whitespace only after normalization
@@ -347,7 +347,7 @@ final class AtomFeedTests: XCTestCase {
         """
 
         let parser = RSSParser()
-        parser.parse(data: atomXML.data(using: .utf8)!)
+        _ = parser.parse(data: atomXML.data(using: .utf8)!)
 
         let article = parser.articles[0]
         XCTAssertEqual(article.link, "https://example.com/article")
