@@ -13,9 +13,25 @@ struct ContentView: View {
     @AppStorage("appearanceMode") private var appearanceMode: AppearanceMode = .system
     @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
     @StateObject private var audioPlayer = ArticleAudioPlayer.shared
-    
-    // Mini player height including padding
+    @StateObject private var podcastPlayer = PodcastAudioPlayer.shared
+
+    // Mini player height including padding (per player)
     private static let miniPlayerHeight: CGFloat = 120
+
+    private var isTTSActive: Bool {
+        audioPlayer.isPlaying || audioPlayer.isPaused
+    }
+
+    private var isPodcastActive: Bool {
+        podcastPlayer.isPlaying || podcastPlayer.isPaused
+    }
+
+    private var totalMiniPlayerHeight: CGFloat {
+        var height: CGFloat = 0
+        if isTTSActive { height += Self.miniPlayerHeight }
+        if isPodcastActive { height += Self.miniPlayerHeight }
+        return height
+    }
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -40,7 +56,7 @@ struct ContentView: View {
                         Label("Settings", systemImage: "gear")
                     }
             }
-            .padding(.bottom, (audioPlayer.isPlaying || audioPlayer.isPaused) ? Self.miniPlayerHeight : 0)
+            .padding(.bottom, totalMiniPlayerHeight)
             .preferredColorScheme(appearanceMode.colorScheme)
             .tint(accentColor.color)
             .onAppear {

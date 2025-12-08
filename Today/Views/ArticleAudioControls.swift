@@ -156,41 +156,61 @@ struct MiniAudioPlayer: View {
     @StateObject private var audioPlayer = ArticleAudioPlayer.shared
     @StateObject private var podcastPlayer = PodcastAudioPlayer.shared
     @Environment(\.dismiss) private var dismiss
-    @State private var showSpeedPicker = false
+    @State private var showTTSSpeedPicker = false
+    @State private var showPodcastSpeedPicker = false
     @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
 
+    private var isTTSActive: Bool {
+        audioPlayer.currentArticle != nil && (audioPlayer.isPlaying || audioPlayer.isPaused)
+    }
+
+    private var isPodcastActive: Bool {
+        podcastPlayer.currentArticle != nil && (podcastPlayer.isPlaying || podcastPlayer.isPaused)
+    }
+
     var body: some View {
-        // Show TTS mini player
-        if let article = audioPlayer.currentArticle,
-           audioPlayer.isPlaying || audioPlayer.isPaused {
-            miniPlayerView(
-                article: article,
-                progress: audioPlayer.progress,
-                isPaused: audioPlayer.isPaused,
-                playbackRate: ArticleAudioPlayer.formatSpeed(audioPlayer.playbackRate),
-                currentTimeText: AudioFormatters.formatDuration(audioPlayer.progress * audioPlayer.estimatedDuration),
-                onSeek: { newValue in audioPlayer.seek(to: newValue) },
-                onTogglePlayPause: { audioPlayer.togglePlayPause() },
-                onStop: { audioPlayer.stop() },
-                onShowSpeedPicker: { showSpeedPicker = true },
-                isPodcast: false
-            )
+        VStack(spacing: 0) {
+            // Show TTS mini player
+            if let article = audioPlayer.currentArticle,
+               audioPlayer.isPlaying || audioPlayer.isPaused {
+                miniPlayerView(
+                    article: article,
+                    progress: audioPlayer.progress,
+                    isPaused: audioPlayer.isPaused,
+                    playbackRate: ArticleAudioPlayer.formatSpeed(audioPlayer.playbackRate),
+                    currentTimeText: AudioFormatters.formatDuration(audioPlayer.progress * audioPlayer.estimatedDuration),
+                    onSeek: { newValue in audioPlayer.seek(to: newValue) },
+                    onTogglePlayPause: { audioPlayer.togglePlayPause() },
+                    onStop: { audioPlayer.stop() },
+                    onShowSpeedPicker: { showTTSSpeedPicker = true },
+                    isPodcast: false
+                )
+            }
+
+            // Show podcast mini player (can show alongside TTS)
+            if let article = podcastPlayer.currentArticle,
+               podcastPlayer.isPlaying || podcastPlayer.isPaused {
+                miniPlayerView(
+                    article: article,
+                    progress: podcastPlayer.progress,
+                    isPaused: podcastPlayer.isPaused,
+                    playbackRate: AudioFormatters.formatSpeed(podcastPlayer.playbackRate),
+                    currentTimeText: formatDuration(podcastPlayer.currentTime),
+                    onSeek: { newValue in podcastPlayer.seek(to: newValue) },
+                    onTogglePlayPause: { podcastPlayer.togglePlayPause() },
+                    onStop: { podcastPlayer.stop() },
+                    onShowSpeedPicker: { showPodcastSpeedPicker = true },
+                    isPodcast: true
+                )
+            }
         }
-        // Show podcast mini player
-        else if let article = podcastPlayer.currentArticle,
-                podcastPlayer.isPlaying || podcastPlayer.isPaused {
-            miniPlayerView(
-                article: article,
-                progress: podcastPlayer.progress,
-                isPaused: podcastPlayer.isPaused,
-                playbackRate: AudioFormatters.formatSpeed(podcastPlayer.playbackRate),
-                currentTimeText: formatDuration(podcastPlayer.currentTime),
-                onSeek: { newValue in podcastPlayer.seek(to: newValue) },
-                onTogglePlayPause: { podcastPlayer.togglePlayPause() },
-                onStop: { podcastPlayer.stop() },
-                onShowSpeedPicker: { showSpeedPicker = true },
-                isPodcast: true
-            )
+        .sheet(isPresented: $showTTSSpeedPicker) {
+            SpeedPickerView(audioPlayer: audioPlayer)
+                .presentationDetents([.height(300)])
+        }
+        .sheet(isPresented: $showPodcastSpeedPicker) {
+            PodcastSpeedPickerView(podcastPlayer: podcastPlayer)
+                .presentationDetents([.height(300)])
         }
     }
     
@@ -297,15 +317,6 @@ struct MiniAudioPlayer: View {
             )
         }
         .transition(.move(edge: .bottom).combined(with: .opacity))
-        .sheet(isPresented: $showSpeedPicker) {
-            if isPodcast {
-                PodcastSpeedPickerView(podcastPlayer: podcastPlayer)
-                    .presentationDetents([.height(300)])
-            } else {
-                SpeedPickerView(audioPlayer: audioPlayer)
-                    .presentationDetents([.height(300)])
-            }
-        }
     }
     
     private func formatDuration(_ duration: TimeInterval) -> String {
