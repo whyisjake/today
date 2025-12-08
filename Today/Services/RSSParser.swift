@@ -109,11 +109,7 @@ class RSSParser: NSObject, XMLParserDelegate {
                     // Audio enclosure (podcast)
                     currentAudioUrl = url
                     currentAudioType = type
-                    // Parse duration if available (iTunes extension: itunes:duration)
-                    if let lengthStr = attributeDict["length"], let length = TimeInterval(lengthStr) {
-                        // Length is in bytes, not helpful for duration
-                        // Duration comes from itunes:duration element
-                    }
+                    // Duration is parsed from itunes:duration element, not from length attribute
                 } else if type.contains("image") {
                     currentImageUrl = url
                 }

@@ -144,18 +144,10 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
     func setPlaybackRate(_ rate: Float) {
         playbackRate = max(0.5, min(2.0, rate))
         
-        if isPlaying {
-            player?.rate = playbackRate
+        // Apply rate immediately if playing or paused
+        if isPlaying || isPaused {
+            player?.rate = isPlaying ? playbackRate : 0.0
             updateNowPlayingInfo()
-        }
-    }
-    
-    /// Formats playback rate for display
-    static func formatSpeed(_ speed: Float) -> String {
-        if speed.truncatingRemainder(dividingBy: 1.0) == 0 {
-            return "\(Int(speed))x"
-        } else {
-            return String(format: "%.2fx", speed)
         }
     }
 

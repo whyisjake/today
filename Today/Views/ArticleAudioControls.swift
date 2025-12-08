@@ -309,15 +309,7 @@ struct MiniAudioPlayer: View {
     }
     
     private func formatDuration(_ duration: TimeInterval) -> String {
-        let hours = Int(duration) / 3600
-        let minutes = Int(duration) / 60 % 60
-        let seconds = Int(duration) % 60
-        
-        if hours > 0 {
-            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
-        } else {
-            return String(format: "%d:%02d", minutes, seconds)
-        }
+        AudioFormatters.formatDuration(duration)
     }
 }
 
@@ -410,7 +402,7 @@ struct PodcastAudioControls: View {
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "gauge.with.dots.needle.50percent")
-                        Text(PodcastAudioPlayer.formatSpeed(podcastPlayer.playbackRate))
+                        Text(AudioFormatters.formatSpeed(podcastPlayer.playbackRate))
                     }
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
@@ -437,15 +429,7 @@ struct PodcastAudioControls: View {
     }
     
     private func formatDuration(_ duration: TimeInterval) -> String {
-        let hours = Int(duration) / 3600
-        let minutes = Int(duration) / 60 % 60
-        let seconds = Int(duration) % 60
-        
-        if hours > 0 {
-            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
-        } else {
-            return String(format: "%d:%02d", minutes, seconds)
-        }
+        AudioFormatters.formatDuration(duration)
     }
 }
 
@@ -466,7 +450,7 @@ struct PodcastSpeedPickerView: View {
                         dismiss()
                     } label: {
                         HStack {
-                            Text(PodcastAudioPlayer.formatSpeed(speed))
+                            Text(AudioFormatters.formatSpeed(speed))
                                 .foregroundStyle(.primary)
                             Spacer()
                             if abs(podcastPlayer.playbackRate - speed) < 0.01 {
