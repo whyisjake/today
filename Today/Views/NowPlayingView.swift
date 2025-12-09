@@ -393,91 +393,91 @@ struct ChapterRowView: View {
     @Environment(\.openURL) private var openURL
 
     var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 12) {
-                // Chapter artwork (if available)
-                if let chapterImage = chapter.image {
-                    Image(uiImage: chapterImage)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 44, height: 44)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
+        HStack(spacing: 12) {
+            // Chapter artwork (if available)
+            if let chapterImage = chapter.image {
+                Image(uiImage: chapterImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 44, height: 44)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            } else {
+                // Playing indicator or timestamp
+                if isCurrentChapter {
+                    Image(systemName: "speaker.wave.2.fill")
+                        .font(.caption)
+                        .foregroundStyle(accentColor.color)
+                        .frame(width: 44)
                 } else {
-                    // Playing indicator or timestamp
-                    if isCurrentChapter {
-                        Image(systemName: "speaker.wave.2.fill")
-                            .font(.caption)
-                            .foregroundStyle(accentColor.color)
-                            .frame(width: 44)
-                    } else {
+                    Text(chapter.formattedStartTime)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, alignment: .leading)
+                }
+            }
+
+            // Chapter info
+            VStack(alignment: .leading, spacing: 4) {
+                // Chapter title with optional link
+                if let urlString = chapter.url, let url = URL(string: urlString) {
+                    // Tappable link title
+                    Button {
+                        openURL(url)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(chapter.title)
+                                .font(.subheadline)
+                                .foregroundStyle(accentColor.color)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                            Image(systemName: "arrow.up.right")
+                                .font(.caption2)
+                                .foregroundStyle(accentColor.color)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    // Regular title (no link)
+                    Text(chapter.title)
+                        .font(.subheadline)
+                        .foregroundStyle(isCurrentChapter ? accentColor.color : .primary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                }
+
+                // Show timestamp below title when we have artwork
+                if chapter.image != nil {
+                    HStack(spacing: 8) {
                         Text(chapter.formattedStartTime)
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
-                            .frame(width: 44, alignment: .leading)
-                    }
-                }
 
-                // Chapter info
-                VStack(alignment: .leading, spacing: 4) {
-                    // Chapter title with optional link
-                    if let urlString = chapter.url, let url = URL(string: urlString) {
-                        // Tappable link title
-                        Button {
-                            openURL(url)
-                        } label: {
-                            HStack(spacing: 4) {
-                                Text(chapter.title)
-                                    .font(.subheadline)
-                                    .foregroundStyle(accentColor.color)
-                                    .lineLimit(2)
-                                    .multilineTextAlignment(.leading)
-                                Image(systemName: "arrow.up.right")
-                                    .font(.caption2)
-                                    .foregroundStyle(accentColor.color)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    } else {
-                        // Regular title (no link)
-                        Text(chapter.title)
-                            .font(.subheadline)
-                            .foregroundStyle(isCurrentChapter ? accentColor.color : .primary)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.leading)
-                    }
-
-                    // Show timestamp below title when we have artwork
-                    if chapter.image != nil {
-                        HStack(spacing: 8) {
-                            Text(chapter.formattedStartTime)
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
-
-                            if isCurrentChapter {
-                                Image(systemName: "speaker.wave.2.fill")
-                                    .font(.caption2)
-                                    .foregroundStyle(accentColor.color)
-                            }
+                        if isCurrentChapter {
+                            Image(systemName: "speaker.wave.2.fill")
+                                .font(.caption2)
+                                .foregroundStyle(accentColor.color)
                         }
                     }
-                }
-
-                Spacer()
-
-                // Duration
-                if let endTime = chapter.endTime {
-                    let duration = endTime - chapter.startTime
-                    Text(AudioFormatters.formatDuration(duration))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
             }
-            .padding(.vertical, 8)
-            .padding(.horizontal, 12)
-            .background(isCurrentChapter ? accentColor.color.opacity(0.1) : Color.clear)
-            .cornerRadius(8)
+
+            Spacer()
+
+            // Duration
+            if let endTime = chapter.endTime {
+                let duration = endTime - chapter.startTime
+                Text(AudioFormatters.formatDuration(duration))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
-        .buttonStyle(.plain)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(isCurrentChapter ? accentColor.color.opacity(0.1) : Color.clear)
+        .cornerRadius(8)
+        .onTapGesture {
+            onTap()
+        }
     }
 }
 
