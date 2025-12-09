@@ -23,6 +23,7 @@ class FeedManager: ObservableObject {
     @Published var isSyncing = false
     @Published var lastSyncDate: Date?
     @Published var syncError: String?
+    @Published var syncProgress: String?
 
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
@@ -257,19 +258,18 @@ class FeedManager: ObservableObject {
         }
     }
 
-    /// Sync all active feeds
+    /// Sync all active feeds with batched concurrent processing
     func syncAllFeeds() async {
         // Check if a sync is already in progress globally
-        // This check-and-set is atomic because both the check and set happen on the MainActor,
-        // preventing any interleaving from concurrent calls
         guard !Self.globalSyncInProgress else {
             print("⚠️ Sync already in progress, skipping concurrent sync request")
             return
         }
-        
+
         Self.globalSyncInProgress = true
         isSyncing = true
         syncError = nil
+        syncProgress = nil
 
         let syncStartTime = Date()
         print("📡 Starting feed sync at \(syncStartTime.formatted(date: .omitted, time: .standard))")
@@ -277,6 +277,7 @@ class FeedManager: ObservableObject {
         defer {
             Self.globalSyncInProgress = false
             isSyncing = false
+            syncProgress = nil
             let duration = Date().timeIntervalSince(syncStartTime)
             print("✅ Feed sync completed in \(String(format: "%.1f", duration))s")
         }
@@ -286,29 +287,123 @@ class FeedManager: ObservableObject {
                 predicate: #Predicate<Feed> { $0.isActive }
             )
             let feeds = try modelContext.fetch(descriptor)
-            print("📋 Syncing \(feeds.count) active feeds")
+            let totalFeeds = feeds.count
+            print("📋 Syncing \(totalFeeds) active feeds")
+
+            guard totalFeeds > 0 else {
+                print("ℹ️ No active feeds to sync")
+                return
+            }
 
             var successCount = 0
             var failureCount = 0
 
-            for feed in feeds {
-                do {
-                    try await syncFeed(feed)
-                    successCount += 1
-                } catch {
-                    failureCount += 1
-                    print("❌ Error syncing feed \(feed.title): \(error.localizedDescription)")
-                    // Continue with other feeds even if one fails
+            // Batch configuration
+            let batchSize = 20
+            let concurrentRequestsPerBatch = 5
+
+            // Split feeds into batches
+            let batches = stride(from: 0, to: totalFeeds, by: batchSize).map {
+                Array(feeds[$0..<min($0 + batchSize, totalFeeds)])
+            }
+
+            print("📦 Processing \(batches.count) batches of up to \(batchSize) feeds")
+
+            // Process each batch
+            for (batchIndex, batch) in batches.enumerated() {
+                let batchStart = batchIndex * batchSize
+                print("📦 Processing batch \(batchIndex + 1)/\(batches.count) (\(batch.count) feeds)")
+
+                // Use TaskGroup for concurrent fetching within batch
+                await withTaskGroup(of: (String, Result<Void, Error>).self) { group in
+                    var activeTasks = 0
+                    var feedIterator = batch.makeIterator()
+
+                    // Start initial tasks up to concurrency limit
+                    while activeTasks < concurrentRequestsPerBatch, let feed = feedIterator.next() {
+                        let feedIndex = batchStart + batch.firstIndex(where: { $0.id == feed.id })!
+                        let feedTitle = feed.title
+                        let feedID = feed.persistentModelID
+
+                        group.addTask {
+                            do {
+                                // Fetch feed from model context within task
+                                let fetchedFeed = await MainActor.run {
+                                    self.modelContext.model(for: feedID) as? Feed
+                                }
+                                guard let feed = fetchedFeed else {
+                                    throw FeedError.invalidURL
+                                }
+
+                                // Perform network fetch
+                                try await self.syncFeed(feed)
+                                return (feedTitle, .success(()))
+                            } catch {
+                                return (feedTitle, .failure(error))
+                            }
+                        }
+                        activeTasks += 1
+
+                        // Update progress
+                        await MainActor.run {
+                            self.syncProgress = "Syncing \(feedIndex + 1) of \(totalFeeds)"
+                        }
+                    }
+
+                    // Process results and start new tasks as old ones complete
+                    for await (feedTitle, result) in group {
+                        activeTasks -= 1
+
+                        switch result {
+                        case .success:
+                            successCount += 1
+                        case .failure(let error):
+                            failureCount += 1
+                            print("❌ Error syncing feed \(feedTitle): \(error.localizedDescription)")
+                        }
+
+                        // Start next task if available
+                        if let nextFeed = feedIterator.next() {
+                            let feedIndex = batchStart + batch.firstIndex(where: { $0.id == nextFeed.id })!
+                            let nextFeedTitle = nextFeed.title
+                            let nextFeedID = nextFeed.persistentModelID
+
+                            group.addTask {
+                                do {
+                                    // Fetch feed from model context within task
+                                    let fetchedFeed = await MainActor.run {
+                                        self.modelContext.model(for: nextFeedID) as? Feed
+                                    }
+                                    guard let feed = fetchedFeed else {
+                                        throw FeedError.invalidURL
+                                    }
+
+                                    try await self.syncFeed(feed)
+                                    return (nextFeedTitle, .success(()))
+                                } catch {
+                                    return (nextFeedTitle, .failure(error))
+                                }
+                            }
+                            activeTasks += 1
+
+                            // Update progress
+                            await MainActor.run {
+                                self.syncProgress = "Syncing \(feedIndex + 1) of \(totalFeeds)"
+                            }
+                        }
+                    }
                 }
+
+                print("✅ Batch \(batchIndex + 1) complete")
             }
 
             print("📊 Sync results: \(successCount) succeeded, \(failureCount) failed")
-            
+
             // Only update lastSyncDate if at least one feed synced successfully
             if successCount > 0 {
                 lastSyncDate = syncStartTime
                 UserDefaults.standard.set(syncStartTime, forKey: Self.lastGlobalSyncKey)
-                print("✅ Updated last sync date (synced \(successCount)/\(feeds.count) feeds)")
+                print("✅ Updated last sync date (synced \(successCount)/\(totalFeeds) feeds)")
             } else {
                 print("⚠️ Not updating last sync date - all feeds failed to sync")
             }

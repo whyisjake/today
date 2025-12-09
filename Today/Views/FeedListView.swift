@@ -86,6 +86,7 @@ struct FeedListView: View {
     @State private var opmlText = ""
     @State private var isImporting = false
     @State private var importError: String?
+    @State private var importProgress: String?
     @State private var showingExportConfirmation = false
     @AppStorage("showAltCategory") private var showAltFeeds = false // Global setting for Alt category visibility
 
@@ -304,12 +305,19 @@ struct FeedListView: View {
     @ViewBuilder
     private var syncingOverlay: some View {
         if feedManager.isSyncing {
-            VStack {
-                ProgressView("Syncing feeds...")
-                    .padding()
-                    .background(.regularMaterial)
-                    .cornerRadius(10)
+            VStack(spacing: 8) {
+                ProgressView()
+                if let progress = feedManager.syncProgress {
+                    Text(progress)
+                        .font(.subheadline)
+                } else {
+                    Text("Syncing feeds...")
+                        .font(.subheadline)
+                }
             }
+            .padding()
+            .background(.regularMaterial)
+            .cornerRadius(10)
         }
     }
 
@@ -425,9 +433,27 @@ struct FeedListView: View {
 
                 if let error = importError {
                     Section {
-                        Text(error)
-                            .foregroundStyle(.red)
-                            .font(.caption)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(error)
+                                .foregroundColor(error.contains("✅") ? .primary : .red)
+                                .font(.caption)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Button {
+                                UIPasteboard.general.string = error
+                            } label: {
+                                HStack {
+                                    Image(systemName: "doc.on.doc")
+                                    Text("Copy Summary")
+                                }
+                                .font(.caption)
+                                .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    } header: {
+                        Text("Import Summary")
                     }
                 }
 
@@ -457,10 +483,14 @@ struct FeedListView: View {
             }
             .overlay {
                 if isImporting {
-                    ProgressView("Importing feeds...")
-                        .padding()
-                        .background(.regularMaterial)
-                        .cornerRadius(10)
+                    VStack(spacing: 8) {
+                        ProgressView()
+                        Text(importProgress ?? "Importing feeds...")
+                            .font(.subheadline)
+                    }
+                    .padding()
+                    .background(.regularMaterial)
+                    .cornerRadius(10)
                 }
             }
         }
@@ -626,21 +656,71 @@ struct FeedListView: View {
     private func importOPML() {
         isImporting = true
         importError = nil
+        importProgress = nil
+
+        print("📥 OPML Import: Starting import process...")
+        print("📥 OPML Import: Input length: \(opmlText.count) characters")
 
         Task {
             do {
+                print("📥 OPML Import: Parsing OPML...")
                 let feedsToImport = try parseOPML(opmlText)
+                let totalFeeds = feedsToImport.count
+
+                print("📥 OPML Import: Found \(totalFeeds) feeds to import")
+
+                // Log first few feeds for debugging
+                for (index, (url, title, category)) in feedsToImport.prefix(5).enumerated() {
+                    print("📥 OPML Import: Feed \(index + 1): \(title) | \(url) | \(category)")
+                }
+
+                await MainActor.run {
+                    importProgress = "Found \(totalFeeds) feeds to import..."
+                }
+
+                var successCount = 0
+                var failedCount = 0
+                var skippedCount = 0
+                var failedFeeds: [(String, String)] = [] // Track failed feeds with errors
 
                 // Import each feed
-                for (url, title, category) in feedsToImport {
+                for (index, (url, title, category)) in feedsToImport.enumerated() {
+                    // Update progress
+                    await MainActor.run {
+                        importProgress = "Importing \(index + 1) of \(totalFeeds): \(title)"
+                    }
+
+                    print("📥 OPML Import: [\(index + 1)/\(totalFeeds)] Processing: \(title)")
+
                     // Check if feed already exists
-                    if !feeds.contains(where: { $0.url == url }) {
-                        do {
-                            _ = try await feedManager.addFeed(url: url, category: category)
-                        } catch {
-                            // Continue even if one feed fails
-                            print("Failed to import \(title): \(error.localizedDescription)")
-                        }
+                    if feeds.contains(where: { $0.url == url }) {
+                        skippedCount += 1
+                        print("⏭️  OPML Import: Skipped (duplicate): \(title)")
+                        continue
+                    }
+
+                    do {
+                        print("📥 OPML Import: Adding feed: \(title)")
+                        _ = try await feedManager.addFeed(url: url, category: category)
+                        successCount += 1
+                        print("✅ OPML Import: Success: \(title)")
+                    } catch {
+                        // Continue even if one feed fails
+                        failedCount += 1
+                        let errorMsg = error.localizedDescription
+                        failedFeeds.append((title, errorMsg))
+                        print("❌ OPML Import: Failed: \(title)")
+                        print("   Error: \(errorMsg)")
+                    }
+                }
+
+                print("📊 OPML Import: Complete - Success: \(successCount), Failed: \(failedCount), Skipped: \(skippedCount)")
+
+                // Log failed feeds for debugging
+                if !failedFeeds.isEmpty {
+                    print("❌ Failed feeds:")
+                    for (title, error) in failedFeeds.prefix(10) {
+                        print("   - \(title): \(error)")
                     }
                 }
 
@@ -648,29 +728,364 @@ struct FeedListView: View {
                     showingImportOPML = false
                     opmlText = ""
                     isImporting = false
+                    importProgress = nil
+
+                    // Show detailed summary
+                    var summary = "✅ Imported \(successCount) feeds"
+                    if skippedCount > 0 {
+                        summary += "\n⏭️  Skipped \(skippedCount) duplicates"
+                    }
+
+                    if failedCount > 0 {
+                        summary += "\n\n❌ \(failedCount) feeds failed:"
+
+                        // Show up to 10 failed feeds with reasons
+                        for (title, error) in failedFeeds.prefix(10) {
+                            // Simplify common error messages
+                            let simplifiedError: String
+                            if error.contains("Invalid RSS") || error.contains("not a valid RSS") {
+                                simplifiedError = "Invalid RSS feed"
+                            } else if error.contains("network") || error.contains("Network") {
+                                simplifiedError = "Network error"
+                            } else if error.contains("timeout") || error.contains("timed out") {
+                                simplifiedError = "Connection timeout"
+                            } else if error.contains("404") {
+                                simplifiedError = "Feed not found"
+                            } else if error.contains("403") || error.contains("401") {
+                                simplifiedError = "Access denied"
+                            } else if error.contains("500") {
+                                simplifiedError = "Server error"
+                            } else {
+                                // Keep short error message (first 50 chars)
+                                simplifiedError = String(error.prefix(50))
+                            }
+                            summary += "\n  • \(title): \(simplifiedError)"
+                        }
+
+                        if failedCount > 10 {
+                            summary += "\n  ... and \(failedCount - 10) more"
+                        }
+                    }
+
+                    // Always show summary
+                    importError = summary
+                    print("📥 OPML Import: Showing summary: \(summary)")
                 }
             } catch {
+                print("❌ OPML Import: Parse error: \(error.localizedDescription)")
                 await MainActor.run {
                     importError = error.localizedDescription
                     isImporting = false
+                    importProgress = nil
                 }
             }
         }
     }
 
-    private func parseOPML(_ opmlContent: String) throws -> [(url: String, title: String, category: String)] {
-        guard let data = opmlContent.data(using: .utf8) else {
-            throw NSError(domain: "OPML", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid OPML text"])
+    private func fixUnescapedAttributeValues(_ content: String) -> String {
+        // Fix unescaped quotes and ampersands inside attribute values
+        // This handles Stream's broken OPML export which doesn't escape special chars
+
+        var fixed = ""
+        var inAttributeValue = false
+        var inXMLDeclaration = false
+        var inComment = false
+        var i = content.startIndex
+
+        while i < content.endIndex {
+            let char = content[i]
+
+            // Check if we're entering an XML comment <!--
+            if !inComment && !inXMLDeclaration && char == "<" {
+                let remaining = String(content[i...])
+                if remaining.hasPrefix("<!--") {
+                    inComment = true
+                }
+            }
+
+            // Check if we're exiting an XML comment -->
+            if inComment && char == "-" {
+                let remaining = String(content[i...])
+                if remaining.hasPrefix("-->") {
+                    fixed.append("-->")
+                    i = content.index(i, offsetBy: 3)
+                    inComment = false
+                    continue
+                }
+            }
+
+            // Skip processing inside comments
+            if inComment {
+                fixed.append(char)
+                i = content.index(after: i)
+                continue
+            }
+
+            // Check if we're entering an XML declaration
+            if char == "<" && content.index(after: i) < content.endIndex &&
+               content[content.index(after: i)] == "?" {
+                inXMLDeclaration = true
+                fixed.append(char)
+                i = content.index(after: i)
+                continue
+            }
+
+            // Check if we're exiting an XML declaration
+            if inXMLDeclaration && char == "?" && content.index(after: i) < content.endIndex &&
+               content[content.index(after: i)] == ">" {
+                fixed.append(char) // append ?
+                i = content.index(after: i)
+                fixed.append(content[i]) // append >
+                inXMLDeclaration = false
+                i = content.index(after: i)
+                continue
+            }
+
+            // Skip processing inside XML declarations
+            if inXMLDeclaration {
+                fixed.append(char)
+                i = content.index(after: i)
+                continue
+            }
+
+            // Detect start of attribute value: ="
+            if char == "=" && content.index(after: i) < content.endIndex &&
+               content[content.index(after: i)] == "\"" {
+                fixed.append(char) // append =
+                i = content.index(after: i)
+                fixed.append(content[i]) // append opening "
+                i = content.index(after: i)
+                inAttributeValue = true
+                continue
+            }
+
+            // Inside attribute value
+            if inAttributeValue {
+                if char == "\"" {
+                    // Check if this is the closing quote by looking ahead for the next attribute or tag end
+                    // A closing quote is followed by: space + attribute name + = OR / OR >
+                    var j = content.index(after: i)
+                    var isClosingQuote = false
+
+                    // Skip whitespace after the quote
+                    while j < content.endIndex && (content[j] == " " || content[j] == "\t") {
+                        j = content.index(after: j)
+                    }
+
+                    if j < content.endIndex {
+                        let nextChar = content[j]
+                        // If followed by / or >, it's definitely a closing quote
+                        if nextChar == "/" || nextChar == ">" {
+                            isClosingQuote = true
+                        } else if nextChar.isLetter {
+                            // If followed by letters, check if it's an attribute name (letter+ followed by =)
+                            var k = j
+                            while k < content.endIndex && (content[k].isLetter || content[k].isNumber || content[k] == "_" || content[k] == "-") {
+                                k = content.index(after: k)
+                            }
+                            if k < content.endIndex && content[k] == "=" {
+                                isClosingQuote = true
+                            }
+                        }
+                    } else {
+                        // End of content
+                        isClosingQuote = true
+                    }
+
+                    if isClosingQuote {
+                        fixed.append(char) // Keep closing quote
+                        inAttributeValue = false
+                    } else {
+                        // Escape embedded quote
+                        fixed.append("&quot;")
+                    }
+                } else if char == "&" {
+                    // Check if this is already part of an entity
+                    let remainingContent = String(content[i...])
+                    let isEntity = remainingContent.hasPrefix("&quot;") ||
+                        remainingContent.hasPrefix("&amp;") ||
+                        remainingContent.hasPrefix("&lt;") ||
+                        remainingContent.hasPrefix("&gt;") ||
+                        remainingContent.hasPrefix("&apos;") ||
+                        remainingContent.hasPrefix("&#")
+
+                    if isEntity {
+                        fixed.append(char) // Keep as-is
+                    } else {
+                        // Escape unescaped ampersand
+                        fixed.append("&amp;")
+                    }
+                } else {
+                    fixed.append(char)
+                }
+            } else {
+                fixed.append(char)
+            }
+
+            i = content.index(after: i)
         }
+
+        return fixed
+    }
+
+    private func parseOPML(_ opmlContent: String) throws -> [(url: String, title: String, category: String)] {
+        print("🔍 OPML Parser: Starting XML parsing...")
+        print("🔍 OPML Parser: Input length: \(opmlContent.count) characters")
+
+        // Clean up OPML content
+        var cleanedContent = opmlContent.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Remove BOM if present
+        if cleanedContent.hasPrefix("\u{FEFF}") {
+            cleanedContent = String(cleanedContent.dropFirst())
+            print("🔍 OPML Parser: Removed BOM")
+        }
+
+        // Detect if OPML was pasted twice (duplicate content)
+        // Check for multiple <?xml declarations or multiple </opml> tags
+        let xmlDeclarationCount = cleanedContent.components(separatedBy: "<?xml").count - 1
+        let closingOpmlCount = cleanedContent.components(separatedBy: "</opml>").count - 1
+
+        if xmlDeclarationCount > 1 || closingOpmlCount > 1 {
+            print("⚠️ OPML Parser: Detected duplicate content (multiple XML declarations or closing tags)")
+            print("⚠️ OPML Parser: Attempting to extract first valid OPML section...")
+
+            // Extract just the first OPML document
+            if let firstOpmlEnd = cleanedContent.range(of: "</opml>") {
+                let endIndex = cleanedContent.index(firstOpmlEnd.upperBound, offsetBy: 0)
+                cleanedContent = String(cleanedContent[..<endIndex])
+                print("✅ OPML Parser: Extracted first OPML section (\(cleanedContent.count) characters)")
+            }
+        }
+
+        // Fix attribute spacing: text= "value" -> text="value"
+        // This is a common issue in Stream and other OPML exporters
+        // Use a more comprehensive regex to catch all variations
+        do {
+            let regex = try NSRegularExpression(pattern: "=\\s+\"", options: [])
+            let range = NSRange(cleanedContent.startIndex..., in: cleanedContent)
+            let fixed = regex.stringByReplacingMatches(
+                in: cleanedContent,
+                options: [],
+                range: range,
+                withTemplate: "=\""
+            )
+            let fixCount = regex.numberOfMatches(in: cleanedContent, options: [], range: range)
+            if fixCount > 0 {
+                cleanedContent = fixed
+                print("🔍 OPML Parser: Fixed \(fixCount) attribute spacing issues (= \" -> =\")")
+            }
+        } catch {
+            print("⚠️ OPML Parser: Regex failed, using simple string replacement")
+            cleanedContent = cleanedContent.replacingOccurrences(of: "= \"", with: "=\"")
+        }
+
+        // Fix unescaped special characters in attribute values
+        // Stream exporter doesn't escape quotes or ampersands in attribute values
+        // We need to escape:
+        // - Unescaped quotes: " -> &quot; (but only inside attribute values)
+        // - Unescaped ampersands: & -> &amp; (but not if already part of an entity like &quot; or &amp;)
+        cleanedContent = fixUnescapedAttributeValues(cleanedContent)
+        print("🔍 OPML Parser: Fixed unescaped special characters in attributes")
+
+        // Remove any invalid control characters (except tab, newline, carriage return)
+        cleanedContent = cleanedContent.filter { char in
+            let scalar = char.unicodeScalars.first!
+            let value = scalar.value
+            // Allow tab (0x09), newline (0x0A), carriage return (0x0D)
+            // Allow normal printable characters (0x20 and above)
+            // Disallow other control characters (0x00-0x1F except the above)
+            return value == 0x09 || value == 0x0A || value == 0x0D || value >= 0x20
+        }
+
+        guard let data = cleanedContent.data(using: .utf8) else {
+            print("❌ OPML Parser: Failed to convert to UTF-8 data")
+            throw NSError(domain: "OPML", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid OPML text encoding"])
+        }
+
+        print("🔍 OPML Parser: UTF-8 conversion successful, data size: \(data.count) bytes")
 
         let parser = XMLParser(data: data)
         let delegate = OPMLParserDelegate()
         parser.delegate = delegate
 
-        if parser.parse() {
+        print("🔍 OPML Parser: Starting XMLParser.parse()...")
+        let parseResult = parser.parse()
+        print("🔍 OPML Parser: XMLParser.parse() completed with result: \(parseResult)")
+
+        if parseResult {
+            // Check if any parsing error occurred
+            if let error = delegate.parseError {
+                print("❌ OPML Parser: Parse error occurred: \(error.localizedDescription)")
+                throw NSError(domain: "OPML", code: -1, userInfo: [
+                    NSLocalizedDescriptionKey: "XML parsing error: \(error.localizedDescription)"
+                ])
+            }
+
+            print("🔍 OPML Parser: Found \(delegate.feeds.count) feeds")
+
+            // Check if we found any feeds
+            if delegate.feeds.isEmpty {
+                print("❌ OPML Parser: No feeds found in OPML")
+                throw NSError(domain: "OPML", code: -1, userInfo: [
+                    NSLocalizedDescriptionKey: "No valid feeds found in OPML file. Make sure feeds have both a URL and title."
+                ])
+            }
+
+            print("✅ OPML Parser: Successfully parsed \(delegate.feeds.count) feeds")
             return delegate.feeds
         } else {
-            throw NSError(domain: "OPML", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to parse OPML"])
+            // Parser failed - check for specific error
+            let line = parser.lineNumber
+            let column = parser.columnNumber
+
+            if let error = delegate.parseError {
+                print("❌ OPML Parser: Parse failed at line \(line), column \(column)")
+                print("❌ OPML Parser: Error: \(error.localizedDescription)")
+                print("❌ OPML Parser: Error code: \((error as NSError).code)")
+
+                // Try to show the problematic line
+                let lines = cleanedContent.components(separatedBy: .newlines)
+                if line > 0 && line <= lines.count {
+                    let problemLine = lines[line - 1]
+                    print("❌ OPML Parser: Problematic line: \(problemLine)")
+                    if column > 0 && column <= problemLine.count {
+                        let index = problemLine.index(problemLine.startIndex, offsetBy: column - 1, limitedBy: problemLine.endIndex)
+                        if let index = index {
+                            let char = problemLine[index]
+                            print("❌ OPML Parser: Character at error: '\(char)' (Unicode: \\u{\(String(char.unicodeScalars.first!.value, radix: 16))})")
+                        }
+                    }
+                }
+
+                // Provide helpful error message based on error code
+                let errorCode = (error as NSError).code
+                var errorMessage = "Failed to parse OPML at line \(line), column \(column)"
+
+                if errorCode == 23 { // NSXMLParserInvalidCharacterError
+                    errorMessage += "\n\nThis OPML file contains invalid XML characters. This is a known issue with some RSS readers' OPML export.\n\nTry:\n1. Re-export the OPML from your RSS reader\n2. Open the OPML file in a text editor and check for unusual characters\n3. Make sure you didn't accidentally paste the content twice"
+                } else if errorCode == 4 { // NSXMLParserEmptyDocumentError
+                    errorMessage += "\n\nThe OPML content appears to be empty or invalid."
+                } else {
+                    errorMessage += ": \(error.localizedDescription)"
+                }
+
+                throw NSError(domain: "OPML", code: -1, userInfo: [
+                    NSLocalizedDescriptionKey: errorMessage
+                ])
+            } else {
+                print("❌ OPML Parser: Parse failed at line \(line), column \(column) with no specific error")
+
+                var errorMessage = "Failed to parse OPML file at line \(line), column \(column)."
+                errorMessage += "\n\nPlease check that:"
+                errorMessage += "\n• The OPML file was exported correctly from your RSS reader"
+                errorMessage += "\n• You copied the entire file content"
+                errorMessage += "\n• You didn't paste the content multiple times"
+
+                throw NSError(domain: "OPML", code: -1, userInfo: [
+                    NSLocalizedDescriptionKey: errorMessage
+                ])
+            }
         }
     }
 
@@ -684,27 +1099,93 @@ class OPMLParserDelegate: NSObject, XMLParserDelegate {
     var feeds: [(url: String, title: String, category: String)] = []
     private var currentCategory = "General"
     private var categoryStack: [String] = []
+    var parseError: Error?
+    private var elementCount = 0
+    private var feedCount = 0
+    private var categoryCount = 0
+    private var skippedCount = 0
 
     func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String : String] = [:]) {
         if elementName == "outline" {
-            if let type = attributeDict["type"], type == "rss" {
-                // This is a feed entry
-                if let xmlUrl = attributeDict["xmlUrl"],
-                   let title = attributeDict["title"] ?? attributeDict["text"] {
-                    feeds.append((url: xmlUrl, title: title, category: currentCategory))
+            elementCount += 1
+
+            // Log first few elements for debugging
+            if elementCount <= 3 {
+                print("🔍 Delegate: Element \(elementCount) - attributes: \(attributeDict)")
+            }
+
+            // Case-insensitive attribute lookup helper
+            func getAttribute(_ name: String) -> String? {
+                // Try exact match first
+                if let value = attributeDict[name] {
+                    return value
                 }
-            } else if let text = attributeDict["text"] {
-                // This is a category
+                // Try case-insensitive match
+                for (key, value) in attributeDict {
+                    if key.lowercased() == name.lowercased() {
+                        return value
+                    }
+                }
+                return nil
+            }
+
+            let type = getAttribute("type")
+            let xmlUrl = getAttribute("xmlUrl")
+            let title = getAttribute("title") ?? getAttribute("text")
+            let text = getAttribute("text")
+
+            // Check if this is a feed entry (has xmlUrl or type="rss")
+            let isFeed = xmlUrl != nil || type?.lowercased() == "rss"
+
+            if isFeed, let url = xmlUrl, let feedTitle = title, !feedTitle.trimmingCharacters(in: .whitespaces).isEmpty {
+                // This is a valid feed entry with non-empty title
+                feeds.append((url: url, title: feedTitle, category: currentCategory))
+                feedCount += 1
+
+                if feedCount <= 3 {
+                    print("✅ Delegate: Added feed \(feedCount): \(feedTitle) | \(url)")
+                }
+            } else if !isFeed, let categoryName = text, !categoryName.trimmingCharacters(in: .whitespaces).isEmpty {
+                // This is a category (outline without type="rss" or xmlUrl, with text)
                 categoryStack.append(currentCategory)
-                currentCategory = text
+                currentCategory = categoryName.lowercased()
+                categoryCount += 1
+                print("📁 Delegate: Found category: \(categoryName)")
+            } else {
+                // Skipped element - log why
+                skippedCount += 1
+                if skippedCount <= 3 {
+                    var reason = "Unknown"
+                    if !isFeed {
+                        reason = "Not a feed (no xmlUrl or type=rss)"
+                    } else if xmlUrl == nil {
+                        reason = "Missing xmlUrl"
+                    } else if title == nil || title!.trimmingCharacters(in: .whitespaces).isEmpty {
+                        reason = "Missing or empty title"
+                    }
+                    print("⏭️  Delegate: Skipped element (reason: \(reason))")
+                }
             }
         }
+    }
+
+    func parser(_ parser: XMLParser, didEndDocument: Void) {
+        print("📊 Delegate: Parsing complete - Processed \(elementCount) outline elements")
+        print("📊 Delegate: Found \(feedCount) feeds, \(categoryCount) categories, skipped \(skippedCount) elements")
     }
 
     func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?) {
         if elementName == "outline" && !categoryStack.isEmpty {
             currentCategory = categoryStack.removeLast()
         }
+    }
+
+    func parser(_ parser: XMLParser, parseErrorOccurred parseError: Error) {
+        self.parseError = parseError
+    }
+
+    func parser(_ parser: XMLParser, validationErrorOccurred validationError: Error) {
+        self.parseError = validationError
     }
 }
 
