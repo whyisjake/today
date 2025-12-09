@@ -458,9 +458,7 @@ struct PodcastAudioControls: View {
     }
 
     private var isCurrentlyPlaying: Bool {
-        podcastPlayer.currentArticle?.id == article.id &&
-        podcastPlayer.isPlaying &&
-        !podcastPlayer.isPaused
+        podcastPlayer.currentArticle?.id == article.id && podcastPlayer.isPlaying
     }
 
     private func formatDuration(_ duration: TimeInterval) -> String {
