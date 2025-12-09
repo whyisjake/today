@@ -19,8 +19,8 @@ struct NowPlayingView: View {
             GeometryReader { geometry in
                 ScrollView {
                     VStack(spacing: 24) {
-                        // Artwork
-                        artworkView(size: min(geometry.size.width - 64, 320))
+                        // Artwork - ensure size is never negative
+                        artworkView(size: max(100, min(geometry.size.width - 64, 320)))
 
                         // Track info
                         trackInfoView
