@@ -410,10 +410,17 @@ class RSSParser: NSObject, XMLParserDelegate {
         }
 
         let dateFormatters = [
-            // RFC 822 format (common in RSS)
+            // RFC 822 format with numeric timezone (common in RSS)
             { () -> DateFormatter in
                 let formatter = DateFormatter()
                 formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss Z"
+                formatter.locale = Locale(identifier: "en_US_POSIX")
+                return formatter
+            }(),
+            // RFC 822 format with timezone abbreviation (e.g., EDT, PST)
+            { () -> DateFormatter in
+                let formatter = DateFormatter()
+                formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
                 formatter.locale = Locale(identifier: "en_US_POSIX")
                 return formatter
             }(),
