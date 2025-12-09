@@ -194,8 +194,24 @@ class FeedManager: ObservableObject {
     func syncFeed(_ feed: Feed) async throws {
         let (_, _, parsedArticles) = try await fetchFeed(url: feed.url)
 
-        // Get existing article GUIDs to avoid duplicates
-        let existingGUIDs = Set(feed.articles?.map { $0.guid } ?? [])
+        // Get existing articles
+        let feedArticles = feed.articles ?? []
+
+        // Get existing article GUIDs to check for duplicates
+        let existingGUIDs = Set(feedArticles.map { $0.guid })
+
+        // Update existing articles with missing audio data
+        for existingArticle in feedArticles {
+            if existingArticle.audioUrl == nil {
+                // Find matching parsed article
+                if let parsedArticle = parsedArticles.first(where: { $0.guid == existingArticle.guid }),
+                   let audioUrl = parsedArticle.audioUrl {
+                    existingArticle.audioUrl = audioUrl
+                    existingArticle.audioDuration = parsedArticle.audioDuration
+                    existingArticle.audioType = parsedArticle.audioType
+                }
+            }
+        }
 
         // Add new articles
         for parsedArticle in parsedArticles {
