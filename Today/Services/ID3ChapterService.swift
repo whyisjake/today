@@ -13,6 +13,9 @@ import UIKit
 class ID3ChapterService {
     static let shared = ID3ChapterService()
     
+    // ID3v2 header size in bytes
+    private static let id3HeaderSize: Int = 10
+    
     // Maximum file size to download when range requests aren't supported (10 MB)
     // This prevents memory issues with large podcast files
     private static let maxFullDownloadSize: Int64 = 10 * 1024 * 1024
@@ -20,6 +23,9 @@ class ID3ChapterService {
     // Maximum ID3 tag size to request (5 MB)
     // Typical ID3 tags are much smaller, this prevents issues with corrupted data
     private static let maxTagSize: Int = 5 * 1024 * 1024
+    
+    // Timeout for HEAD requests when checking file size
+    private static let headRequestTimeout: TimeInterval = 10
 
     private init() {}
 
@@ -47,7 +53,7 @@ class ID3ChapterService {
         // Check if server supports range requests
         let supportsRange = (headerResponse as? HTTPURLResponse)?.statusCode == 206
 
-        guard headerData.count >= 10,
+        guard headerData.count >= Self.id3HeaderSize,
               headerData[0] == 0x49, // 'I'
               headerData[1] == 0x44, // 'D'
               headerData[2] == 0x33  // '3'
@@ -64,12 +70,12 @@ class ID3ChapterService {
                    Int(headerData[9])
 
         // Validate size before adding header to prevent overflow
-        guard size >= 0 && size <= Self.maxTagSize - 10 else {
+        guard size >= 0 && size <= Self.maxTagSize - Self.id3HeaderSize else {
             print("📖 Invalid ID3 tag size from header: \(size) bytes")
             return []
         }
 
-        let totalTagSize = size + 10 // Add 10 bytes for header
+        let totalTagSize = size + Self.id3HeaderSize
         print("📖 ID3v2 tag size: \(totalTagSize) bytes (\(totalTagSize / 1024) KB)")
 
         // Fetch just the ID3 tag data
@@ -88,7 +94,7 @@ class ID3ChapterService {
             do {
                 var headRequest = URLRequest(url: url)
                 headRequest.httpMethod = "HEAD"
-                headRequest.timeoutInterval = 10
+                headRequest.timeoutInterval = Self.headRequestTimeout
                 let (_, headResponse) = try await URLSession.shared.data(for: headRequest)
                 
                 if let httpResponse = headResponse as? HTTPURLResponse,
