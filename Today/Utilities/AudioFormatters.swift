@@ -10,16 +10,16 @@ import Foundation
 struct AudioFormatters {
     /// Formats a duration in seconds to HH:MM:SS or MM:SS format
     static func formatDuration(_ duration: TimeInterval) -> String {
-        let hours = Int(duration) / 3600
-        let minutes = Int(duration) / 60 % 60
-        let seconds = Int(duration) % 60
+        let absoluteDuration = abs(duration)
+        let hours = Int(absoluteDuration) / 3600
+        let minutes = Int(absoluteDuration) / 60 % 60
+        let seconds = Int(absoluteDuration) % 60
         
         if hours > 0 {
             return String(format: "%d:%02d:%02d", hours, minutes, seconds)
         } else {
             return String(format: "%d:%02d", minutes, seconds)
         }
-    }
     
     /// Formats playback speed for display (e.g., "1x", "1.25x", "2x")
     /// Note: This is for podcast/audio player. TTS uses ArticleAudioPlayer.formatSpeed()
