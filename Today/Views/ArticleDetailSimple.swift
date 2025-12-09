@@ -66,6 +66,12 @@ struct ArticleDetailSimple: View {
 
                 Divider()
 
+                // Show podcast controls if this is a podcast episode
+                if article.hasPodcastAudio {
+                    PodcastAudioControls(article: article)
+                    Divider()
+                }
+
                 // For short articles with "Open in Today Browser", show full web page
                 if article.hasMinimalContent && shortArticleBehavior == .openInAppBrowser && !article.isRedditPost,
                    let url = URL(string: article.link) {
