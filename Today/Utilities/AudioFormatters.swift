@@ -28,7 +28,7 @@ struct AudioFormatters {
         if speed.truncatingRemainder(dividingBy: 1.0) == 0 {
             return "\(Int(speed))x"
         } else {
-            return String(format: "%.2fx", speed)
+            return String(format: "%.2gx", speed)
         }
     }
 }
