@@ -194,7 +194,30 @@ class FeedManager: ObservableObject {
     /// Sync a specific feed
     func syncFeed(_ feed: Feed) async throws {
         let (_, _, parsedArticles) = try await fetchFeed(url: feed.url)
+        updateFeedWithArticles(feed, parsedArticles: parsedArticles)
+    }
 
+    /// Sync a feed by its persistent ID (Swift 6 safe - avoids passing Feed across actor boundaries)
+    func syncFeedByID(_ feedID: PersistentIdentifier) async throws {
+        // Get the feed URL (we're on MainActor since FeedManager is @MainActor)
+        guard let feed = modelContext.model(for: feedID) as? Feed else {
+            throw FeedError.invalidURL
+        }
+        let feedURL = feed.url
+
+        // Perform network fetch (async - may hop off MainActor for network IO)
+        let (_, _, parsedArticles) = try await fetchFeed(url: feedURL)
+
+        // Update the model (we're back on MainActor after await)
+        // Re-fetch the feed in case it was modified during the network call
+        guard let updatedFeed = modelContext.model(for: feedID) as? Feed else {
+            return
+        }
+        updateFeedWithArticles(updatedFeed, parsedArticles: parsedArticles)
+    }
+
+    /// Update a feed with parsed articles (must be called on MainActor)
+    private func updateFeedWithArticles(_ feed: Feed, parsedArticles: [RSSParser.ParsedArticle]) {
         // Get existing articles
         let feedArticles = feed.articles ?? []
 
@@ -241,7 +264,7 @@ class FeedManager: ObservableObject {
         }
 
         feed.lastFetched = Date()
-        try modelContext.save()
+        try? modelContext.save()
     }
 
     enum FeedError: LocalizedError {
@@ -327,16 +350,8 @@ class FeedManager: ObservableObject {
 
                         group.addTask {
                             do {
-                                // Fetch feed from model context within task
-                                let fetchedFeed = await MainActor.run {
-                                    self.modelContext.model(for: feedID) as? Feed
-                                }
-                                guard let feed = fetchedFeed else {
-                                    throw FeedError.invalidURL
-                                }
-
-                                // Perform network fetch
-                                try await self.syncFeed(feed)
+                                // Use syncFeedByID to avoid passing Feed across actor boundaries
+                                try await self.syncFeedByID(feedID)
                                 return (feedTitle, .success(()))
                             } catch {
                                 return (feedTitle, .failure(error))
@@ -345,9 +360,7 @@ class FeedManager: ObservableObject {
                         activeTasks += 1
 
                         // Update progress
-                        await MainActor.run {
-                            self.syncProgress = "Syncing \(feedIndex + 1) of \(totalFeeds)"
-                        }
+                        self.syncProgress = "Syncing \(feedIndex + 1) of \(totalFeeds)"
                     }
 
                     // Process results and start new tasks as old ones complete
@@ -370,15 +383,8 @@ class FeedManager: ObservableObject {
 
                             group.addTask {
                                 do {
-                                    // Fetch feed from model context within task
-                                    let fetchedFeed = await MainActor.run {
-                                        self.modelContext.model(for: nextFeedID) as? Feed
-                                    }
-                                    guard let feed = fetchedFeed else {
-                                        throw FeedError.invalidURL
-                                    }
-
-                                    try await self.syncFeed(feed)
+                                    // Use syncFeedByID to avoid passing Feed across actor boundaries
+                                    try await self.syncFeedByID(nextFeedID)
                                     return (nextFeedTitle, .success(()))
                                 } catch {
                                     return (nextFeedTitle, .failure(error))
@@ -387,9 +393,7 @@ class FeedManager: ObservableObject {
                             activeTasks += 1
 
                             // Update progress
-                            await MainActor.run {
-                                self.syncProgress = "Syncing \(feedIndex + 1) of \(totalFeeds)"
-                            }
+                            self.syncProgress = "Syncing \(feedIndex + 1) of \(totalFeeds)"
                         }
                     }
                 }
