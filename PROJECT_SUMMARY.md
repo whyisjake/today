@@ -31,6 +31,12 @@ I've transformed your basic SwiftUI app into a full-featured RSS reader with AI-
 - Configurable sync intervals
 - iOS-optimized for battery life
 
+#### 5. Smart Notifications
+- Per-feed notification control
+- AI-powered grouping and summarization
+- Multiple articles = single notification with summary
+- On-device processing for privacy
+
 ## Architecture
 
 ```
@@ -42,11 +48,13 @@ Today/
 │   ├── RSSParser.swift     # RSS/Atom feed parsing
 │   ├── FeedManager.swift   # Feed operations & sync
 │   ├── AIService.swift     # Local AI summarization
-│   └── BackgroundSyncManager.swift  # Background tasks
+│   ├── BackgroundSyncManager.swift  # Background tasks
+│   └── NotificationManager.swift    # Smart notifications
 ├── Views/
 │   ├── TodayView.swift     # Main article list
 │   ├── FeedListView.swift  # Feed management
-│   └── AIChatView.swift    # AI chat interface
+│   ├── AIChatView.swift    # AI chat interface
+│   └── NotificationSettingsView.swift  # Notification preferences
 ├── TodayApp.swift          # App entry point
 └── ContentView.swift       # Tab navigation
 ```
