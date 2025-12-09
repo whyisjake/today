@@ -11,6 +11,7 @@ A modern, privacy-focused RSS reader for iOS with AI-powered content summarizati
 ### Core Functionality
 - 📰 **RSS Feed Management** - Subscribe to your favorite RSS feeds with OPML import/export support
 - 🤖 **AI-Powered Summaries** - Intelligent article summarization using Apple Intelligence (iOS 26+) with graceful fallback to NaturalLanguage framework
+- 🎧 **Podcast Support** - Stream podcast episodes with chapter navigation, artwork, and Control Center integration
 - 🎙️ **Text-to-Speech Audio Player** - Listen to articles with full playback controls, variable speed (0.5x-2x), and background playback support
 - 🗣️ **Voice Selection** - Choose from high-quality voices in your language with preview functionality
 - 🔒 **Lock Screen Integration** - Rich Now Playing controls with article thumbnails and accurate duration estimates
@@ -196,7 +197,7 @@ The Texturizer component is a port of WordPress's text beautification functional
 ### Planned Features
 - [ ] iPad-optimized layout with sidebar navigation
 - [ ] Article content extraction (reader mode)
-- [ ] Podcast support
+- [x] Podcast support ✅ (v1.9.0)
 - [ ] iCloud sync (optional)
 - [ ] Home Screen widgets
 - [ ] Siri shortcuts
@@ -232,6 +233,23 @@ Today respects your privacy:
 - ✅ AI processing happens on-device (when using Apple Intelligence)
 
 ## Version History
+
+### v1.9.0 (Build 14) - December 2025
+**Podcast Support**
+- 🎧 **Native Podcast Playback** - Stream and play podcast episodes directly in-app
+- 🎵 **Full Now Playing View** - Beautiful full-screen player with artwork, progress, and controls
+- 📑 **Chapter Support** - ID3 chapter extraction with tap-to-navigate functionality
+- 🖼️ **Chapter Artwork** - Display episode and chapter-specific artwork
+- 🎛️ **Control Center Integration** - Lock Screen and Control Center playback controls
+- ⏩ **Speed Control** - Adjustable playback speed from 0.5x to 2x
+- 🏷️ **Podcasts Category** - New "Podcasts" filter in Today view to browse all episodes
+- 🔊 **Waveform Indicator** - Visual indicator for podcast episodes in article lists
+- 🔄 **Background Playback** - Continue listening with screen off or app backgrounded
+- 📥 **OPML Import Fixes** - Improved compatibility with NetNewsWire, Feedflow, Stream, and Feeder
+- 🐛 **Bug Fixes**:
+  - Fixed timezone abbreviation parsing (EDT, PST, etc.)
+  - Fixed race condition in chapter prefetching
+  - Added safety checks for large/corrupted ID3 tags
 
 ### v1.8.0 (Build 12) - November 2025
 **Reddit Improvements & Content Filtering**
