@@ -16,19 +16,22 @@ class ID3ChapterService {
     // ID3v2 header size in bytes
     private static let id3HeaderSize: Int = 10
     
+    // Conversion factor for bytes to megabytes
+    private static let bytesToMB: Int64 = 1024 * 1024
+    
     // Maximum file size to download when range requests aren't supported (10 MB)
     // This prevents memory issues with large podcast files
-    private static let maxFullDownloadSize: Int64 = 10 * 1024 * 1024
+    private static let maxFullDownloadSize: Int64 = 10 * bytesToMB
     
     // Maximum ID3 tag size to request (5 MB)
     // Typical ID3 tags are much smaller, this prevents issues with corrupted data
-    private static let maxTagSize: Int = 5 * 1024 * 1024
+    private static let maxTagSize: Int = 5 * Int(bytesToMB)
+    
+    // Pre-calculated maximum download size in MB for consistent error messages
+    private static let maxFullDownloadSizeMB: Int64 = maxFullDownloadSize / bytesToMB
     
     // Timeout for HEAD requests when checking file size
     private static let headRequestTimeout: TimeInterval = 10
-    
-    // Conversion factor for bytes to megabytes
-    private static let bytesToMB: Int64 = 1024 * 1024
 
     private init() {}
 
@@ -105,11 +108,10 @@ class ID3ChapterService {
                    let contentLengthStr = httpResponse.value(forHTTPHeaderField: "Content-Length"),
                    let contentLength = Int64(contentLengthStr) {
                     let fileSizeMB = contentLength / Self.bytesToMB
-                    let maxSizeMB = Self.maxFullDownloadSize / Self.bytesToMB
                     print("📖 File size: \(contentLength) bytes (\(fileSizeMB) MB)")
                     
                     guard contentLength <= Self.maxFullDownloadSize else {
-                        print("📖 File too large (\(fileSizeMB) MB) to download without range support. Maximum: \(maxSizeMB) MB")
+                        print("📖 File too large (\(fileSizeMB) MB) to download without range support. Maximum: \(Self.maxFullDownloadSizeMB) MB")
                         return []
                     }
                 } else {
