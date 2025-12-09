@@ -28,6 +28,7 @@ class RSSParser: NSObject, XMLParserDelegate {
     private(set) var articles: [ParsedArticle] = []
     private(set) var feedTitle = ""
     private(set) var feedDescription = ""
+    private(set) var feedImageUrl = ""  // Channel-level image (podcast artwork)
 
     struct ParsedArticle {
         let title: String
@@ -109,11 +110,8 @@ class RSSParser: NSObject, XMLParserDelegate {
                     // Audio enclosure (podcast)
                     currentAudioUrl = url
                     currentAudioType = type
-                    // Parse duration if available (iTunes extension: itunes:duration)
-                    if let lengthStr = attributeDict["length"], let length = TimeInterval(lengthStr) {
-                        // Length is in bytes, not helpful for duration
-                        // Duration comes from itunes:duration element
-                    }
+                    // Note: "length" attribute is file size in bytes, not duration
+                    // Duration comes from itunes:duration element
                 } else if type.contains("image") {
                     currentImageUrl = url
                 }
@@ -130,6 +128,21 @@ class RSSParser: NSObject, XMLParserDelegate {
             if elementName == "media:thumbnail" || elementName == "thumbnail", let url = attributeDict["url"] {
                 if currentImageUrl.isEmpty {
                     currentImageUrl = url
+                }
+            }
+
+            // Handle <itunes:image> tag (podcast episode artwork)
+            if elementName == "itunes:image", let href = attributeDict["href"] {
+                if currentImageUrl.isEmpty {
+                    currentImageUrl = href
+                }
+            }
+        } else {
+            // Feed-level tags (outside of items)
+            // Handle channel-level <itunes:image> (podcast feed artwork)
+            if elementName == "itunes:image", let href = attributeDict["href"] {
+                if feedImageUrl.isEmpty {
+                    feedImageUrl = href
                 }
             }
         }
@@ -208,7 +221,7 @@ class RSSParser: NSObject, XMLParserDelegate {
             // Use link as guid if guid is not provided
             let finalGuid = currentGuid.isEmpty ? currentLink : currentGuid
 
-            // If no explicit image found, try to extract from HTML content
+            // If no explicit image found, try to extract from HTML content or use feed image
             var finalImageUrl = currentImageUrl
             if finalImageUrl.isEmpty {
                 // Try content:encoded first, then content, then description
@@ -219,6 +232,10 @@ class RSSParser: NSObject, XMLParserDelegate {
                 } else if !currentDescription.isEmpty {
                     finalImageUrl = extractFirstImageUrl(from: currentDescription)
                 }
+            }
+            // Fall back to feed-level image (e.g., podcast channel artwork)
+            if finalImageUrl.isEmpty && !feedImageUrl.isEmpty {
+                finalImageUrl = feedImageUrl
             }
 
             // Debug: log title processing steps
