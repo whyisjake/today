@@ -60,7 +60,14 @@ struct TodayView: View {
             feedCategories = feedCategories.filter { $0.lowercased() != "alt" }
         }
 
-        return ["All"] + feedCategories.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        var result = ["All"]
+
+        // Add Podcasts category if there are podcast articles
+        if hasPodcastArticles {
+            result.append(String(localized: "Podcasts"))
+        }
+
+        return result + feedCategories.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     // Count unread/favorites in the current time window and category
@@ -75,7 +82,10 @@ struct TodayView: View {
         articles = articles.filter { $0.publishedDate >= cutoffDate }
 
         // Apply same category filter as filteredArticles
-        if selectedCategory != "All" {
+        let podcastsCategory = String(localized: "Podcasts")
+        if selectedCategory == podcastsCategory {
+            articles = articles.filter { $0.hasPodcastAudio }
+        } else if selectedCategory != "All" {
             articles = articles.filter { $0.feed?.category == selectedCategory }
         }
 
@@ -92,7 +102,10 @@ struct TodayView: View {
         articles = articles.filter { $0.publishedDate >= cutoffDate }
 
         // Apply same category filter as filteredArticles
-        if selectedCategory != "All" {
+        let podcastsCategory = String(localized: "Podcasts")
+        if selectedCategory == podcastsCategory {
+            articles = articles.filter { $0.hasPodcastAudio }
+        } else if selectedCategory != "All" {
             articles = articles.filter { $0.feed?.category == selectedCategory }
         }
 
@@ -117,15 +130,27 @@ struct TodayView: View {
         allArticles.contains { $0.feed?.category.lowercased() == "alt" }
     }
 
+    // Check if there are any podcast articles (ignores date filter since Podcasts shows all episodes)
+    private var hasPodcastArticles: Bool {
+        allArticles.contains { article in
+            article.hasPodcastAudio &&
+            // Respect Alt category visibility
+            (showAltCategory ? article.feed?.category.lowercased() == "alt" : article.feed?.category.lowercased() != "alt")
+        }
+    }
+
     private var filteredArticles: [Article] {
         var articles = allArticles
+        let podcastsCategory = String(localized: "Podcasts")
 
         // Filter by date range based on daysToLoad
-        let now = Date.now
-        let startOfToday = Calendar.current.startOfDay(for: now)
-        let cutoffDate = Calendar.current.date(byAdding: .day, value: -daysToLoad, to: startOfToday)!
-
-        articles = articles.filter { $0.publishedDate >= cutoffDate }
+        // Skip date filter for Podcasts - show all podcast episodes regardless of date
+        if selectedCategory != podcastsCategory {
+            let now = Date.now
+            let startOfToday = Calendar.current.startOfDay(for: now)
+            let cutoffDate = Calendar.current.date(byAdding: .day, value: -daysToLoad, to: startOfToday)!
+            articles = articles.filter { $0.publishedDate >= cutoffDate }
+        }
 
         // Filter based on Alt category visibility
         if showAltCategory {
@@ -137,7 +162,10 @@ struct TodayView: View {
         }
 
         // Filter by category
-        if selectedCategory != "All" {
+        if selectedCategory == podcastsCategory {
+            // Special handling for Podcasts virtual category - shows all podcasts
+            articles = articles.filter { $0.hasPodcastAudio }
+        } else if selectedCategory != "All" {
             articles = articles.filter { $0.feed?.category == selectedCategory }
         }
 
@@ -338,8 +366,13 @@ struct TodayView: View {
             }
             .navigationTitle(viewTitle)
             .searchable(text: $searchText, prompt: "Search articles")
-            .onChange(of: selectedCategory) { _, _ in
-                resetToToday()
+            .onChange(of: selectedCategory) { _, newCategory in
+                // Don't reset time filter when selecting Podcasts - podcasts are infrequent
+                // and users expect to see all their podcast episodes
+                let podcastsCategory = String(localized: "Podcasts")
+                if newCategory != podcastsCategory {
+                    resetToToday()
+                }
             }
             .onChange(of: searchText) { _, _ in
                 resetToToday()
@@ -644,7 +677,11 @@ struct ArticleRowView: View {
                     }
 
                     Spacer()
-                    if article.hasMinimalContent && !article.isRedditPost {
+                    if article.hasPodcastAudio {
+                        Image(systemName: "waveform")
+                            .font(.caption2)
+                            .foregroundStyle(Color.accentColor)
+                    } else if article.hasMinimalContent && !article.isRedditPost {
                         Image(systemName: "arrow.up.forward.square")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
@@ -663,8 +700,12 @@ struct ArticleRowView: View {
             }
 
             // Display article image if available
-            if let imageUrl = article.imageUrl, let url = URL(string: imageUrl) {
-                AsyncImage(url: url) { phase in
+            if let imageUrl = article.imageUrl {
+                // Convert HTTP to HTTPS for ATS compliance
+                let secureUrl = imageUrl.hasPrefix("http://")
+                    ? imageUrl.replacingOccurrences(of: "http://", with: "https://")
+                    : imageUrl
+                AsyncImage(url: URL(string: secureUrl)) { phase in
                     switch phase {
                     case .empty:
                         ProgressView()

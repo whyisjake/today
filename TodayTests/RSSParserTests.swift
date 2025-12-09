@@ -222,6 +222,38 @@ final class RSSParserTests: XCTestCase {
         }
     }
 
+    func testParseRFC822DateWithTimezoneAbbreviation() {
+        // Test date format used by The Talk Show podcast: "Thu, 22 May 2014 18:00:00 EDT"
+        let rssXML = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <title>Timezone Abbrev Test</title>
+                    <link>https://example.com/tz</link>
+                    <pubDate>Thu, 22 May 2014 18:00:00 EDT</pubDate>
+                    <guid>tz-1</guid>
+                </item>
+            </channel>
+        </rss>
+        """
+
+        let parser = RSSParser()
+        _ = parser.parse(data: rssXML.data(using: .utf8)!)
+
+        let article = parser.articles[0]
+        XCTAssertNotNil(article.publishedDate, "Should parse date with timezone abbreviation like EDT")
+
+        // Verify it's the right date (May 22, 2014)
+        if let date = article.publishedDate {
+            let calendar = Calendar.current
+            let components = calendar.dateComponents([.year, .month, .day], from: date)
+            XCTAssertEqual(components.year, 2014)
+            XCTAssertEqual(components.month, 5)
+            XCTAssertEqual(components.day, 22)
+        }
+    }
+
     func testParseISO8601Date() {
         let atomXML = """
         <?xml version="1.0" encoding="UTF-8"?>
@@ -394,5 +426,185 @@ final class RSSParserTests: XCTestCase {
         let article = parser.articles[0]
         // XMLParser decodes entities and preserves spaces around them
         XCTAssertEqual(article.title, "Article & Title with <tags>")
+    }
+
+    // MARK: - Podcast/Audio Tests
+
+    func testParseAudioEnclosure() {
+        let rssXML = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel>
+                <title>Test Podcast</title>
+                <item>
+                    <title>Episode 1</title>
+                    <link>https://example.com/ep1</link>
+                    <guid>ep-1</guid>
+                    <enclosure url="https://example.com/ep1.mp3" length="12345678" type="audio/mpeg"/>
+                    <itunes:duration>1:23:45</itunes:duration>
+                </item>
+            </channel>
+        </rss>
+        """
+
+        let parser = RSSParser()
+        _ = parser.parse(data: rssXML.data(using: .utf8)!)
+
+        XCTAssertEqual(parser.articles.count, 1)
+        let article = parser.articles[0]
+        XCTAssertEqual(article.audioUrl, "https://example.com/ep1.mp3")
+        XCTAssertEqual(article.audioType, "audio/mpeg")
+        XCTAssertEqual(article.audioDuration, 1 * 3600 + 23 * 60 + 45) // 5025 seconds
+    }
+
+    func testParseVideoEnclosureIgnored() {
+        // Video enclosures should not be treated as podcast audio
+        let rssXML = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <title>Video Episode</title>
+                    <link>https://example.com/video</link>
+                    <guid>video-1</guid>
+                    <enclosure url="https://example.com/video.mp4" type="video/mp4"/>
+                </item>
+            </channel>
+        </rss>
+        """
+
+        let parser = RSSParser()
+        _ = parser.parse(data: rssXML.data(using: .utf8)!)
+
+        let article = parser.articles[0]
+        XCTAssertNil(article.audioUrl, "Video enclosures should not be parsed as audio")
+    }
+
+    func testParseITunesImage() {
+        let rssXML = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel>
+                <title>Podcast with Art</title>
+                <itunes:image href="https://example.com/feed-art.jpg"/>
+                <item>
+                    <title>Episode with Art</title>
+                    <link>https://example.com/ep1</link>
+                    <guid>ep-1</guid>
+                    <itunes:image href="https://example.com/episode-art.jpg"/>
+                </item>
+            </channel>
+        </rss>
+        """
+
+        let parser = RSSParser()
+        _ = parser.parse(data: rssXML.data(using: .utf8)!)
+
+        let article = parser.articles[0]
+        // Episode-level image should take precedence
+        XCTAssertEqual(article.imageUrl, "https://example.com/episode-art.jpg")
+    }
+
+    func testParseFeedLevelImageFallback() {
+        let rssXML = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel>
+                <title>Podcast with Feed Art Only</title>
+                <itunes:image href="https://example.com/feed-art.jpg"/>
+                <item>
+                    <title>Episode without Art</title>
+                    <link>https://example.com/ep1</link>
+                    <guid>ep-1</guid>
+                </item>
+            </channel>
+        </rss>
+        """
+
+        let parser = RSSParser()
+        _ = parser.parse(data: rssXML.data(using: .utf8)!)
+
+        let article = parser.articles[0]
+        // Should fall back to feed-level image
+        XCTAssertEqual(article.imageUrl, "https://example.com/feed-art.jpg")
+    }
+
+    // MARK: - Duration Parsing Tests
+
+    func testParseDurationSecondsOnly() {
+        let parser = RSSParser()
+
+        // Plain seconds format
+        XCTAssertEqual(parser.parseDuration("1234"), 1234)
+        XCTAssertEqual(parser.parseDuration("60"), 60)
+        XCTAssertEqual(parser.parseDuration("3600"), 3600)
+    }
+
+    func testParseDurationMMSS() {
+        let parser = RSSParser()
+
+        // MM:SS format
+        XCTAssertEqual(parser.parseDuration("12:34"), 12 * 60 + 34) // 754 seconds
+        XCTAssertEqual(parser.parseDuration("1:30"), 1 * 60 + 30) // 90 seconds
+        XCTAssertEqual(parser.parseDuration("59:59"), 59 * 60 + 59) // 3599 seconds
+    }
+
+    func testParseDurationHHMMSS() {
+        let parser = RSSParser()
+
+        // HH:MM:SS format
+        XCTAssertEqual(parser.parseDuration("1:23:45"), 1 * 3600 + 23 * 60 + 45) // 5025 seconds
+        XCTAssertEqual(parser.parseDuration("2:00:00"), 2 * 3600) // 7200 seconds
+        XCTAssertEqual(parser.parseDuration("10:30:15"), 10 * 3600 + 30 * 60 + 15) // 37815 seconds
+    }
+
+    func testParseDurationEdgeCases() {
+        let parser = RSSParser()
+
+        // Zero values
+        XCTAssertEqual(parser.parseDuration("0"), 0)
+        XCTAssertEqual(parser.parseDuration("00:00"), 0)
+        XCTAssertEqual(parser.parseDuration("0:0:0"), 0)
+        XCTAssertEqual(parser.parseDuration("0:00:00"), 0)
+
+        // Single digit components
+        XCTAssertEqual(parser.parseDuration("1:2:3"), 1 * 3600 + 2 * 60 + 3) // 3723 seconds
+        XCTAssertEqual(parser.parseDuration("0:0:1"), 1) // 1 second
+
+        // Whitespace handling
+        XCTAssertEqual(parser.parseDuration("  1234  "), 1234)
+        XCTAssertEqual(parser.parseDuration("\n12:34\n"), 754)
+    }
+
+    func testParseDurationInvalidFormats() {
+        let parser = RSSParser()
+
+        // Invalid strings
+        XCTAssertNil(parser.parseDuration("abc"))
+        XCTAssertNil(parser.parseDuration("12:ab"))
+        XCTAssertNil(parser.parseDuration("ab:12"))
+        XCTAssertNil(parser.parseDuration("1:2:3:4")) // Too many components
+
+        // Empty and whitespace
+        XCTAssertNil(parser.parseDuration(""))
+        XCTAssertNil(parser.parseDuration("   "))
+        XCTAssertNil(parser.parseDuration("\n"))
+
+        // Negative numbers (duration should be positive)
+        XCTAssertNil(parser.parseDuration("-1"))
+        XCTAssertNil(parser.parseDuration("-12:34"))
+    }
+
+    func testParseDurationBoundaryValues() {
+        let parser = RSSParser()
+
+        // Very large durations (multi-hour podcasts)
+        XCTAssertEqual(parser.parseDuration("99:59:59"), 99 * 3600 + 59 * 60 + 59) // 359999 seconds
+        XCTAssertEqual(parser.parseDuration("100000"), 100000) // ~27.7 hours in seconds
+
+        // Realistic podcast durations
+        XCTAssertEqual(parser.parseDuration("45:30"), 45 * 60 + 30) // 45 min 30 sec
+        XCTAssertEqual(parser.parseDuration("1:30:00"), 1 * 3600 + 30 * 60) // 1.5 hours
+        XCTAssertEqual(parser.parseDuration("2:45:30"), 2 * 3600 + 45 * 60 + 30) // 2h 45m 30s
     }
 }

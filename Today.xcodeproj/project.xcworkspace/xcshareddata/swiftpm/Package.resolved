@@ -1,0 +1,15 @@
+{
+  "originHash" : "45195c9e815dd6b6ef85e10c98467574923f0b9a9097a40f323989aa210fe22d",
+  "pins" : [
+    {
+      "identity" : "outcastid3",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/CrunchyBagel/OutcastID3",
+      "state" : {
+        "revision" : "5643eed68f457e7bbdd684136d5fd5ce5c42abd9",
+        "version" : "0.7.1"
+      }
+    }
+  ],
+  "version" : 3
+}

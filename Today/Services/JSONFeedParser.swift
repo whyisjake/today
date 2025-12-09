@@ -139,7 +139,10 @@ class JSONFeedParser: NSObject {
             guid: id,
             redditSubreddit: nil,
             redditCommentsUrl: nil,
-            redditPostId: nil
+            redditPostId: nil,
+            audioUrl: nil,
+            audioDuration: nil,
+            audioType: nil
         )
     }
     
