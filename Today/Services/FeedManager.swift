@@ -190,12 +190,15 @@ class FeedManager: ObservableObject {
         throw FeedError.parsingFailed
     }
 
-    /// Sync a specific feed
-    func syncFeed(_ feed: Feed) async throws {
+    /// Sync a specific feed and return newly added articles
+    func syncFeed(_ feed: Feed) async throws -> [Article] {
         let (_, _, parsedArticles) = try await fetchFeed(url: feed.url)
 
         // Get existing article GUIDs to avoid duplicates
         let existingGUIDs = Set(feed.articles?.map { $0.guid } ?? [])
+
+        // Track new articles for notifications
+        var newArticles: [Article] = []
 
         // Add new articles
         for parsedArticle in parsedArticles {
@@ -217,11 +220,14 @@ class FeedManager: ObservableObject {
                 )
 
                 modelContext.insert(article)
+                newArticles.append(article)
             }
         }
 
         feed.lastFetched = Date()
         try modelContext.save()
+        
+        return newArticles
     }
 
     enum FeedError: LocalizedError {
@@ -271,15 +277,34 @@ class FeedManager: ObservableObject {
 
             var successCount = 0
             var failureCount = 0
+            var feedsWithNewArticles: [(Feed, [Article])] = []
 
             for feed in feeds {
                 do {
-                    try await syncFeed(feed)
+                    let newArticles = try await syncFeed(feed)
                     successCount += 1
+                    
+                    // Track feeds with new articles for notification posting
+                    if !newArticles.isEmpty {
+                        feedsWithNewArticles.append((feed, newArticles))
+                    }
                 } catch {
                     failureCount += 1
                     print("❌ Error syncing feed \(feed.title): \(error.localizedDescription)")
                     // Continue with other feeds even if one fails
+                }
+            }
+            
+            // Post notifications after sync completes (fire-and-forget)
+            // This prevents notification processing from slowing down the sync
+            if !feedsWithNewArticles.isEmpty {
+                Task {
+                    for (feed, newArticles) in feedsWithNewArticles {
+                        await NotificationManager.shared.postNotificationsForNewArticles(
+                            feed: feed,
+                            newArticles: newArticles
+                        )
+                    }
                 }
             }
 

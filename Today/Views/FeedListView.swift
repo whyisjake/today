@@ -211,6 +211,12 @@ struct FeedListView: View {
                     .padding(.vertical, 2)
                     .background(Color.accentColor.opacity(0.2))
                     .cornerRadius(4)
+                
+                if feed.notificationsEnabled {
+                    Image(systemName: "bell.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.blue)
+                }
 
                 if let lastFetched = feed.lastFetched {
                     Text("Last synced: \(lastFetched, style: .relative) ago")
@@ -224,6 +230,15 @@ struct FeedListView: View {
 
     @ViewBuilder
     private func feedContextMenu(for feed: Feed) -> some View {
+        Button {
+            toggleNotifications(for: feed)
+        } label: {
+            Label(
+                feed.notificationsEnabled ? "Disable Notifications" : "Enable Notifications",
+                systemImage: feed.notificationsEnabled ? "bell.slash" : "bell"
+            )
+        }
+        
         Button {
             editingFeedID = feed.id
         } label: {
@@ -555,6 +570,16 @@ struct FeedListView: View {
             try feedManager.deleteFeed(feed)
         } catch {
             print("Error deleting feed: \(error.localizedDescription)")
+        }
+    }
+    
+    private func toggleNotifications(for feed: Feed) {
+        feed.notificationsEnabled.toggle()
+        do {
+            try modelContext.save()
+            print(feed.notificationsEnabled ? "🔔 Notifications enabled for: \(feed.title)" : "🔕 Notifications disabled for: \(feed.title)")
+        } catch {
+            print("Error toggling notifications: \(error.localizedDescription)")
         }
     }
 

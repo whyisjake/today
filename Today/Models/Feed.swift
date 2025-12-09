@@ -16,16 +16,18 @@ final class Feed {
     var category: String // e.g., "work", "social", "tech"
     var lastFetched: Date?
     var isActive: Bool
+    var notificationsEnabled: Bool // Enable/disable notifications for this feed
 
     @Relationship(deleteRule: .cascade, inverse: \Article.feed)
     var articles: [Article]?
 
-    init(title: String, url: String, feedDescription: String? = nil, category: String = "general", isActive: Bool = true) {
+    init(title: String, url: String, feedDescription: String? = nil, category: String = "general", isActive: Bool = true, notificationsEnabled: Bool = false) {
         self.title = title
         self.url = url
         self.feedDescription = feedDescription
         self.category = category
         self.isActive = isActive
+        self.notificationsEnabled = notificationsEnabled
         self.lastFetched = nil
         self.articles = []
     }

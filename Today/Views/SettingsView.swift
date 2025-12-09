@@ -206,6 +206,14 @@ struct SettingsView: View {
                         }
                     }
                 }
+                
+                Section("Notifications") {
+                    NavigationLink {
+                        NotificationSettingsView()
+                    } label: {
+                        Label("Notification Settings", systemImage: "bell.badge")
+                    }
+                }
 
                 Section("About") {
                     VStack(alignment: .leading, spacing: 8) {

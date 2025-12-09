@@ -54,6 +54,11 @@ struct TodayApp: App {
                         await DatabaseMigration.shared.runMigrations(modelContext: sharedModelContainer.mainContext)
                     }
 
+                    // Request notification permissions
+                    Task {
+                        await NotificationManager.shared.requestAuthorization()
+                    }
+
                     // Check if we need to sync on launch (content older than 2 hours)
                     checkAndSyncIfNeeded()
                 }
