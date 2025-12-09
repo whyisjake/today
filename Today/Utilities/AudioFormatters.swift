@@ -20,7 +20,8 @@ struct AudioFormatters {
         } else {
             return String(format: "%d:%02d", minutes, seconds)
         }
-    
+    }
+
     /// Formats playback speed for display (e.g., "1x", "1.25x", "2x")
     /// Note: This is for podcast/audio player. TTS uses ArticleAudioPlayer.formatSpeed()
     /// which applies a 2x multiplier since AVSpeechSynthesizer's normal speed is 0.5
