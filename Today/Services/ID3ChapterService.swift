@@ -12,6 +12,26 @@ import UIKit
 /// Service for extracting chapter information from MP3 files using ID3 tags
 class ID3ChapterService {
     static let shared = ID3ChapterService()
+    
+    // ID3v2 header size in bytes
+    private static let id3HeaderSize: Int = 10
+    
+    // Conversion factor for bytes to megabytes
+    private static let bytesToMB: Int64 = 1024 * 1024
+    
+    // Maximum file size to download when range requests aren't supported (10 MB)
+    // This prevents memory issues with large podcast files
+    private static let maxFullDownloadSize: Int64 = 10 * bytesToMB
+    
+    // Maximum ID3 tag size to request (5 MB)
+    // Typical ID3 tags are much smaller, this prevents issues with corrupted data
+    private static let maxTagSize: Int = 5 * Int(bytesToMB)
+    
+    // Pre-calculated maximum download size in MB for consistent error messages
+    private static let maxFullDownloadSizeMB: Int64 = maxFullDownloadSize / bytesToMB
+    
+    // Timeout for HEAD requests when checking file size
+    private static let headRequestTimeout: TimeInterval = 10
 
     private init() {}
 
@@ -39,7 +59,7 @@ class ID3ChapterService {
         // Check if server supports range requests
         let supportsRange = (headerResponse as? HTTPURLResponse)?.statusCode == 206
 
-        guard headerData.count >= 10,
+        guard headerData.count >= Self.id3HeaderSize,
               headerData[0] == 0x49, // 'I'
               headerData[1] == 0x44, // 'D'
               headerData[2] == 0x33  // '3'
@@ -55,7 +75,14 @@ class ID3ChapterService {
                    (Int(headerData[8]) << 7) |
                    Int(headerData[9])
 
-        let totalTagSize = size + 10 // Add 10 bytes for header
+        // Validate size to prevent excessive tag requests
+        // The size value is from syncsafe integer parsing and cannot be negative
+        guard size <= Self.maxTagSize else {
+            print("📖 Excessive ID3 tag size from header: \(size) bytes (max: \(Self.maxTagSize))")
+            return []
+        }
+
+        let totalTagSize = size + Self.id3HeaderSize
         print("📖 ID3v2 tag size: \(totalTagSize) bytes (\(totalTagSize / 1024) KB)")
 
         // Fetch just the ID3 tag data
@@ -67,11 +94,42 @@ class ID3ChapterService {
             tagData = data
             print("📖 Downloaded ID3 tag only (range request)")
         } else {
-            // Server doesn't support range requests - fall back to full download
-            print("📖 Server doesn't support range requests, downloading full file")
-            let (localURL, _) = try await URLSession.shared.download(from: url)
-            defer { try? FileManager.default.removeItem(at: localURL) }
-            return try extractChaptersFromLocalFile(at: localURL)
+            // Server doesn't support range requests - check file size first
+            print("📖 Server doesn't support range requests, checking file size")
+            
+            // Make a HEAD request to get the file size
+            do {
+                var headRequest = URLRequest(url: url)
+                headRequest.httpMethod = "HEAD"
+                headRequest.timeoutInterval = Self.headRequestTimeout
+                let (_, headResponse) = try await URLSession.shared.data(for: headRequest)
+                
+                if let httpResponse = headResponse as? HTTPURLResponse,
+                   let contentLengthStr = httpResponse.value(forHTTPHeaderField: "Content-Length"),
+                   let contentLength = Int64(contentLengthStr) {
+                    let fileSizeMB = contentLength / Self.bytesToMB
+                    print("📖 File size: \(contentLength) bytes (\(fileSizeMB) MB)")
+                    
+                    guard contentLength <= Self.maxFullDownloadSize else {
+                        print("📖 File too large (\(fileSizeMB) MB) to download without range support. Maximum: \(Self.maxFullDownloadSizeMB) MB")
+                        return []
+                    }
+                } else {
+                    // Unable to determine file size - abort to prevent potential memory issues
+                    print("📖 Unable to determine file size, aborting download to prevent potential memory issues")
+                    print("📖 Chapters require either range request support or a Content-Length header")
+                    return []
+                }
+                
+                // Download the full file
+                print("📖 Downloading full file")
+                let (localURL, _) = try await URLSession.shared.download(from: url)
+                defer { try? FileManager.default.removeItem(at: localURL) }
+                return try extractChaptersFromLocalFile(at: localURL)
+            } catch {
+                print("📖 HEAD request failed: \(error.localizedDescription)")
+                return []
+            }
         }
 
         // Write tag data to a temporary file for OutcastID3
