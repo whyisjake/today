@@ -190,12 +190,15 @@ class FeedManager: ObservableObject {
         throw FeedError.parsingFailed
     }
 
-    /// Sync a specific feed
-    func syncFeed(_ feed: Feed) async throws {
+    /// Sync a specific feed and return newly added articles
+    func syncFeed(_ feed: Feed) async throws -> [Article] {
         let (_, _, parsedArticles) = try await fetchFeed(url: feed.url)
 
         // Get existing article GUIDs to avoid duplicates
         let existingGUIDs = Set(feed.articles?.map { $0.guid } ?? [])
+
+        // Track new articles for notifications
+        var newArticles: [Article] = []
 
         // Add new articles
         for parsedArticle in parsedArticles {
@@ -217,11 +220,14 @@ class FeedManager: ObservableObject {
                 )
 
                 modelContext.insert(article)
+                newArticles.append(article)
             }
         }
 
         feed.lastFetched = Date()
         try modelContext.save()
+        
+        return newArticles
     }
 
     enum FeedError: LocalizedError {
@@ -274,8 +280,16 @@ class FeedManager: ObservableObject {
 
             for feed in feeds {
                 do {
-                    try await syncFeed(feed)
+                    let newArticles = try await syncFeed(feed)
                     successCount += 1
+                    
+                    // Post notifications for new articles if enabled
+                    if !newArticles.isEmpty {
+                        await NotificationManager.shared.postNotificationsForNewArticles(
+                            feed: feed,
+                            newArticles: newArticles
+                        )
+                    }
                 } catch {
                     failureCount += 1
                     print("❌ Error syncing feed \(feed.title): \(error.localizedDescription)")
