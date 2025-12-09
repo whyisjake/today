@@ -63,14 +63,14 @@ class ID3ChapterService {
                    (Int(headerData[8]) << 7) |
                    Int(headerData[9])
 
-        let totalTagSize = size + 10 // Add 10 bytes for header
-        print("📖 ID3v2 tag size: \(totalTagSize) bytes (\(totalTagSize / 1024) KB)")
-        
-        // Validate tag size to prevent issues with corrupted data
-        guard totalTagSize <= Self.maxTagSize else {
-            print("📖 Excessive tag size: \(totalTagSize) bytes (max: \(Self.maxTagSize))")
+        // Validate size before adding header to prevent overflow
+        guard size >= 0 && size <= Self.maxTagSize - 10 else {
+            print("📖 Invalid ID3 tag size from header: \(size) bytes")
             return []
         }
+
+        let totalTagSize = size + 10 // Add 10 bytes for header
+        print("📖 ID3v2 tag size: \(totalTagSize) bytes (\(totalTagSize / 1024) KB)")
 
         // Fetch just the ID3 tag data
         let tagData: Data
@@ -85,31 +85,39 @@ class ID3ChapterService {
             print("📖 Server doesn't support range requests, checking file size")
             
             // Make a HEAD request to get the file size
-            var headRequest = URLRequest(url: url)
-            headRequest.httpMethod = "HEAD"
-            let (_, headResponse) = try await URLSession.shared.data(for: headRequest)
-            
-            if let httpResponse = headResponse as? HTTPURLResponse,
-               let contentLengthStr = httpResponse.value(forHTTPHeaderField: "Content-Length"),
-               let contentLength = Int64(contentLengthStr) {
-                print("📖 File size: \(contentLength) bytes (\(contentLength / 1024 / 1024) MB)")
+            do {
+                var headRequest = URLRequest(url: url)
+                headRequest.httpMethod = "HEAD"
+                headRequest.timeoutInterval = 10
+                let (_, headResponse) = try await URLSession.shared.data(for: headRequest)
                 
-                guard contentLength <= Self.maxFullDownloadSize else {
-                    print("📖 File too large (\(contentLength) bytes) to download without range support. Maximum: \(Self.maxFullDownloadSize) bytes")
+                if let httpResponse = headResponse as? HTTPURLResponse,
+                   let contentLengthStr = httpResponse.value(forHTTPHeaderField: "Content-Length"),
+                   let contentLength = Int64(contentLengthStr) {
+                    let fileSizeMB = contentLength / 1024 / 1024
+                    let maxSizeMB = Self.maxFullDownloadSize / 1024 / 1024
+                    print("📖 File size: \(contentLength) bytes (\(fileSizeMB) MB)")
+                    
+                    guard contentLength <= Self.maxFullDownloadSize else {
+                        print("📖 File too large (\(fileSizeMB) MB) to download without range support. Maximum: \(maxSizeMB) MB")
+                        return []
+                    }
+                } else {
+                    // Unable to determine file size - abort to prevent potential memory issues
+                    print("📖 Unable to determine file size, aborting download to prevent potential memory issues")
+                    print("📖 Chapters require either range request support or a Content-Length header")
                     return []
                 }
-            } else {
-                // Unable to determine file size - abort to prevent potential memory issues
-                print("📖 Unable to determine file size, aborting download to prevent potential memory issues")
-                print("📖 Chapters require either range request support or a Content-Length header")
+                
+                // Download the full file
+                print("📖 Downloading full file")
+                let (localURL, _) = try await URLSession.shared.download(from: url)
+                defer { try? FileManager.default.removeItem(at: localURL) }
+                return try extractChaptersFromLocalFile(at: localURL)
+            } catch {
+                print("📖 HEAD request failed: \(error.localizedDescription)")
                 return []
             }
-            
-            // Download the full file
-            print("📖 Downloading full file")
-            let (localURL, _) = try await URLSession.shared.download(from: url)
-            defer { try? FileManager.default.removeItem(at: localURL) }
-            return try extractChaptersFromLocalFile(at: localURL)
         }
 
         // Write tag data to a temporary file for OutcastID3
