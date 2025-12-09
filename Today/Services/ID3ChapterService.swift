@@ -12,6 +12,14 @@ import UIKit
 /// Service for extracting chapter information from MP3 files using ID3 tags
 class ID3ChapterService {
     static let shared = ID3ChapterService()
+    
+    // Maximum file size to download when range requests aren't supported (10 MB)
+    // This prevents memory issues with large podcast files
+    private let maxFullDownloadSize: Int64 = 10 * 1024 * 1024
+    
+    // Maximum ID3 tag size to request (5 MB)
+    // Typical ID3 tags are much smaller, this prevents issues with corrupted data
+    private let maxTagSize: Int = 5 * 1024 * 1024
 
     private init() {}
 
@@ -57,6 +65,12 @@ class ID3ChapterService {
 
         let totalTagSize = size + 10 // Add 10 bytes for header
         print("📖 ID3v2 tag size: \(totalTagSize) bytes (\(totalTagSize / 1024) KB)")
+        
+        // Validate tag size to prevent issues with corrupted data
+        guard totalTagSize > 0 && totalTagSize <= maxTagSize else {
+            print("📖 Invalid or excessive tag size: \(totalTagSize) bytes")
+            return []
+        }
 
         // Fetch just the ID3 tag data
         let tagData: Data
@@ -67,8 +81,29 @@ class ID3ChapterService {
             tagData = data
             print("📖 Downloaded ID3 tag only (range request)")
         } else {
-            // Server doesn't support range requests - fall back to full download
-            print("📖 Server doesn't support range requests, downloading full file")
+            // Server doesn't support range requests - check file size first
+            print("📖 Server doesn't support range requests, checking file size")
+            
+            // Make a HEAD request to get the file size
+            var headRequest = URLRequest(url: url)
+            headRequest.httpMethod = "HEAD"
+            let (_, headResponse) = try await URLSession.shared.data(for: headRequest)
+            
+            if let httpResponse = headResponse as? HTTPURLResponse,
+               let contentLengthStr = httpResponse.value(forHTTPHeaderField: "Content-Length"),
+               let contentLength = Int64(contentLengthStr) {
+                print("📖 File size: \(contentLength) bytes (\(contentLength / 1024 / 1024) MB)")
+                
+                guard contentLength <= maxFullDownloadSize else {
+                    print("📖 File too large (\(contentLength) bytes) to download without range support. Maximum: \(maxFullDownloadSize) bytes")
+                    return []
+                }
+            } else {
+                print("📖 Unable to determine file size, proceeding with caution")
+            }
+            
+            // Download the full file
+            print("📖 Downloading full file")
             let (localURL, _) = try await URLSession.shared.download(from: url)
             defer { try? FileManager.default.removeItem(at: localURL) }
             return try extractChaptersFromLocalFile(at: localURL)
