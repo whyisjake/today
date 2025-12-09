@@ -382,77 +382,48 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
 
             // Start loading article thumbnail asynchronously (only if we don't have it cached)
             if cachedArtworkArticleId != article.id,
-               let imageUrlString = article.imageUrl {
-                // Convert HTTP to HTTPS for ATS compliance (most CDNs support HTTPS)
-                let secureUrlString = imageUrlString.hasPrefix("http://")
-                    ? imageUrlString.replacingOccurrences(of: "http://", with: "https://")
-                    : imageUrlString
+               let imageUrlString = article.imageUrl,
+               let imageUrl = URL(string: imageUrlString) {
+                Task {
+                    do {
+                        let (data, _) = try await URLSession.shared.data(from: imageUrl)
+                        if let image = UIImage(data: data) {
+                            await MainActor.run {
+                                // Only cache and update if still playing the same article
+                                guard self.currentArticle?.id == article.id else { return }
+                                let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                                self.cachedArtwork = artwork
+                                self.cachedArtworkArticleId = article.id
 
-                if let imageUrl = URL(string: secureUrlString) {
-                    // Mark this article ID immediately to prevent repeated attempts
-                    cachedArtworkArticleId = article.id
-
-                    Task {
-                        do {
-                            let (data, _) = try await URLSession.shared.data(from: imageUrl)
-                            if let image = UIImage(data: data) {
-                                await MainActor.run {
-                                    // Only cache and update if still playing the same article
-                                    guard self.currentArticle?.id == article.id else { return }
-                                    let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-                                    self.cachedArtwork = artwork
-
-                                    // Update Now Playing with the loaded artwork (only if no chapter artwork)
-                                    if self.currentChapter?.image == nil {
-                                        var updatedInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
-                                        updatedInfo[MPMediaItemPropertyArtwork] = artwork
-                                        MPNowPlayingInfoCenter.default().nowPlayingInfo = updatedInfo
-                                    }
+                                // Update Now Playing with the loaded artwork (only if no chapter artwork)
+                                if self.currentChapter?.image == nil {
+                                    var updatedInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+                                    updatedInfo[MPMediaItemPropertyArtwork] = artwork
+                                    MPNowPlayingInfoCenter.default().nowPlayingInfo = updatedInfo
                                 }
                             }
-                        } catch {
-                            // Failed to load thumbnail, fallback artwork is already in use
-                            print("⚠️ Failed to load podcast artwork: \(error.localizedDescription)")
                         }
+                    } catch {
+                        // Failed to load thumbnail, fallback artwork is already in use
+                        print("⚠️ Failed to load podcast artwork: \(error.localizedDescription)")
                     }
                 }
             }
 
-            // Use SF Symbol as fallback artwork (immediate)
-            let fallbackImage = createFallbackArtwork()
-            let fallbackArtwork = MPMediaItemArtwork(boundsSize: fallbackImage.size) { _ in fallbackImage }
-            nowPlayingInfo[MPMediaItemPropertyArtwork] = fallbackArtwork
+            // Use app icon as fallback artwork (immediate)
+            if let image = UIImage(named: "AppIcon") {
+                let fallbackArtwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                nowPlayingInfo[MPMediaItemPropertyArtwork] = fallbackArtwork
 
-            // Cache the fallback if we don't have a thumbnail URL
-            if article.imageUrl == nil {
-                cachedArtwork = fallbackArtwork
-                cachedArtworkArticleId = article.id
+                // Cache the fallback if we don't have a thumbnail URL
+                if article.imageUrl == nil {
+                    cachedArtwork = fallbackArtwork
+                    cachedArtworkArticleId = article.id
+                }
             }
         }
 
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
-    }
-
-    /// Creates a fallback artwork image using SF Symbols
-    private func createFallbackArtwork() -> UIImage {
-        let size = CGSize(width: 300, height: 300)
-        let renderer = UIGraphicsImageRenderer(size: size)
-
-        return renderer.image { context in
-            // Background
-            UIColor.systemOrange.setFill()
-            context.fill(CGRect(origin: .zero, size: size))
-
-            // Waveform icon
-            let config = UIImage.SymbolConfiguration(pointSize: 100, weight: .medium)
-            if let symbol = UIImage(systemName: "waveform", withConfiguration: config) {
-                let symbolSize = symbol.size
-                let x = (size.width - symbolSize.width) / 2
-                let y = (size.height - symbolSize.height) / 2
-                symbol.withTintColor(.white, renderingMode: .alwaysOriginal)
-                    .draw(at: CGPoint(x: x, y: y))
-            }
-        }
     }
 
     private func clearNowPlayingInfo() {
