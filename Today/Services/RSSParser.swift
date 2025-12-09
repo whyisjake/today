@@ -494,44 +494,55 @@ class RSSParser: NSObject, XMLParserDelegate {
     
     /// Parse iTunes duration format into seconds
     /// Supports formats: "HH:MM:SS", "MM:SS", or just seconds "1234"
-    private func parseDuration(_ durationString: String) -> TimeInterval? {
+    /// Returns nil for invalid formats, negative values, or empty strings
+    func parseDuration(_ durationString: String) -> TimeInterval? {
         let trimmed = durationString.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        
+
+        // Reject negative values (duration should always be positive)
+        if trimmed.hasPrefix("-") {
+            return nil
+        }
+
         // If it's just a number (seconds), parse directly
         if let seconds = TimeInterval(trimmed) {
-            return seconds
+            return seconds >= 0 ? seconds : nil
         }
-        
+
         // Split by colons for HH:MM:SS or MM:SS format
         let components = trimmed.split(separator: ":")
-        guard !components.isEmpty else { return nil }
-        
+
+        // Must have 1-3 components (seconds, MM:SS, or HH:MM:SS)
+        guard components.count >= 1, components.count <= 3 else { return nil }
+
         var totalSeconds: TimeInterval = 0
-        
+
         if components.count == 3 {
             // HH:MM:SS format
             guard let hours = TimeInterval(components[0]),
                   let minutes = TimeInterval(components[1]),
-                  let seconds = TimeInterval(components[2]) else {
+                  let seconds = TimeInterval(components[2]),
+                  hours >= 0, minutes >= 0, seconds >= 0 else {
                 return nil
             }
             totalSeconds = hours * 3600 + minutes * 60 + seconds
         } else if components.count == 2 {
             // MM:SS format
             guard let minutes = TimeInterval(components[0]),
-                  let seconds = TimeInterval(components[1]) else {
+                  let seconds = TimeInterval(components[1]),
+                  minutes >= 0, seconds >= 0 else {
                 return nil
             }
             totalSeconds = minutes * 60 + seconds
         } else if components.count == 1 {
             // Just seconds
-            guard let seconds = TimeInterval(components[0]) else {
+            guard let seconds = TimeInterval(components[0]),
+                  seconds >= 0 else {
                 return nil
             }
             totalSeconds = seconds
         }
-        
+
         return totalSeconds
     }
 }
