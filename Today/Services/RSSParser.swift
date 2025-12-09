@@ -18,12 +18,17 @@ class RSSParser: NSObject, XMLParserDelegate {
     private var currentPubDate = ""
     private var currentAuthor = ""
     private var currentGuid = ""
+    private var currentAudioUrl = ""
+    private var currentAudioDuration: TimeInterval?
+    private var currentAudioDurationString = ""
+    private var currentAudioType = ""
     private var insideItem = false
     private var feedTitleParsed = false
 
     private(set) var articles: [ParsedArticle] = []
     private(set) var feedTitle = ""
     private(set) var feedDescription = ""
+    private(set) var feedImageUrl = ""  // Channel-level image (podcast artwork)
 
     struct ParsedArticle {
         let title: String
@@ -40,6 +45,11 @@ class RSSParser: NSObject, XMLParserDelegate {
         let redditSubreddit: String?
         let redditCommentsUrl: String?
         let redditPostId: String?
+        
+        // Podcast/audio enclosure fields
+        let audioUrl: String?
+        let audioDuration: TimeInterval?
+        let audioType: String?
     }
 
     func parse(data: Data) -> Bool {
@@ -73,6 +83,10 @@ class RSSParser: NSObject, XMLParserDelegate {
             currentPubDate = ""
             currentAuthor = ""
             currentGuid = ""
+            currentAudioUrl = ""
+            currentAudioDuration = nil
+            currentAudioDurationString = ""
+            currentAudioType = ""
         }
 
         // Handle Atom <link> tags which use attributes instead of text content
@@ -91,8 +105,16 @@ class RSSParser: NSObject, XMLParserDelegate {
         // Check for image in attributes (media:content, enclosure, etc.)
         if insideItem {
             // Handle <enclosure> tag (common for podcasts and images)
-            if elementName == "enclosure", let url = attributeDict["url"], let type = attributeDict["type"], type.contains("image") {
-                currentImageUrl = url
+            if elementName == "enclosure", let url = attributeDict["url"], let type = attributeDict["type"] {
+                if type.contains("audio") {
+                    // Audio enclosure (podcast)
+                    currentAudioUrl = url
+                    currentAudioType = type
+                    // Note: "length" attribute is file size in bytes, not duration
+                    // Duration comes from itunes:duration element
+                } else if type.contains("image") {
+                    currentImageUrl = url
+                }
             }
 
             // Handle <media:content> tag
@@ -106,6 +128,21 @@ class RSSParser: NSObject, XMLParserDelegate {
             if elementName == "media:thumbnail" || elementName == "thumbnail", let url = attributeDict["url"] {
                 if currentImageUrl.isEmpty {
                     currentImageUrl = url
+                }
+            }
+
+            // Handle <itunes:image> tag (podcast episode artwork)
+            if elementName == "itunes:image", let href = attributeDict["href"] {
+                if currentImageUrl.isEmpty {
+                    currentImageUrl = href
+                }
+            }
+        } else {
+            // Feed-level tags (outside of items)
+            // Handle channel-level <itunes:image> (podcast feed artwork)
+            if elementName == "itunes:image", let href = attributeDict["href"] {
+                if feedImageUrl.isEmpty {
+                    feedImageUrl = href
                 }
             }
         }
@@ -152,6 +189,8 @@ class RSSParser: NSObject, XMLParserDelegate {
                 currentAuthor += string
             case "guid", "id": // Atom uses <id>
                 currentGuid += string
+            case "itunes:duration", "duration": // Podcast episode duration
+                currentAudioDurationString += string
             default:
                 break
             }
@@ -182,7 +221,7 @@ class RSSParser: NSObject, XMLParserDelegate {
             // Use link as guid if guid is not provided
             let finalGuid = currentGuid.isEmpty ? currentLink : currentGuid
 
-            // If no explicit image found, try to extract from HTML content
+            // If no explicit image found, try to extract from HTML content or use feed image
             var finalImageUrl = currentImageUrl
             if finalImageUrl.isEmpty {
                 // Try content:encoded first, then content, then description
@@ -193,6 +232,10 @@ class RSSParser: NSObject, XMLParserDelegate {
                 } else if !currentDescription.isEmpty {
                     finalImageUrl = extractFirstImageUrl(from: currentDescription)
                 }
+            }
+            // Fall back to feed-level image (e.g., podcast channel artwork)
+            if finalImageUrl.isEmpty && !feedImageUrl.isEmpty {
+                finalImageUrl = feedImageUrl
             }
 
             // Debug: log title processing steps
@@ -225,6 +268,9 @@ class RSSParser: NSObject, XMLParserDelegate {
 
             // Extract Reddit metadata if this is a Reddit post
             let redditMetadata = extractRedditMetadata(from: processedContentEncoded ?? processedContent, link: currentLink)
+            
+            // Parse audio duration if available
+            let audioDuration: TimeInterval? = currentAudioDurationString.isEmpty ? nil : parseDuration(currentAudioDurationString)
 
             let article = ParsedArticle(
                 title: processedTitle,
@@ -238,7 +284,10 @@ class RSSParser: NSObject, XMLParserDelegate {
                 guid: finalGuid,
                 redditSubreddit: redditMetadata.subreddit,
                 redditCommentsUrl: redditMetadata.commentsUrl,
-                redditPostId: redditMetadata.postId
+                redditPostId: redditMetadata.postId,
+                audioUrl: currentAudioUrl.isEmpty ? nil : currentAudioUrl,
+                audioDuration: audioDuration,
+                audioType: currentAudioType.isEmpty ? nil : currentAudioType
             )
 
             articles.append(article)
@@ -361,10 +410,17 @@ class RSSParser: NSObject, XMLParserDelegate {
         }
 
         let dateFormatters = [
-            // RFC 822 format (common in RSS)
+            // RFC 822 format with numeric timezone (common in RSS)
             { () -> DateFormatter in
                 let formatter = DateFormatter()
                 formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss Z"
+                formatter.locale = Locale(identifier: "en_US_POSIX")
+                return formatter
+            }(),
+            // RFC 822 format with timezone abbreviation (e.g., EDT, PST)
+            { () -> DateFormatter in
+                let formatter = DateFormatter()
+                formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
                 formatter.locale = Locale(identifier: "en_US_POSIX")
                 return formatter
             }(),
@@ -441,6 +497,60 @@ class RSSParser: NSObject, XMLParserDelegate {
         }
         
         return (subreddit, commentsUrl, postId)
+    }
+    
+    /// Parse iTunes duration format into seconds
+    /// Supports formats: "HH:MM:SS", "MM:SS", or just seconds "1234"
+    /// Returns nil for invalid formats, negative values, or empty strings
+    func parseDuration(_ durationString: String) -> TimeInterval? {
+        let trimmed = durationString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        // Reject negative values (duration should always be positive)
+        if trimmed.hasPrefix("-") {
+            return nil
+        }
+
+        // If it's just a number (seconds), parse directly
+        if let seconds = TimeInterval(trimmed) {
+            return seconds >= 0 ? seconds : nil
+        }
+
+        // Split by colons for HH:MM:SS or MM:SS format
+        let components = trimmed.split(separator: ":")
+
+        // Must have 1-3 components (seconds, MM:SS, or HH:MM:SS)
+        guard components.count >= 1, components.count <= 3 else { return nil }
+
+        var totalSeconds: TimeInterval = 0
+
+        if components.count == 3 {
+            // HH:MM:SS format
+            guard let hours = TimeInterval(components[0]),
+                  let minutes = TimeInterval(components[1]),
+                  let seconds = TimeInterval(components[2]),
+                  hours >= 0, minutes >= 0, seconds >= 0 else {
+                return nil
+            }
+            totalSeconds = hours * 3600 + minutes * 60 + seconds
+        } else if components.count == 2 {
+            // MM:SS format
+            guard let minutes = TimeInterval(components[0]),
+                  let seconds = TimeInterval(components[1]),
+                  minutes >= 0, seconds >= 0 else {
+                return nil
+            }
+            totalSeconds = minutes * 60 + seconds
+        } else if components.count == 1 {
+            // Just seconds
+            guard let seconds = TimeInterval(components[0]),
+                  seconds >= 0 else {
+                return nil
+            }
+            totalSeconds = seconds
+        }
+
+        return totalSeconds
     }
 }
 

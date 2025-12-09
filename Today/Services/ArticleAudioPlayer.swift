@@ -328,20 +328,41 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
                 }
             }
 
-            // Use app icon as fallback (immediate)
-            if let image = UIImage(named: "AppIcon") {
-                let fallbackArtwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-                nowPlayingInfo[MPMediaItemPropertyArtwork] = fallbackArtwork
+            // Use SF Symbol as fallback artwork (immediate)
+            let fallbackImage = createFallbackArtwork()
+            let fallbackArtwork = MPMediaItemArtwork(boundsSize: fallbackImage.size) { _ in fallbackImage }
+            nowPlayingInfo[MPMediaItemPropertyArtwork] = fallbackArtwork
 
-                // Cache the fallback if we don't have a thumbnail URL
-                if article.imageUrl == nil {
-                    cachedArtwork = fallbackArtwork
-                    cachedArtworkArticleId = article.id
-                }
+            // Cache the fallback if we don't have a thumbnail URL
+            if article.imageUrl == nil {
+                cachedArtwork = fallbackArtwork
+                cachedArtworkArticleId = article.id
             }
         }
 
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+    }
+
+    /// Creates a fallback artwork image using SF Symbols
+    private func createFallbackArtwork() -> UIImage {
+        let size = CGSize(width: 300, height: 300)
+        let renderer = UIGraphicsImageRenderer(size: size)
+
+        return renderer.image { context in
+            // Background
+            UIColor.systemOrange.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+
+            // Speaker icon for TTS
+            let config = UIImage.SymbolConfiguration(pointSize: 100, weight: .medium)
+            if let symbol = UIImage(systemName: "speaker.wave.2.fill", withConfiguration: config) {
+                let symbolSize = symbol.size
+                let x = (size.width - symbolSize.width) / 2
+                let y = (size.height - symbolSize.height) / 2
+                symbol.withTintColor(.white, renderingMode: .alwaysOriginal)
+                    .draw(at: CGPoint(x: x, y: y))
+            }
+        }
     }
 
     private func clearNowPlayingInfo() {
