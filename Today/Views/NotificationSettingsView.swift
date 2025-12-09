@@ -55,8 +55,12 @@ struct NotificationSettingsView: View {
                             get: { feed.notificationsEnabled },
                             set: { newValue in
                                 feed.notificationsEnabled = newValue
-                                try? modelContext.save()
-                                print(newValue ? "🔔 Enabled notifications for: \(feed.title)" : "🔕 Disabled notifications for: \(feed.title)")
+                                do {
+                                    try modelContext.save()
+                                    print(newValue ? "🔔 Enabled notifications for: \(feed.title)" : "🔕 Disabled notifications for: \(feed.title)")
+                                } catch {
+                                    print("❌ Error saving notification preference: \(error.localizedDescription)")
+                                }
                             }
                         )) {
                             VStack(alignment: .leading, spacing: 4) {

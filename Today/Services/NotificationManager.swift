@@ -13,6 +13,10 @@ import SwiftData
 class NotificationManager {
     static let shared = NotificationManager()
     
+    // Notification content length limits
+    private let maxSubtitleLength = 100
+    private let maxSummaryLength = 97 // Leave room for "..."
+    
     private init() {}
     
     /// Request notification permissions from the user
@@ -69,7 +73,7 @@ class NotificationManager {
         content.sound = .default
         
         // Add subtitle with article description if available
-        if let description = article.articleDescription?.htmlToPlainText.prefix(100) {
+        if let description = article.articleDescription?.htmlToPlainText.prefix(maxSubtitleLength) {
             content.subtitle = String(description)
         }
         
@@ -166,10 +170,10 @@ class NotificationManager {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             
             // Limit to reasonable notification length
-            if cleaned.count <= 100 {
+            if cleaned.count <= maxSubtitleLength {
                 return cleaned
             } else {
-                return String(cleaned.prefix(97)) + "..."
+                return String(cleaned.prefix(maxSummaryLength)) + "..."
             }
         }
         
@@ -184,16 +188,15 @@ class NotificationManager {
     }
     
     /// Remove notifications for a specific feed
-    func clearNotificationsForFeed(_ feed: Feed) {
+    func clearNotificationsForFeed(_ feed: Feed) async {
         let threadIdentifier = "feed-\(feed.persistentModelID.hashValue)"
         
-        UNUserNotificationCenter.current().getDeliveredNotifications { notifications in
-            let identifiersToRemove = notifications
-                .filter { $0.request.content.threadIdentifier == threadIdentifier }
-                .map { $0.request.identifier }
-            
-            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: identifiersToRemove)
-            print("🗑️ Cleared \(identifiersToRemove.count) notifications for feed: \(feed.title)")
-        }
+        let notifications = await UNUserNotificationCenter.current().deliveredNotifications()
+        let identifiersToRemove = notifications
+            .filter { $0.request.content.threadIdentifier == threadIdentifier }
+            .map { $0.request.identifier }
+        
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: identifiersToRemove)
+        print("🗑️ Cleared \(identifiersToRemove.count) notifications for feed: \(feed.title)")
     }
 }
