@@ -407,12 +407,12 @@ struct ChapterRowView: View {
                     Image(systemName: "speaker.wave.2.fill")
                         .font(.caption)
                         .foregroundStyle(accentColor.color)
-                        .frame(width: 44)
+                        .frame(width: 52)
                 } else {
                     Text(chapter.formattedStartTime)
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
-                        .frame(width: 44, alignment: .leading)
+                        .frame(width: 52, alignment: .leading)
                 }
             }
 
