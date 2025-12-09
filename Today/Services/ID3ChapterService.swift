@@ -15,11 +15,11 @@ class ID3ChapterService {
     
     // Maximum file size to download when range requests aren't supported (10 MB)
     // This prevents memory issues with large podcast files
-    private let maxFullDownloadSize: Int64 = 10 * 1024 * 1024
+    private static let maxFullDownloadSize: Int64 = 10 * 1024 * 1024
     
     // Maximum ID3 tag size to request (5 MB)
     // Typical ID3 tags are much smaller, this prevents issues with corrupted data
-    private let maxTagSize: Int = 5 * 1024 * 1024
+    private static let maxTagSize: Int = 5 * 1024 * 1024
 
     private init() {}
 
@@ -67,8 +67,8 @@ class ID3ChapterService {
         print("📖 ID3v2 tag size: \(totalTagSize) bytes (\(totalTagSize / 1024) KB)")
         
         // Validate tag size to prevent issues with corrupted data
-        guard totalTagSize > 0 && totalTagSize <= maxTagSize else {
-            print("📖 Invalid or excessive tag size: \(totalTagSize) bytes")
+        guard totalTagSize <= Self.maxTagSize else {
+            print("📖 Excessive tag size: \(totalTagSize) bytes (max: \(Self.maxTagSize))")
             return []
         }
 
@@ -94,12 +94,15 @@ class ID3ChapterService {
                let contentLength = Int64(contentLengthStr) {
                 print("📖 File size: \(contentLength) bytes (\(contentLength / 1024 / 1024) MB)")
                 
-                guard contentLength <= maxFullDownloadSize else {
-                    print("📖 File too large (\(contentLength) bytes) to download without range support. Maximum: \(maxFullDownloadSize) bytes")
+                guard contentLength <= Self.maxFullDownloadSize else {
+                    print("📖 File too large (\(contentLength) bytes) to download without range support. Maximum: \(Self.maxFullDownloadSize) bytes")
                     return []
                 }
             } else {
-                print("📖 Unable to determine file size, proceeding with caution")
+                // Unable to determine file size - abort to prevent potential memory issues
+                print("📖 Unable to determine file size, aborting download to prevent potential memory issues")
+                print("📖 Chapters require either range request support or a Content-Length header")
+                return []
             }
             
             // Download the full file
