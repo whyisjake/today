@@ -763,12 +763,15 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
         }
 
         // Don't prefetch if already cached or in progress
-        guard prefetchedChapters[audioUrlString] == nil,
-              !prefetchingURLs.contains(audioUrlString) else {
+        // Use atomic check-and-set to prevent race conditions
+        guard prefetchedChapters[audioUrlString] == nil else {
             return
         }
-
-        prefetchingURLs.insert(audioUrlString)
+        
+        // Atomically check and insert to prevent multiple concurrent prefetch tasks
+        guard prefetchingURLs.insert(audioUrlString).inserted else {
+            return // Already being prefetched
+        }
         print("📖 Prefetching chapters for: \(audioUrl.lastPathComponent)")
 
         Task {
