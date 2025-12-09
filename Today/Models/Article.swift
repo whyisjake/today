@@ -28,15 +28,10 @@ final class Article {
     var redditSubreddit: String? // e.g., "baseball"
     var redditCommentsUrl: String? // Direct link to Reddit comments
     var redditPostId: String? // Reddit post ID (e.g., "t3_abc123")
-    
-    // Podcast/audio enclosure metadata
-    var audioUrl: String? // URL to audio file (e.g., MP3)
-    var audioDuration: TimeInterval? // Duration in seconds
-    var audioType: String? // MIME type (e.g., "audio/mpeg")
 
     var feed: Feed?
 
-    init(title: String, link: String, articleDescription: String? = nil, content: String? = nil, contentEncoded: String? = nil, imageUrl: String? = nil, publishedDate: Date, author: String? = nil, guid: String, feed: Feed? = nil, redditSubreddit: String? = nil, redditCommentsUrl: String? = nil, redditPostId: String? = nil, audioUrl: String? = nil, audioDuration: TimeInterval? = nil, audioType: String? = nil) {
+    init(title: String, link: String, articleDescription: String? = nil, content: String? = nil, contentEncoded: String? = nil, imageUrl: String? = nil, publishedDate: Date, author: String? = nil, guid: String, feed: Feed? = nil, redditSubreddit: String? = nil, redditCommentsUrl: String? = nil, redditPostId: String? = nil) {
         self.title = title
         self.link = link
         self.articleDescription = articleDescription
@@ -54,9 +49,6 @@ final class Article {
         self.redditSubreddit = redditSubreddit
         self.redditCommentsUrl = redditCommentsUrl
         self.redditPostId = redditPostId
-        self.audioUrl = audioUrl
-        self.audioDuration = audioDuration
-        self.audioType = audioType
         self.feed = feed
     }
 
@@ -88,10 +80,5 @@ final class Article {
     /// Returns true if the article is from a Reddit RSS feed
     var isRedditPost: Bool {
         return redditSubreddit != nil || redditCommentsUrl != nil
-    }
-    
-    /// Returns true if the article has an audio enclosure (podcast)
-    var hasPodcastAudio: Bool {
-        return audioUrl != nil
     }
 }

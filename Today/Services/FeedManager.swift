@@ -96,7 +96,7 @@ class FeedManager: ObservableObject {
         return urlString
     }
 
-    /// Fetch feed using appropriate parser (RSS or Reddit JSON)
+    /// Fetch feed using appropriate parser (RSS, JSON Feed, or Reddit JSON)
     private func fetchFeed(url: String) async throws -> (feedTitle: String, feedDescription: String, articles: [RSSParser.ParsedArticle]) {
         if isRedditJSON(url) {
             // Use Reddit JSON parser
@@ -116,15 +116,78 @@ class FeedManager: ObservableObject {
             let articles = redditPosts.map { $0.toArticle() }
 
             return (feedTitle, feedDescription, articles)
+        } else if isJSONFeed(url) {
+            // Use JSON Feed parser for .json or .jsonfeed URLs
+            return try await fetchJSONFeed(url: url)
         } else {
-            // Use RSS parser
-            return try await RSSFeedService.shared.fetchFeed(url: url)
+            // Try RSS parser first, fallback to JSON Feed if it fails
+            return try await fetchWithFallback(url: url)
         }
     }
 
     /// Check if URL is a Reddit JSON feed
     private func isRedditJSON(_ url: String) -> Bool {
         return url.contains("reddit.com") && url.hasSuffix(".json")
+    }
+    
+    /// Check if URL is likely a JSON Feed based on extension
+    /// Excludes Reddit URLs which have their own parser
+    private func isJSONFeed(_ url: String) -> Bool {
+        // Don't treat Reddit URLs as JSON Feed - they have their own parser
+        if url.contains("reddit.com") {
+            return false
+        }
+        
+        let lowercased = url.lowercased()
+        // Match common JSON Feed URL patterns:
+        // - Ends with .json (e.g., /feed.json)
+        // - Ends with .jsonfeed (e.g., /newest.jsonfeed)
+        // - Contains feed.json in path
+        // - Contains /feeds/json (e.g., daringfireball.net/feeds/json)
+        return lowercased.hasSuffix(".json") || 
+               lowercased.hasSuffix(".jsonfeed") ||
+               lowercased.contains("feed.json") ||
+               lowercased.contains("/feeds/json")
+    }
+    
+    /// Fetch a JSON Feed
+    private func fetchJSONFeed(url: String) async throws -> (feedTitle: String, feedDescription: String, articles: [RSSParser.ParsedArticle]) {
+        guard let feedURL = URL(string: url) else {
+            throw FeedError.invalidURL
+        }
+        
+        let (data, _) = try await URLSession.shared.data(from: feedURL)
+        
+        let parser = JSONFeedParser()
+        guard try parser.parse(data: data) else {
+            throw FeedError.parsingFailed
+        }
+        
+        return (parser.feedTitle, parser.feedDescription, parser.articles)
+    }
+    
+    /// Fetch feed trying RSS first, then JSON Feed as fallback
+    private func fetchWithFallback(url: String) async throws -> (feedTitle: String, feedDescription: String, articles: [RSSParser.ParsedArticle]) {
+        guard let feedURL = URL(string: url) else {
+            throw FeedError.invalidURL
+        }
+        
+        let (data, _) = try await URLSession.shared.data(from: feedURL)
+        
+        // Try RSS parser first
+        let rssParser = RSSParser()
+        if rssParser.parse(data: data) && !rssParser.articles.isEmpty {
+            return (rssParser.feedTitle, rssParser.feedDescription, rssParser.articles)
+        }
+        
+        // Fallback to JSON Feed parser
+        let jsonParser = JSONFeedParser()
+        if let parsed = try? jsonParser.parse(data: data), parsed {
+            return (jsonParser.feedTitle, jsonParser.feedDescription, jsonParser.articles)
+        }
+        
+        // If both fail, throw parsing error
+        throw FeedError.parsingFailed
     }
 
     /// Sync a specific feed
@@ -150,10 +213,7 @@ class FeedManager: ObservableObject {
                     feed: feed,
                     redditSubreddit: parsedArticle.redditSubreddit,
                     redditCommentsUrl: parsedArticle.redditCommentsUrl,
-                    redditPostId: parsedArticle.redditPostId,
-                    audioUrl: parsedArticle.audioUrl,
-                    audioDuration: parsedArticle.audioDuration,
-                    audioType: parsedArticle.audioType
+                    redditPostId: parsedArticle.redditPostId
                 )
 
                 modelContext.insert(article)
@@ -166,11 +226,14 @@ class FeedManager: ObservableObject {
 
     enum FeedError: LocalizedError {
         case invalidURL
+        case parsingFailed
 
         var errorDescription: String? {
             switch self {
             case .invalidURL:
                 return "Invalid feed URL"
+            case .parsingFailed:
+                return "Failed to parse feed"
             }
         }
     }

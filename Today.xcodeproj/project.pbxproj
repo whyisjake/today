@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		A00757B14BCD4CD9AE5FBEF0 /* OutcastID3 in Frameworks */ = {isa = PBXBuildFile; productRef = C8F8F70FAE5B4385B02D848B /* OutcastID3 */; };
+		A1B2C3D4E5F6789012345678 /* JSONFeedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F67890123456789A /* JSONFeedTests.swift */; };
 		C29AB72AB8D4FBBB6DB2D8A3 /* TodayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22D7D03FBA667C69848C3AAC /* TodayTests.swift */; };
 		F52BB6272EAC23870054AEC5 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F52BB6262EAC23870054AEC5 /* XCTest.framework */; platformFilter = ios; };
 		F540A5ED2ECD930F00CCF1B9 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = F540A5EC2ECD930F00CCF1B9 /* Localizable.xcstrings */; };
@@ -31,6 +32,7 @@
 
 /* Begin PBXFileReference section */
 		22D7D03FBA667C69848C3AAC /* TodayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayTests.swift; sourceTree = "<group>"; };
+		B2C3D4E5F67890123456789A /* JSONFeedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONFeedTests.swift; sourceTree = "<group>"; };
 		F52BB61A2EAC22F60054AEC5 /* TodayTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TodayTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F52BB6262EAC23870054AEC5 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Platforms/iPhoneOS.platform/Developer/Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
 		F540A5EC2ECD930F00CCF1B9 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
@@ -94,6 +96,7 @@
 				F5854AE22EE765DA008F77B8 /* RSSParserTests.swift */,
 				F5854AE32EE765DA008F77B8 /* TexturizerTests.swift */,
 				22D7D03FBA667C69848C3AAC /* TodayTests.swift */,
+				B2C3D4E5F67890123456789A /* JSONFeedTests.swift */,
 			);
 			path = TodayTests;
 			sourceTree = "<group>";
@@ -254,6 +257,7 @@
 				F5854AE92EE765DA008F77B8 /* AtomFeedTests.swift in Sources */,
 				F5854AEA2EE765DA008F77B8 /* RSSParserTests.swift in Sources */,
 				F5854AEB2EE765DA008F77B8 /* CategoryManagerTests.swift in Sources */,
+				A1B2C3D4E5F6789012345678 /* JSONFeedTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
