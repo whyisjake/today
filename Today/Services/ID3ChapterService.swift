@@ -26,6 +26,9 @@ class ID3ChapterService {
     
     // Timeout for HEAD requests when checking file size
     private static let headRequestTimeout: TimeInterval = 10
+    
+    // Conversion factor for bytes to megabytes
+    private static let bytesToMB: Int64 = 1024 * 1024
 
     private init() {}
 
@@ -69,9 +72,10 @@ class ID3ChapterService {
                    (Int(headerData[8]) << 7) |
                    Int(headerData[9])
 
-        // Validate size before adding header to prevent overflow
-        guard size >= 0 && size <= Self.maxTagSize - Self.id3HeaderSize else {
-            print("📖 Invalid ID3 tag size from header: \(size) bytes")
+        // Validate size to prevent excessive tag requests
+        // The size value is from syncsafe integer parsing and cannot be negative
+        guard size <= Self.maxTagSize else {
+            print("📖 Excessive ID3 tag size from header: \(size) bytes (max: \(Self.maxTagSize))")
             return []
         }
 
@@ -100,8 +104,8 @@ class ID3ChapterService {
                 if let httpResponse = headResponse as? HTTPURLResponse,
                    let contentLengthStr = httpResponse.value(forHTTPHeaderField: "Content-Length"),
                    let contentLength = Int64(contentLengthStr) {
-                    let fileSizeMB = contentLength / 1024 / 1024
-                    let maxSizeMB = Self.maxFullDownloadSize / 1024 / 1024
+                    let fileSizeMB = contentLength / Self.bytesToMB
+                    let maxSizeMB = Self.maxFullDownloadSize / Self.bytesToMB
                     print("📖 File size: \(contentLength) bytes (\(fileSizeMB) MB)")
                     
                     guard contentLength <= Self.maxFullDownloadSize else {
