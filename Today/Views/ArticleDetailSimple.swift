@@ -109,7 +109,7 @@ struct ArticleDetailSimple: View {
                     .accessibilityLabel(isPlayingThisArticle ? "Pause article audio" : "Play article audio")
 
                     // Share button
-                    ShareLink(item: URL(string: article.link)!, subject: Text(article.title)) {
+                    ShareLink(item: URL(string: article.link)!.addingUTMParameters(), subject: Text(article.title)) {
                         Image(systemName: "square.and.arrow.up")
                     }
                 }
@@ -157,7 +157,7 @@ struct ArticleDetailSimple: View {
                             Label("Open in Safari", systemImage: "safari")
                         }
 
-                        ShareLink(item: URL(string: article.link)!, subject: Text(article.title)) {
+                        ShareLink(item: URL(string: article.link)!.addingUTMParameters(), subject: Text(article.title)) {
                             Label("Share", systemImage: "square.and.arrow.up")
                         }
 

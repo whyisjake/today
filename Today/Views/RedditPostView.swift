@@ -109,7 +109,7 @@ struct RedditPostView: View {
                 }
                 .contextMenu {
                     if let url = URL(string: article.link) {
-                        ShareLink(item: url, subject: Text(article.title)) {
+                        ShareLink(item: url.addingUTMParameters(), subject: Text(article.title)) {
                             Label("Share", systemImage: "square.and.arrow.up")
                         }
                     }
@@ -145,7 +145,7 @@ struct RedditPostView: View {
                             Label("Open in Safari", systemImage: "safari")
                         }
 
-                        ShareLink(item: URL(string: article.link)!, subject: Text(article.title)) {
+                        ShareLink(item: URL(string: article.link)!.addingUTMParameters(), subject: Text(article.title)) {
                             Label("Share", systemImage: "square.and.arrow.up")
                         }
 
