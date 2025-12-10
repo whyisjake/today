@@ -96,13 +96,16 @@ struct FeedListView: View {
 
     // Filter feeds based on Alt category visibility
     private var visibleFeeds: [Feed] {
+        let filtered: [Feed]
         if showAltFeeds {
             // When showing Alt, only show Alt feeds
-            return feeds.filter { $0.category.lowercased() == "alt" }
+            filtered = feeds.filter { $0.category.lowercased() == "alt" }
         } else {
             // When not showing Alt, exclude Alt feeds
-            return feeds.filter { $0.category.lowercased() != "alt" }
+            filtered = feeds.filter { $0.category.lowercased() != "alt" }
         }
+        // Sort case-insensitively (Aa-Zz)
+        return filtered.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
     }
 
     // Check if there are any Alt feeds
