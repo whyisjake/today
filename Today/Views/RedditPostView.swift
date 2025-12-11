@@ -30,6 +30,10 @@ struct RedditPostView: View {
     // Swipe gesture state
     @State private var dragOffset: CGFloat = 0
     @State private var isDragging = false
+    
+    // Swipe gesture configuration
+    private let swipeThreshold: CGFloat = 100
+    private let swipeIndicatorThreshold: CGFloat = 50
 
     var body: some View {
         ZStack {
@@ -111,7 +115,7 @@ struct RedditPostView: View {
                 VStack {
                     Spacer()
                     HStack {
-                        if dragOffset > 50 && previousArticleID != nil {
+                        if dragOffset > swipeIndicatorThreshold && previousArticleID != nil {
                             Label("Previous", systemImage: "chevron.left.circle.fill")
                                 .font(.title)
                                 .foregroundStyle(.white)
@@ -121,7 +125,7 @@ struct RedditPostView: View {
                                 .padding(.leading, 20)
                         }
                         Spacer()
-                        if dragOffset < -50 && nextArticleID != nil {
+                        if dragOffset < -swipeIndicatorThreshold && nextArticleID != nil {
                             Label("Next", systemImage: "chevron.right.circle.fill")
                                 .font(.title)
                                 .foregroundStyle(.white)
@@ -149,14 +153,12 @@ struct RedditPostView: View {
                     }
                 }
                 .onEnded { value in
-                    let threshold: CGFloat = 100
-                    
-                    if dragOffset > threshold && previousArticleID != nil {
+                    if dragOffset > swipeThreshold, let prevID = previousArticleID {
                         // Swipe right - go to previous
-                        onNavigateToPrevious(previousArticleID!)
-                    } else if dragOffset < -threshold && nextArticleID != nil {
+                        onNavigateToPrevious(prevID)
+                    } else if dragOffset < -swipeThreshold, let nextID = nextArticleID {
                         // Swipe left - go to next
-                        onNavigateToNext(nextArticleID!)
+                        onNavigateToNext(nextID)
                     }
                     
                     // Reset state
