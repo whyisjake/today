@@ -46,6 +46,7 @@ struct ArticleDetailSimple: View {
     // Swipe gesture configuration
     private let swipeThreshold: CGFloat = 100
     private let swipeIndicatorThreshold: CGFloat = 50
+    private let horizontalToVerticalRatio: CGFloat = 2.0 // Horizontal must be 2x vertical to trigger swipe
 
     var body: some View {
         GeometryReader { geometry in
@@ -138,9 +139,13 @@ struct ArticleDetailSimple: View {
                         let horizontalAmount = abs(value.translation.width)
                         let verticalAmount = abs(value.translation.height)
                         
-                        if horizontalAmount > verticalAmount * 2 {
+                        if horizontalAmount > verticalAmount * horizontalToVerticalRatio {
                             isDragging = true
                             dragOffset = value.translation.width
+                        } else {
+                            // Reset if gesture becomes too vertical
+                            isDragging = false
+                            dragOffset = 0
                         }
                     }
                     .onEnded { value in
