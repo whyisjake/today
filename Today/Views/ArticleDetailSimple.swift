@@ -38,57 +38,125 @@ struct ArticleDetailSimple: View {
     @AppStorage("fontOption") private var fontOption: FontOption = .serif
     @AppStorage("shortArticleBehavior") private var shortArticleBehavior: ShortArticleBehavior = .openInAppBrowser
     @StateObject private var audioPlayer = ArticleAudioPlayer.shared
+    
+    // Swipe gesture state
+    @State private var dragOffset: CGFloat = 0
+    @State private var isDragging = false
 
     var body: some View {
         GeometryReader { geometry in
-            ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text(article.title)
-                    .font(fontOption == .serif ?
-                        .system(.title2, design: .serif, weight: .bold) :
-                        .system(.title2, design: .default, weight: .bold))
-
-                HStack {
-                    if let author = article.author {
-                        Text("By \(author)")
+            ZStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text(article.title)
                             .font(fontOption == .serif ?
-                                .system(.subheadline, design: .serif) :
-                                .system(.subheadline, design: .default))
-                            .foregroundStyle(.secondary)
+                                .system(.title2, design: .serif, weight: .bold) :
+                                .system(.title2, design: .default, weight: .bold))
+
+                        HStack {
+                            if let author = article.author {
+                                Text("By \(author)")
+                                    .font(fontOption == .serif ?
+                                        .system(.subheadline, design: .serif) :
+                                        .system(.subheadline, design: .default))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text(article.publishedDate, style: .date)
+                                .font(fontOption == .serif ?
+                                    .system(.subheadline, design: .serif) :
+                                    .system(.subheadline, design: .default))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Divider()
+
+                        // Show podcast controls if this is a podcast episode
+                        if article.hasPodcastAudio {
+                            PodcastAudioControls(article: article)
+                            Divider()
+                        }
+
+                        // For short articles with "Open in Today Browser", show full web page
+                        if article.hasMinimalContent && shortArticleBehavior == .openInAppBrowser && !article.isRedditPost,
+                           let url = URL(string: article.link) {
+                            WebViewRepresentable(url: url)
+                                .frame(height: geometry.size.height - 200)
+                        }
+                        // Otherwise show article content
+                        else if let contentEncoded = article.contentEncoded {
+                            ArticleContentWebView(htmlContent: contentEncoded)
+                        } else if let content = article.content {
+                            ArticleContentWebView(htmlContent: content)
+                        } else if let description = article.articleDescription {
+                            ArticleContentWebView(htmlContent: description)
+                        }
                     }
-                    Spacer()
-                    Text(article.publishedDate, style: .date)
-                        .font(fontOption == .serif ?
-                            .system(.subheadline, design: .serif) :
-                            .system(.subheadline, design: .default))
-                        .foregroundStyle(.secondary)
+                    .padding()
                 }
-
-                Divider()
-
-                // Show podcast controls if this is a podcast episode
-                if article.hasPodcastAudio {
-                    PodcastAudioControls(article: article)
-                    Divider()
-                }
-
-                // For short articles with "Open in Today Browser", show full web page
-                if article.hasMinimalContent && shortArticleBehavior == .openInAppBrowser && !article.isRedditPost,
-                   let url = URL(string: article.link) {
-                    WebViewRepresentable(url: url)
-                        .frame(height: geometry.size.height - 200)
-                }
-                // Otherwise show article content
-                else if let contentEncoded = article.contentEncoded {
-                    ArticleContentWebView(htmlContent: contentEncoded)
-                } else if let content = article.content {
-                    ArticleContentWebView(htmlContent: content)
-                } else if let description = article.articleDescription {
-                    ArticleContentWebView(htmlContent: description)
+                .offset(x: dragOffset)
+                .animation(.interactiveSpring(), value: dragOffset)
+                
+                // Swipe direction indicator
+                if isDragging {
+                    VStack {
+                        Spacer()
+                        HStack {
+                            if dragOffset > 50 && previousArticleID != nil {
+                                Label("Previous", systemImage: "chevron.left.circle.fill")
+                                    .font(.title)
+                                    .foregroundStyle(.white)
+                                    .padding()
+                                    .background(.ultraThinMaterial)
+                                    .clipShape(Capsule())
+                                    .padding(.leading, 20)
+                            }
+                            Spacer()
+                            if dragOffset < -50 && nextArticleID != nil {
+                                Label("Next", systemImage: "chevron.right.circle.fill")
+                                    .font(.title)
+                                    .foregroundStyle(.white)
+                                    .padding()
+                                    .background(.ultraThinMaterial)
+                                    .clipShape(Capsule())
+                                    .padding(.trailing, 20)
+                            }
+                        }
+                        Spacer()
+                    }
+                    .transition(.opacity)
                 }
             }
-            .padding()
-            }
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        // Only allow horizontal swipes with minimal vertical movement
+                        let horizontalAmount = abs(value.translation.width)
+                        let verticalAmount = abs(value.translation.height)
+                        
+                        if horizontalAmount > verticalAmount * 2 {
+                            isDragging = true
+                            dragOffset = value.translation.width
+                        }
+                    }
+                    .onEnded { value in
+                        let threshold: CGFloat = 100
+                        
+                        if dragOffset > threshold && previousArticleID != nil {
+                            // Swipe right - go to previous
+                            onNavigateToPrevious(previousArticleID!)
+                        } else if dragOffset < -threshold && nextArticleID != nil {
+                            // Swipe left - go to next
+                            onNavigateToNext(nextArticleID!)
+                        }
+                        
+                        // Reset state
+                        withAnimation {
+                            dragOffset = 0
+                            isDragging = false
+                        }
+                    }
+            )
         }
         .navigationTitle(article.feed?.title ?? "Article")
         .navigationBarTitleDisplayMode(.inline)
