@@ -26,78 +26,153 @@ struct RedditPostView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    
+    // Swipe gesture state
+    @State private var dragOffset: CGFloat = 0
+    @State private var isDragging = false
+    
+    // Swipe gesture configuration
+    private let swipeThreshold: CGFloat = 100
+    private let swipeIndicatorThreshold: CGFloat = 50
+    private let horizontalToVerticalRatio: CGFloat = 2.0 // Horizontal must be 2x vertical to trigger swipe
 
     var body: some View {
-        Group {
-            if isLoading {
-                VStack {
-                    ProgressView("Loading post...")
-                        .padding()
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let error = errorMessage {
-                VStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.system(size: 48))
-                        .foregroundStyle(.secondary)
-                    Text("Failed to Load Post")
-                        .font(.headline)
-                    Text(error)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                    Button("Try Again") {
-                        Task {
-                            await loadPost()
-                        }
+        ZStack {
+            Group {
+                if isLoading {
+                    VStack {
+                        ProgressView("Loading post...")
+                            .padding()
                     }
-                    .buttonStyle(.borderedProminent)
-                }
-                .padding()
-            } else if let post = post {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        // Post content section
-                        PostContentView(post: post, fontOption: fontOption, openURL: openURL)
-
-                        Divider()
-                            .padding(.vertical, 16)
-
-                        // Comments section
-                        if comments.isEmpty {
-                            VStack(spacing: 12) {
-                                Image(systemName: "bubble.left")
-                                    .font(.system(size: 36))
-                                    .foregroundStyle(.secondary)
-                                Text("No comments yet")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let error = errorMessage {
+                    VStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 48))
+                            .foregroundStyle(.secondary)
+                        Text("Failed to Load Post")
+                            .font(.headline)
+                        Text(error)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                        Button("Try Again") {
+                            Task {
+                                await loadPost()
                             }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 32)
-                        } else {
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text("\(post.numComments) Comments")
-                                        .font(.headline)
-                                        .fontWeight(.semibold)
-                                    Spacer()
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.bottom, 8)
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                    .padding()
+                } else if let post = post {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 0) {
+                            // Post content section
+                            PostContentView(post: post, fontOption: fontOption, openURL: openURL)
 
-                                LazyVStack(alignment: .leading, spacing: 0) {
-                                    ForEach(comments) { comment in
-                                        CommentRowView(comment: comment, fontOption: fontOption)
+                            Divider()
+                                .padding(.vertical, 16)
+
+                            // Comments section
+                            if comments.isEmpty {
+                                VStack(spacing: 12) {
+                                    Image(systemName: "bubble.left")
+                                        .font(.system(size: 36))
+                                        .foregroundStyle(.secondary)
+                                    Text("No comments yet")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 32)
+                            } else {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        Text("\(post.numComments) Comments")
+                                            .font(.headline)
+                                            .fontWeight(.semibold)
+                                        Spacer()
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.bottom, 8)
+
+                                    LazyVStack(alignment: .leading, spacing: 0) {
+                                        ForEach(comments) { comment in
+                                            CommentRowView(comment: comment, fontOption: fontOption)
+                                        }
                                     }
                                 }
                             }
                         }
+                        .padding(.bottom, 32)
                     }
-                    .padding(.bottom, 32)
                 }
             }
+            .offset(x: dragOffset)
+            .animation(.interactiveSpring(), value: dragOffset)
+            
+            // Swipe direction indicator
+            if isDragging {
+                VStack {
+                    Spacer()
+                    HStack {
+                        if dragOffset > swipeIndicatorThreshold && previousArticleID != nil {
+                            Label("Previous", systemImage: "chevron.left.circle.fill")
+                                .font(.title)
+                                .foregroundStyle(.white)
+                                .padding()
+                                .background(.ultraThinMaterial)
+                                .clipShape(Capsule())
+                                .padding(.leading, 20)
+                        }
+                        Spacer()
+                        if dragOffset < -swipeIndicatorThreshold && nextArticleID != nil {
+                            Label("Next", systemImage: "chevron.right.circle.fill")
+                                .font(.title)
+                                .foregroundStyle(.white)
+                                .padding()
+                                .background(.ultraThinMaterial)
+                                .clipShape(Capsule())
+                                .padding(.trailing, 20)
+                        }
+                    }
+                    Spacer()
+                }
+                .transition(.opacity)
+            }
         }
+        .gesture(
+            DragGesture()
+                .onChanged { value in
+                    // Only allow horizontal swipes with minimal vertical movement
+                    let horizontalAmount = abs(value.translation.width)
+                    let verticalAmount = abs(value.translation.height)
+                    
+                    if horizontalAmount > verticalAmount * horizontalToVerticalRatio {
+                        isDragging = true
+                        dragOffset = value.translation.width
+                    } else {
+                        // Reset if gesture becomes too vertical
+                        isDragging = false
+                        dragOffset = 0
+                    }
+                }
+                .onEnded { value in
+                    if dragOffset > swipeThreshold, let prevID = previousArticleID {
+                        // Swipe right - go to previous
+                        onNavigateToPrevious(prevID)
+                    } else if dragOffset < -swipeThreshold, let nextID = nextArticleID {
+                        // Swipe left - go to next
+                        onNavigateToNext(nextID)
+                    }
+                    
+                    // Reset state
+                    withAnimation {
+                        dragOffset = 0
+                        isDragging = false
+                    }
+                }
+        )
         .navigationTitle(article.feed?.title ?? "Reddit")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
