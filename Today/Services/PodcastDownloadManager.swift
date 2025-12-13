@@ -90,8 +90,9 @@ final class PodcastDownloadManager: NSObject, ObservableObject {
               let task = activeDownloads[audioUrl] else { return }
 
         task.cancel { [weak self] resumeData in
+            guard let self = self else { return }
             // Must dispatch to MainActor to update model and state
-            Task { @MainActor [audioUrl] in
+            Task { @MainActor [weak self, audioUrl, resumeData] in
                 guard let self = self else { return }
 
                 // Fetch download from modelContext to avoid Sendable capture
