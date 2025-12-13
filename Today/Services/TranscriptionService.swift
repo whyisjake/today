@@ -104,42 +104,24 @@ final class TranscriptionService: NSObject, ObservableObject {
 
     /// Download the model for a locale if needed
     func ensureModelAvailable(for locale: Locale) async throws {
-        // Check if locale is supported
-        let supported = await SpeechTranscriber.supportedLocales
+        print("🎙️ Ensuring model available for: \(locale.identifier)")
 
-        // Debug: print supported locales
-        print("🎙️ Supported locales: \(supported.map { $0.identifier })")
-        print("🎙️ Looking for locale: \(locale.identifier)")
-
-        // Try to find a matching locale (be flexible with format)
-        let targetIdentifier = locale.identifier
-        let matchingLocale = supported.first { supportedLocale in
-            // Check various identifier formats
-            supportedLocale.identifier == targetIdentifier ||
-            supportedLocale.identifier(.bcp47) == locale.identifier(.bcp47) ||
-            supportedLocale.language.languageCode == locale.language.languageCode
-        }
-
-        guard let actualLocale = matchingLocale else {
-            print("🎙️ No matching locale found for \(targetIdentifier)")
-            throw TranscriptionError.localeNotSupported
-        }
-
-        print("🎙️ Using locale: \(actualLocale.identifier)")
-
-        // Check if already installed
+        // Check if already installed - use exact match
         let installed = await SpeechTranscriber.installedLocales
-        let isInstalled = installed.contains { $0.identifier == actualLocale.identifier }
+        let isInstalled = installed.contains {
+            $0.identifier == locale.identifier ||
+            $0.identifier(.bcp47) == locale.identifier(.bcp47)
+        }
 
         if isInstalled {
-            print("🎙️ Model already installed")
+            print("🎙️ Model already installed for \(locale.identifier)")
             return
         }
 
-        print("🎙️ Downloading model...")
+        print("🎙️ Downloading model for \(locale.identifier)...")
 
-        // Create transcriber for download
-        let transcriber = SpeechTranscriber(locale: actualLocale, preset: .transcription)
+        // Create transcriber for download using the exact locale passed in
+        let transcriber = SpeechTranscriber(locale: locale, preset: .transcription)
 
         // Download the model
         if let downloader = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
@@ -222,9 +204,14 @@ final class TranscriptionService: NSObject, ObservableObject {
             print("🎙️ ⏱️ Audio analysis completed in \(formatDuration(analysisDuration))")
 
             // Collect transcription results
+            // Estimate ~1 segment per 2.5 seconds of audio for progress calculation
+            let estimatedTotalSegments = max(Int(audioDuration / 2.5), 100)
             var finalTranscription = ""
             var processedSegments = 0
             let resultsStartTime = Date()
+            var lastProgressLog = Date()
+
+            print("🎙️ 📝 Starting results collection (estimated ~\(estimatedTotalSegments) segments)...")
 
             for try await result in transcriber.results {
                 if result.isFinal {
@@ -232,8 +219,21 @@ final class TranscriptionService: NSObject, ObservableObject {
                     finalTranscription += " "
                     processedSegments += 1
 
-                    // Update progress (estimate based on segments)
-                    let progress = min(Double(processedSegments) / 100.0, 0.95)
+                    // Calculate progress based on estimated total segments
+                    let progress = min(Double(processedSegments) / Double(estimatedTotalSegments), 0.99)
+
+                    // Log progress every 10 seconds or every 50 segments
+                    let now = Date()
+                    if now.timeIntervalSince(lastProgressLog) >= 10 || processedSegments % 50 == 0 {
+                        let elapsed = now.timeIntervalSince(resultsStartTime)
+                        let segmentsPerSecond = Double(processedSegments) / max(elapsed, 1)
+                        let remainingSegments = estimatedTotalSegments - processedSegments
+                        let estimatedRemaining = Double(remainingSegments) / max(segmentsPerSecond, 0.1)
+
+                        print("🎙️ 📝 Progress: \(processedSegments)/~\(estimatedTotalSegments) segments (\(Int(progress * 100))%) - ETA: \(formatDuration(estimatedRemaining))")
+                        lastProgressLog = now
+                    }
+
                     await MainActor.run {
                         self.currentProgress = progress
                         download.transcriptionProgress = progress
@@ -243,7 +243,7 @@ final class TranscriptionService: NSObject, ObservableObject {
 
             let resultsEndTime = Date()
             let resultsDuration = resultsEndTime.timeIntervalSince(resultsStartTime)
-            print("🎙️ ⏱️ Results collection completed in \(formatDuration(resultsDuration))")
+            print("🎙️ ⏱️ Results collection completed in \(formatDuration(resultsDuration)) (\(processedSegments) segments)")
 
             // Clean up and finalize
             let cleanedTranscription = finalTranscription.trimmingCharacters(in: .whitespacesAndNewlines)
