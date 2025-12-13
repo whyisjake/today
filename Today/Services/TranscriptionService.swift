@@ -131,6 +131,7 @@ final class TranscriptionService: NSObject, ObservableObject {
     }
 
     /// Transcribe a downloaded podcast episode
+    /// For episodes longer than 15 minutes, schedules a background processing task
     func transcribe(download: PodcastDownload) async throws {
         guard let localPath = download.localFilePath else {
             throw TranscriptionError.noLocalFile
@@ -143,6 +144,13 @@ final class TranscriptionService: NSObject, ObservableObject {
 
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             throw TranscriptionError.fileNotFound
+        }
+
+        // Check episode duration - schedule background task for long episodes
+        if let audioDuration = download.article?.audioDuration, audioDuration > 900 {
+            // Episodes > 15 minutes - schedule background processing in case app goes to background
+            print("🎙️ Long episode detected (\(Int(audioDuration / 60)) min) - scheduling background task")
+            BackgroundSyncManager.shared.scheduleTranscriptionTask(for: download.audioUrl)
         }
 
         // Update status
