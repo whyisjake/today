@@ -56,7 +56,7 @@ final class TranscriptionService: NSObject, ObservableObject {
         return installed.map { $0.identifier(.bcp47) }.contains(locale.identifier(.bcp47))
     }
 
-    /// Find a supported locale, preferring a specific language
+    /// Find a supported locale, preferring the device's current locale, then en_US
     func findSupportedLocale(preferring languageCode: String) async throws -> Locale {
         let supported = await SpeechTranscriber.supportedLocales
 
@@ -68,13 +68,31 @@ final class TranscriptionService: NSObject, ObservableObject {
             throw TranscriptionError.notAvailableInSimulator
         }
 
-        // First try to find a locale matching the preferred language
-        if let preferred = supported.first(where: { $0.language.languageCode?.identifier == languageCode }) {
-            print("🎙️ Found preferred locale: \(preferred.identifier)")
-            return preferred
+        // 1. First try the device's current locale
+        let deviceLocale = Locale.current
+        if let deviceMatch = supported.first(where: {
+            $0.identifier == deviceLocale.identifier ||
+            $0.identifier(.bcp47) == deviceLocale.identifier(.bcp47)
+        }) {
+            print("🎙️ Using device locale: \(deviceMatch.identifier)")
+            return deviceMatch
         }
 
-        // Fall back to first available locale
+        // 2. For English, prefer en_US specifically
+        if languageCode == "en" {
+            if let enUS = supported.first(where: { $0.identifier.hasPrefix("en_US") || $0.identifier(.bcp47) == "en-US" }) {
+                print("🎙️ Using en_US locale: \(enUS.identifier)")
+                return enUS
+            }
+        }
+
+        // 3. Fall back to any locale matching the preferred language
+        if let langMatch = supported.first(where: { $0.language.languageCode?.identifier == languageCode }) {
+            print("🎙️ Found locale for language '\(languageCode)': \(langMatch.identifier)")
+            return langMatch
+        }
+
+        // 4. Last resort: first available locale
         guard let fallback = supported.first else {
             print("🎙️ No supported locales available!")
             throw TranscriptionError.localeNotSupported
