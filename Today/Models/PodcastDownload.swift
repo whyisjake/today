@@ -141,4 +141,26 @@ final class PodcastDownload {
         transcriptionStatus == .completed &&
         chapterGenerationStatus == .completed
     }
+
+    /// Check if transcription appears stuck (in progress but no recent updates)
+    /// This can happen if the app was terminated during transcription
+    var isTranscriptionStuck: Bool {
+        transcriptionStatus == .inProgress
+    }
+
+    /// Reset transcription state to allow retry
+    func resetTranscription() {
+        transcriptionStatus = .notStarted
+        transcriptionProgress = 0.0
+        transcription = nil
+        transcribedAt = nil
+        transcriptionDuration = nil
+    }
+
+    /// Reset chapter generation state to allow retry
+    func resetChapterGeneration() {
+        chapterGenerationStatus = .notStarted
+        aiChaptersData = nil
+        chaptersGeneratedAt = nil
+    }
 }

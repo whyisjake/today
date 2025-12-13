@@ -559,6 +559,39 @@ struct DownloadsSettingsView: View {
                 Text("Downloaded episodes will be automatically deleted after this period to save storage.")
             }
 
+            // Stuck transcriptions section
+            let stuckTranscriptions = downloads.filter { $0.isTranscriptionStuck }
+            if !stuckTranscriptions.isEmpty {
+                Section {
+                    ForEach(stuckTranscriptions) { download in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(download.article?.title ?? "Unknown Episode")
+                                    .font(.subheadline)
+                                    .lineLimit(1)
+                                HStack(spacing: 4) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundStyle(.orange)
+                                    Text("Transcription stuck at \(Int(download.transcriptionProgress * 100))%")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            Spacer()
+                            Button("Reset") {
+                                download.resetTranscription()
+                            }
+                            .font(.subheadline)
+                            .foregroundStyle(Color.accentColor)
+                        }
+                    }
+                } header: {
+                    Text("Stuck Transcriptions")
+                } footer: {
+                    Text("These transcriptions were interrupted. Reset them to try again.")
+                }
+            }
+
             // Downloaded episodes list
             if !downloads.isEmpty {
                 Section {

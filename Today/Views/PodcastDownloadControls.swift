@@ -302,6 +302,15 @@ struct PodcastDownloadControls: View {
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
+
+                // Cancel button - allows resetting hung transcriptions
+                Button {
+                    resetTranscription()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             if progress > 0 {
@@ -313,6 +322,22 @@ struct PodcastDownloadControls: View {
         .padding()
         .background(Color(.systemGray6))
         .cornerRadius(10)
+    }
+
+    private func resetTranscription() {
+        // Cancel ongoing transcription in the service
+        if #available(iOS 26.0, *) {
+            TranscriptionService.shared.cancelTranscription()
+        }
+
+        // Reset the download's transcription status
+        if let download = article.podcastDownload {
+            download.resetTranscription()
+        }
+
+        isTranscribing = false
+        transcriptionProgress = 0.0
+        print("🎙️ Transcription reset by user")
     }
 
     private func transcribedView(download: PodcastDownload) -> some View {
