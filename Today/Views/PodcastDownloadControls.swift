@@ -12,26 +12,40 @@ struct PodcastDownloadControls: View {
     let article: Article
     @Environment(\.modelContext) private var modelContext
     @StateObject private var downloadManager = PodcastDownloadManager.shared
+    @State private var transcriptionError: String?
+    @State private var showingTranscriptionError = false
+    @State private var isTranscribing = false
+    @State private var transcriptionProgress: Double = 0.0
 
     var body: some View {
         VStack(spacing: 12) {
             // Download section
             downloadSection
 
-            // Transcription section (only if downloaded)
-            if let download = article.podcastDownload,
-               download.downloadStatus == .completed {
-                transcriptionSection(download: download)
-            }
+            // Transcription section (only if downloaded and iOS 26+)
+            if #available(iOS 26.0, *) {
+                if let download = article.podcastDownload,
+                   download.downloadStatus == .completed {
+                    transcriptionSection(download: download)
+                }
 
-            // Chapter generation section (only if transcribed)
-            if let download = article.podcastDownload,
-               download.transcriptionStatus == .completed {
-                chapterSection(download: download)
+                // Chapter generation section (only if transcribed)
+                if let download = article.podcastDownload,
+                   download.transcriptionStatus == .completed {
+                    chapterSection(download: download)
+                }
             }
         }
         .onAppear {
             downloadManager.configure(with: modelContext)
+            if #available(iOS 26.0, *) {
+                TranscriptionService.shared.configure(with: modelContext)
+            }
+        }
+        .alert("Transcription Error", isPresented: $showingTranscriptionError) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(transcriptionError ?? "An unknown error occurred")
         }
     }
 
@@ -227,27 +241,37 @@ struct PodcastDownloadControls: View {
 
     // MARK: - Transcription Section
 
+    @available(iOS 26.0, *)
     @ViewBuilder
     private func transcriptionSection(download: PodcastDownload) -> some View {
         switch download.transcriptionStatus {
         case .notStarted:
-            transcribeButton
+            transcribeButton(download: download)
 
         case .inProgress:
-            transcribingView(progress: download.transcriptionProgress)
+            transcribingView(progress: isTranscribing ? transcriptionProgress : download.transcriptionProgress)
 
         case .completed:
             transcribedView(download: download)
 
         case .failed:
-            transcriptionFailedView
+            transcriptionFailedView(download: download)
         }
     }
 
-    private var transcribeButton: some View {
+    @available(iOS 26.0, *)
+    private func transcribeButton(download: PodcastDownload) -> some View {
         Button {
-            // Will be implemented with TranscriptionService
-            print("Transcription not yet implemented")
+            Task {
+                isTranscribing = true
+                do {
+                    try await TranscriptionService.shared.transcribe(download: download)
+                } catch {
+                    transcriptionError = error.localizedDescription
+                    showingTranscriptionError = true
+                }
+                isTranscribing = false
+            }
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "waveform")
@@ -326,7 +350,8 @@ struct PodcastDownloadControls: View {
         .cornerRadius(10)
     }
 
-    private var transcriptionFailedView: some View {
+    @available(iOS 26.0, *)
+    private func transcriptionFailedView(download: PodcastDownload) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 4) {
@@ -340,8 +365,16 @@ struct PodcastDownloadControls: View {
             Spacer()
 
             Button {
-                // Retry transcription
-                print("Retry transcription not yet implemented")
+                Task {
+                    isTranscribing = true
+                    do {
+                        try await TranscriptionService.shared.transcribe(download: download)
+                    } catch {
+                        transcriptionError = error.localizedDescription
+                        showingTranscriptionError = true
+                    }
+                    isTranscribing = false
+                }
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "arrow.clockwise")
@@ -358,6 +391,7 @@ struct PodcastDownloadControls: View {
 
     // MARK: - Chapter Section
 
+    @available(iOS 26.0, *)
     @ViewBuilder
     private func chapterSection(download: PodcastDownload) -> some View {
         switch download.chapterGenerationStatus {
