@@ -56,25 +56,71 @@ final class TranscriptionService: NSObject, ObservableObject {
         return installed.map { $0.identifier(.bcp47) }.contains(locale.identifier(.bcp47))
     }
 
+    /// Find a supported locale, preferring a specific language
+    func findSupportedLocale(preferring languageCode: String) async throws -> Locale {
+        let supported = await SpeechTranscriber.supportedLocales
+
+        print("🎙️ Available locales: \(supported.map { $0.identifier })")
+
+        // First try to find a locale matching the preferred language
+        if let preferred = supported.first(where: { $0.language.languageCode?.identifier == languageCode }) {
+            print("🎙️ Found preferred locale: \(preferred.identifier)")
+            return preferred
+        }
+
+        // Fall back to first available locale
+        guard let fallback = supported.first else {
+            print("🎙️ No supported locales available!")
+            throw TranscriptionError.localeNotSupported
+        }
+
+        print("🎙️ Using fallback locale: \(fallback.identifier)")
+        return fallback
+    }
+
     /// Download the model for a locale if needed
     func ensureModelAvailable(for locale: Locale) async throws {
         // Check if locale is supported
         let supported = await SpeechTranscriber.supportedLocales
-        guard supported.map({ $0.identifier(.bcp47) }).contains(locale.identifier(.bcp47)) else {
+
+        // Debug: print supported locales
+        print("🎙️ Supported locales: \(supported.map { $0.identifier })")
+        print("🎙️ Looking for locale: \(locale.identifier)")
+
+        // Try to find a matching locale (be flexible with format)
+        let targetIdentifier = locale.identifier
+        let matchingLocale = supported.first { supportedLocale in
+            // Check various identifier formats
+            supportedLocale.identifier == targetIdentifier ||
+            supportedLocale.identifier(.bcp47) == locale.identifier(.bcp47) ||
+            supportedLocale.language.languageCode == locale.language.languageCode
+        }
+
+        guard let actualLocale = matchingLocale else {
+            print("🎙️ No matching locale found for \(targetIdentifier)")
             throw TranscriptionError.localeNotSupported
         }
 
+        print("🎙️ Using locale: \(actualLocale.identifier)")
+
         // Check if already installed
-        if await isModelInstalled(for: locale) {
+        let installed = await SpeechTranscriber.installedLocales
+        let isInstalled = installed.contains { $0.identifier == actualLocale.identifier }
+
+        if isInstalled {
+            print("🎙️ Model already installed")
             return
         }
 
+        print("🎙️ Downloading model...")
+
         // Create transcriber for download
-        let transcriber = SpeechTranscriber(locale: locale, preset: .transcription)
+        let transcriber = SpeechTranscriber(locale: actualLocale, preset: .transcription)
 
         // Download the model
         if let downloader = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
             try await downloader.downloadAndInstall()
+            print("🎙️ Model download complete")
         }
     }
 
@@ -106,14 +152,14 @@ final class TranscriptionService: NSObject, ObservableObject {
         }
 
         do {
-            // Use English locale by default, could be made configurable
-            let locale = Locale(identifier: "en-US")
+            // Find a supported English locale
+            let transcriptionLocale = try await findSupportedLocale(preferring: "en")
 
             // Ensure model is available
-            try await ensureModelAvailable(for: locale)
+            try await ensureModelAvailable(for: transcriptionLocale)
 
             // Create transcriber for offline file transcription
-            let transcriber = SpeechTranscriber(locale: locale, preset: .transcription)
+            let transcriber = SpeechTranscriber(locale: transcriptionLocale, preset: .transcription)
 
             // Create analyzer with the transcriber module
             let analyzer = SpeechAnalyzer(modules: [transcriber])
