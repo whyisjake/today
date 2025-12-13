@@ -72,6 +72,7 @@ final class PodcastDownload {
     var transcriptionStatusRaw: String
     var transcriptionProgress: Double
     var transcribedAt: Date?
+    var transcriptionDuration: TimeInterval? // How long transcription took (for metrics)
 
     // AI-generated chapters (stored as JSON Data)
     var aiChaptersData: Data?
@@ -118,6 +119,7 @@ final class PodcastDownload {
         self.transcriptionStatusRaw = TranscriptionStatus.notStarted.rawValue
         self.transcriptionProgress = 0.0
         self.transcribedAt = nil
+        self.transcriptionDuration = nil
         self.aiChaptersData = nil
         self.chapterGenerationStatusRaw = ChapterGenerationStatus.notStarted.rawValue
         self.chaptersGeneratedAt = nil

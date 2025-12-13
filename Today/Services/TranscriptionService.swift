@@ -146,11 +146,21 @@ final class TranscriptionService: NSObject, ObservableObject {
             throw TranscriptionError.fileNotFound
         }
 
+        // Get audio duration for metrics
+        let audioDuration = download.article?.audioDuration ?? 0
+
         // Check episode duration - schedule background task for long episodes
-        if let audioDuration = download.article?.audioDuration, audioDuration > 900 {
+        if audioDuration > 900 {
             // Episodes > 15 minutes - schedule background processing in case app goes to background
             print("🎙️ Long episode detected (\(Int(audioDuration / 60)) min) - scheduling background task")
             BackgroundSyncManager.shared.scheduleTranscriptionTask(for: download.audioUrl)
+        }
+
+        // Start timing
+        let transcriptionStartTime = Date()
+        print("🎙️ ⏱️ Starting transcription at \(transcriptionStartTime.formatted(date: .omitted, time: .standard))")
+        if audioDuration > 0 {
+            print("🎙️ ⏱️ Audio duration: \(formatDuration(audioDuration))")
         }
 
         // Update status
@@ -181,14 +191,22 @@ final class TranscriptionService: NSObject, ObservableObject {
             // Load the audio file
             let audioFile = try AVAudioFile(forReading: fileURL)
 
+            // Time the analysis phase
+            let analysisStartTime = Date()
+
             // Analyze the audio file
             if let lastSample = try await analyzer.analyzeSequence(from: audioFile) {
                 try await analyzer.finalizeAndFinish(through: lastSample)
             }
 
+            let analysisEndTime = Date()
+            let analysisDuration = analysisEndTime.timeIntervalSince(analysisStartTime)
+            print("🎙️ ⏱️ Audio analysis completed in \(formatDuration(analysisDuration))")
+
             // Collect transcription results
             var finalTranscription = ""
             var processedSegments = 0
+            let resultsStartTime = Date()
 
             for try await result in transcriber.results {
                 if result.isFinal {
@@ -205,23 +223,66 @@ final class TranscriptionService: NSObject, ObservableObject {
                 }
             }
 
+            let resultsEndTime = Date()
+            let resultsDuration = resultsEndTime.timeIntervalSince(resultsStartTime)
+            print("🎙️ ⏱️ Results collection completed in \(formatDuration(resultsDuration))")
+
             // Clean up and finalize
             let cleanedTranscription = finalTranscription.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            // Calculate final metrics
+            let transcriptionEndTime = Date()
+            let totalDuration = transcriptionEndTime.timeIntervalSince(transcriptionStartTime)
+            let wordCount = cleanedTranscription.split(separator: " ").count
+
+            // Log comprehensive metrics
+            print("🎙️ ✅ Transcription completed!")
+            print("🎙️ ⏱️ Total time: \(formatDuration(totalDuration))")
+            if audioDuration > 0 {
+                let realtimeFactor = audioDuration / totalDuration
+                print("🎙️ ⏱️ Realtime factor: \(String(format: "%.1fx", realtimeFactor)) (audio/transcription time)")
+            }
+            print("🎙️ ⏱️ Words transcribed: \(wordCount)")
+            if totalDuration > 0 {
+                let wordsPerSecond = Double(wordCount) / totalDuration
+                print("🎙️ ⏱️ Processing rate: \(String(format: "%.1f", wordsPerSecond)) words/sec")
+            }
+            print("🎙️ ⏱️ Segments processed: \(processedSegments)")
 
             // Update download with transcription
             download.transcription = cleanedTranscription
             download.transcriptionStatus = .completed
             download.transcriptionProgress = 1.0
+            download.transcriptionDuration = totalDuration
+            download.transcribedAt = Date()
 
             currentProgress = 1.0
 
-            print("Transcription completed: \(cleanedTranscription.prefix(100))...")
+            print("🎙️ Preview: \(cleanedTranscription.prefix(100))...")
 
         } catch {
-            print("Transcription failed: \(error)")
+            let failTime = Date()
+            let elapsedTime = failTime.timeIntervalSince(transcriptionStartTime)
+            print("🎙️ ❌ Transcription failed after \(formatDuration(elapsedTime)): \(error)")
             download.transcriptionStatus = .failed
             download.transcriptionProgress = 0.0
             throw error
+        }
+    }
+
+    /// Format duration as human-readable string
+    private func formatDuration(_ seconds: TimeInterval) -> String {
+        if seconds < 60 {
+            return String(format: "%.1f sec", seconds)
+        } else if seconds < 3600 {
+            let minutes = Int(seconds) / 60
+            let secs = Int(seconds) % 60
+            return "\(minutes)m \(secs)s"
+        } else {
+            let hours = Int(seconds) / 3600
+            let minutes = (Int(seconds) % 3600) / 60
+            let secs = Int(seconds) % 60
+            return "\(hours)h \(minutes)m \(secs)s"
         }
     }
 
