@@ -132,12 +132,47 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
         }
     }
 
+    // MARK: - AI Chapters Support
+
+    @Published var aiChapters: [AIChapterData] = []
+
+    /// Load AI-generated chapters from download if available
+    func loadAIChapters(for article: Article) {
+        if let download = article.podcastDownload,
+           let chapters = download.aiChapters {
+            aiChapters = chapters
+        } else {
+            aiChapters = []
+        }
+    }
+
+    /// Seek to an AI-generated chapter
+    func seekToAIChapter(_ chapter: AIChapterData) {
+        guard duration > 0 else { return }
+        let progress = chapter.startTime / duration
+        seek(to: progress)
+    }
+
     // MARK: - Playback Control
 
     func play(article: Article) {
-        guard let audioUrlString = article.audioUrl,
-              let audioUrl = URL(string: audioUrlString) else {
+        guard let audioUrlString = article.audioUrl else {
             print("No audio URL found for article")
+            return
+        }
+
+        // Determine playback URL - prefer local download if available
+        let playbackURL: URL
+        if let download = article.podcastDownload,
+           download.downloadStatus == .completed,
+           let localURL = PodcastDownloadManager.shared.getLocalFileURL(for: download) {
+            playbackURL = localURL
+            print("Playing from local file: \(localURL.lastPathComponent)")
+        } else if let remoteURL = URL(string: audioUrlString) {
+            playbackURL = remoteURL
+            print("Streaming from remote URL")
+        } else {
+            print("Invalid audio URL")
             return
         }
 
@@ -148,9 +183,12 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
 
         currentArticle = article
 
+        // Load AI chapters if available
+        loadAIChapters(for: article)
+
         // Create player if needed
         if player == nil {
-            let playerItem = AVPlayerItem(url: audioUrl)
+            let playerItem = AVPlayerItem(url: playbackURL)
             player = AVPlayer(playerItem: playerItem)
             setupPlayerObservers()
 
@@ -206,6 +244,7 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
         currentArticle = nil
         chapters = []
         currentChapter = nil
+        aiChapters = []
         lastSavedTime = 0
         isRestoringPosition = false
 

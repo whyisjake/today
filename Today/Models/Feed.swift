@@ -17,6 +17,9 @@ final class Feed {
     var lastFetched: Date?
     var isActive: Bool
 
+    // Podcast download settings (nil = use global default)
+    var downloadEpisodeLimit: Int?
+
     @Relationship(deleteRule: .cascade, inverse: \Article.feed)
     var articles: [Article]?
 
@@ -27,7 +30,13 @@ final class Feed {
         self.category = category
         self.isActive = isActive
         self.lastFetched = nil
+        self.downloadEpisodeLimit = nil
         self.articles = []
+    }
+
+    /// Returns true if this feed has podcast episodes (any article with audio)
+    var isPodcastFeed: Bool {
+        return articles?.contains { $0.hasPodcastAudio } ?? false
     }
     
     /// Returns true if this feed is from Reddit
