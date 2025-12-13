@@ -16,6 +16,9 @@ struct PodcastDownloadControls: View {
     @State private var showingTranscriptionError = false
     @State private var isTranscribing = false
     @State private var transcriptionProgress: Double = 0.0
+    @State private var chapterError: String?
+    @State private var showingChapterError = false
+    @State private var isGeneratingChapters = false
 
     var body: some View {
         VStack(spacing: 12) {
@@ -40,12 +43,18 @@ struct PodcastDownloadControls: View {
             downloadManager.configure(with: modelContext)
             if #available(iOS 26.0, *) {
                 TranscriptionService.shared.configure(with: modelContext)
+                ChapterGenerationService.shared.configure(with: modelContext)
             }
         }
         .alert("Transcription Error", isPresented: $showingTranscriptionError) {
             Button("OK", role: .cancel) { }
         } message: {
             Text(transcriptionError ?? "An unknown error occurred")
+        }
+        .alert("Chapter Generation Error", isPresented: $showingChapterError) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(chapterError ?? "An unknown error occurred")
         }
     }
 
@@ -421,7 +430,7 @@ struct PodcastDownloadControls: View {
     private func chapterSection(download: PodcastDownload) -> some View {
         switch download.chapterGenerationStatus {
         case .notStarted:
-            generateChaptersButton
+            generateChaptersButton(download: download)
 
         case .inProgress:
             generatingChaptersView
@@ -430,14 +439,23 @@ struct PodcastDownloadControls: View {
             chaptersGeneratedView(download: download)
 
         case .failed:
-            chapterGenerationFailedView
+            chapterGenerationFailedView(download: download)
         }
     }
 
-    private var generateChaptersButton: some View {
+    @available(iOS 26.0, *)
+    private func generateChaptersButton(download: PodcastDownload) -> some View {
         Button {
-            // Will be implemented with ChapterGenerationService
-            print("Chapter generation not yet implemented")
+            Task {
+                isGeneratingChapters = true
+                do {
+                    try await ChapterGenerationService.shared.generateChapters(for: download)
+                } catch {
+                    chapterError = error.localizedDescription
+                    showingChapterError = true
+                }
+                isGeneratingChapters = false
+            }
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "sparkles")
@@ -450,6 +468,7 @@ struct PodcastDownloadControls: View {
             .background(Color.purple.opacity(0.1))
             .cornerRadius(10)
         }
+        .disabled(!ChapterGenerationService.shared.isAvailable)
     }
 
     private var generatingChaptersView: some View {
@@ -472,8 +491,8 @@ struct PodcastDownloadControls: View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 4) {
-                    Image(systemName: "sparkles")
-                        .foregroundStyle(.purple)
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
                     Text("AI Chapters Ready")
                         .font(.subheadline.weight(.medium))
                 }
@@ -487,15 +506,24 @@ struct PodcastDownloadControls: View {
 
             Spacer()
 
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
+            NavigationLink {
+                FullChapterListView(download: download)
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "list.bullet")
+                    Text("View")
+                }
+                .font(.subheadline)
+                .foregroundStyle(.purple)
+            }
         }
         .padding()
         .background(Color(.systemGray6))
         .cornerRadius(10)
     }
 
-    private var chapterGenerationFailedView: some View {
+    @available(iOS 26.0, *)
+    private func chapterGenerationFailedView(download: PodcastDownload) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 4) {
@@ -509,8 +537,17 @@ struct PodcastDownloadControls: View {
             Spacer()
 
             Button {
-                // Retry chapter generation
-                print("Retry chapter generation not yet implemented")
+                Task {
+                    isGeneratingChapters = true
+                    download.resetChapterGeneration()
+                    do {
+                        try await ChapterGenerationService.shared.generateChapters(for: download)
+                    } catch {
+                        chapterError = error.localizedDescription
+                        showingChapterError = true
+                    }
+                    isGeneratingChapters = false
+                }
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "arrow.clockwise")
