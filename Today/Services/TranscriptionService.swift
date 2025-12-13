@@ -62,6 +62,12 @@ final class TranscriptionService: NSObject, ObservableObject {
 
         print("🎙️ Available locales: \(supported.map { $0.identifier })")
 
+        // Check if running in simulator (no locales available)
+        if supported.isEmpty {
+            print("🎙️ No supported locales available - SpeechTranscriber requires a physical device")
+            throw TranscriptionError.notAvailableInSimulator
+        }
+
         // First try to find a locale matching the preferred language
         if let preferred = supported.first(where: { $0.language.languageCode?.identifier == languageCode }) {
             print("🎙️ Found preferred locale: \(preferred.identifier)")
@@ -223,6 +229,7 @@ final class TranscriptionService: NSObject, ObservableObject {
 
 enum TranscriptionError: LocalizedError {
     case notAvailable
+    case notAvailableInSimulator
     case localeNotSupported
     case noLocalFile
     case fileNotFound
@@ -233,6 +240,8 @@ enum TranscriptionError: LocalizedError {
         switch self {
         case .notAvailable:
             return "Transcription is not available on this device"
+        case .notAvailableInSimulator:
+            return "Transcription requires a physical device. SpeechTranscriber is not available in the iOS Simulator."
         case .localeNotSupported:
             return "The selected language is not supported"
         case .noLocalFile:
