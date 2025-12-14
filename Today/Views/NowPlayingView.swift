@@ -508,13 +508,18 @@ struct AIChapterRowView: View {
     let onTap: () -> Void
     @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
 
+    // Color based on whether this is an ad
+    private var chapterColor: Color {
+        chapter.isAd ? .orange : .purple
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             // Timestamp or playing indicator
             if isActive {
                 Image(systemName: "speaker.wave.2.fill")
                     .font(.caption)
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(chapterColor)
                     .frame(width: 52)
             } else {
                 Text(formatTime(chapter.startTime))
@@ -525,13 +530,20 @@ struct AIChapterRowView: View {
 
             // Chapter info
             VStack(alignment: .leading, spacing: 4) {
-                Text(chapter.title)
-                    .font(.subheadline)
-                    .foregroundStyle(isActive ? .purple : .primary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
+                HStack(spacing: 6) {
+                    if chapter.isAd {
+                        Image(systemName: "megaphone.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                    }
+                    Text(chapter.title)
+                        .font(.subheadline)
+                        .foregroundStyle(isActive ? chapterColor : .primary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                }
 
-                if !chapter.summary.isEmpty && chapter.summary != "Chapter segment" {
+                if !chapter.summary.isEmpty && chapter.summary != "Chapter segment" && chapter.summary != "Advertisement" {
                     Text(chapter.summary)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -545,8 +557,8 @@ struct AIChapterRowView: View {
                                 .font(.caption2)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
-                                .background(Color.purple.opacity(0.1))
-                                .foregroundStyle(.purple)
+                                .background(chapterColor.opacity(0.1))
+                                .foregroundStyle(chapterColor)
                                 .cornerRadius(4)
                         }
                     }
@@ -565,7 +577,7 @@ struct AIChapterRowView: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
-        .background(isActive ? Color.purple.opacity(0.1) : Color.clear)
+        .background(isActive ? chapterColor.opacity(0.1) : (chapter.isAd ? Color.orange.opacity(0.05) : Color.clear))
         .cornerRadius(8)
         .onTapGesture {
             onTap()

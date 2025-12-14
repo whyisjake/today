@@ -41,14 +41,16 @@ struct AIChapterData: Codable, Identifiable, Equatable {
     let startTime: TimeInterval
     let endTime: TimeInterval?
     let keywords: [String]
+    let isAd: Bool  // True if this segment is an advertisement
 
-    init(id: UUID = UUID(), title: String, summary: String, startTime: TimeInterval, endTime: TimeInterval? = nil, keywords: [String] = []) {
+    init(id: UUID = UUID(), title: String, summary: String, startTime: TimeInterval, endTime: TimeInterval? = nil, keywords: [String] = [], isAd: Bool = false) {
         self.id = id
         self.title = title
         self.summary = summary
         self.startTime = startTime
         self.endTime = endTime
         self.keywords = keywords
+        self.isAd = isAd
     }
 }
 

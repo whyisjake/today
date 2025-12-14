@@ -84,9 +84,12 @@ final class ChapterGenerationService: ObservableObject {
             download.chaptersGeneratedAt = Date()
             currentProgress = 1.0
 
-            print("✨ Generated \(chapters.count) chapters")
+            let contentChapters = chapters.filter { !$0.isAd }
+            let adChapters = chapters.filter { $0.isAd }
+            print("✨ Generated \(chapters.count) chapters (\(contentChapters.count) content, \(adChapters.count) ads)")
             for chapter in chapters {
-                print("  📍 \(formatTime(chapter.startTime)) - \(chapter.title)")
+                let adIcon = chapter.isAd ? "📢" : "📍"
+                print("  \(adIcon) \(formatTime(chapter.startTime)) - \(chapter.title)")
             }
             #else
             throw ChapterGenerationError.aiNotAvailable
@@ -171,7 +174,8 @@ final class ChapterGenerationService: ObservableObject {
                 title: "Introduction",
                 summary: "Episode opening",
                 startTime: 0,
-                keywords: []
+                keywords: [],
+                isAd: false
             )
             allChapters.insert(introChapter, at: 0)
         }
@@ -192,7 +196,8 @@ final class ChapterGenerationService: ObservableObject {
                 summary: chapter.summary,
                 startTime: chapter.startTime,
                 endTime: endTime,
-                keywords: chapter.keywords
+                keywords: chapter.keywords,
+                isAd: chapter.isAd
             ))
         }
 
@@ -216,12 +221,21 @@ final class ChapterGenerationService: ObservableObject {
         let session = LanguageModelSession()
 
         let promptTemplate = """
-        Identify 3-6 chapters in this podcast transcript. For each:
+        Analyze this podcast transcript. Identify ONLY major topic changes (3-5 chapters max).
+        Also flag any advertisements or sponsor reads.
+
+        For each segment:
         CHAPTER N
+        TYPE: content OR ad
         TITLE: 2-5 word title
         SUMMARY: one sentence
         WORD_POSITION: number (word count from start)
         KEYWORDS: 2-3 words
+
+        Rules:
+        - Only create chapters for MAJOR topic shifts, not minor transitions
+        - Mark sponsor reads, product promotions, promo codes as TYPE: ad
+        - Prefer fewer, broader chapters over many small ones
 
         TRANSCRIPT:
         """
@@ -291,6 +305,7 @@ final class ChapterGenerationService: ObservableObject {
         var summary = ""
         var wordPosition: Int? = nil  // nil means we'll use fallback
         var keywords: [String] = []
+        var isAd = false
 
         let lines = block.components(separatedBy: "\n")
 
@@ -309,8 +324,15 @@ final class ChapterGenerationService: ObservableObject {
                 cleaned = String(cleaned.dropFirst()).trimmingCharacters(in: .whitespaces)
             }
 
+            // Check for TYPE (ad vs content)
+            if cleaned.uppercased().hasPrefix("TYPE:") {
+                let typeStr = cleaned.replacingOccurrences(of: "TYPE:", with: "", options: .caseInsensitive)
+                    .trimmingCharacters(in: .whitespaces)
+                    .lowercased()
+                isAd = typeStr.contains("ad") || typeStr.contains("sponsor") || typeStr.contains("promo")
+            }
             // Check for title in various formats
-            if cleaned.uppercased().hasPrefix("TITLE:") {
+            else if cleaned.uppercased().hasPrefix("TITLE:") {
                 title = cleaned.replacingOccurrences(of: "TITLE:", with: "", options: .caseInsensitive)
                     .trimmingCharacters(in: .whitespaces)
                     .replacingOccurrences(of: "\"", with: "")
@@ -358,9 +380,10 @@ final class ChapterGenerationService: ObservableObject {
 
         return AIChapterData(
             title: title,
-            summary: summary.isEmpty ? "Chapter segment" : summary,
+            summary: summary.isEmpty ? (isAd ? "Advertisement" : "Chapter segment") : summary,
             startTime: startTime,
-            keywords: keywords
+            keywords: keywords,
+            isAd: isAd
         )
     }
 
