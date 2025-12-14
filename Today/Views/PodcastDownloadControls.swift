@@ -12,6 +12,7 @@ struct PodcastDownloadControls: View {
     let article: Article
     @Environment(\.modelContext) private var modelContext
     @StateObject private var downloadManager = PodcastDownloadManager.shared
+    @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
     @State private var transcriptionError: String?
     @State private var showingTranscriptionError = false
     @State private var isTranscribing = false
@@ -462,10 +463,10 @@ struct PodcastDownloadControls: View {
                 Text("Generate AI Chapters")
             }
             .font(.subheadline.weight(.medium))
-            .foregroundStyle(.purple)
+            .foregroundStyle(accentColor.color)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
-            .background(Color.purple.opacity(0.1))
+            .background(accentColor.color.opacity(0.1))
             .cornerRadius(10)
         }
         .disabled(!ChapterGenerationService.shared.isAvailable)
@@ -525,7 +526,7 @@ struct PodcastDownloadControls: View {
                         Text("View")
                     }
                     .font(.subheadline)
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(accentColor.color)
                 }
             }
         }
