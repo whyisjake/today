@@ -506,15 +506,27 @@ struct PodcastDownloadControls: View {
 
             Spacer()
 
-            NavigationLink {
-                FullChapterListView(download: download)
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "list.bullet")
-                    Text("View")
+            HStack(spacing: 12) {
+                // Regenerate button
+                Button {
+                    download.resetChapterGeneration()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
-                .font(.subheadline)
-                .foregroundStyle(.purple)
+
+                // View chapters
+                NavigationLink {
+                    FullChapterListView(download: download)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "list.bullet")
+                        Text("View")
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(.purple)
+                }
             }
         }
         .padding()

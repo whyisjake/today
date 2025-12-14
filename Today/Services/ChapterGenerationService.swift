@@ -103,7 +103,8 @@ final class ChapterGenerationService: ObservableObject {
 
     #if canImport(FoundationModels)
     private func generateChaptersWithAI(transcription: String, audioDuration: TimeInterval) async throws -> [AIChapterData] {
-        let session = LanguageModelSession()
+        // Note: We create a NEW session for each chunk because context is cumulative
+        // Each prompt+response adds to the running token count until session is reset
 
         // Split transcription into manageable chunks if too long
         let words = transcription.split(separator: " ")
@@ -115,7 +116,8 @@ final class ChapterGenerationService: ObservableObject {
         print("✨ Words: \(wordCount), Duration: \(formatTime(audioDuration)), WPS: \(String(format: "%.2f", wordsPerSecond))")
 
         // For very long transcriptions, we need to chunk and process
-        let maxWordsPerChunk = 3000 // ~15 minutes of content at 200 WPM
+        // Apple Intelligence has a 4096 token limit, so keep chunks small
+        let maxWordsPerChunk = 1200 // ~6 minutes of content at 200 WPM
         var allChapters: [AIChapterData] = []
 
         if wordCount <= maxWordsPerChunk {
@@ -125,8 +127,7 @@ final class ChapterGenerationService: ObservableObject {
                 text: transcription,
                 startWordIndex: 0,
                 totalWords: wordCount,
-                wordsPerSecond: wordsPerSecond,
-                session: session
+                wordsPerSecond: wordsPerSecond
             )
             allChapters = chapters
         } else {
@@ -144,12 +145,13 @@ final class ChapterGenerationService: ObservableObject {
 
                 currentProgress = Double(chunkNumber) / Double(totalChunks) * 0.8
 
+                print("✨ Processing chunk \(chunkNumber + 1)/\(totalChunks)...")
+
                 let chapters = try await identifyChapters(
                     text: chunkText,
                     startWordIndex: currentIndex,
                     totalWords: wordCount,
-                    wordsPerSecond: wordsPerSecond,
-                    session: session
+                    wordsPerSecond: wordsPerSecond
                 )
 
                 allChapters.append(contentsOf: chapters)
@@ -197,56 +199,81 @@ final class ChapterGenerationService: ObservableObject {
         return chaptersWithEndTimes
     }
 
+    /// Estimate token count for a string
+    /// Apple Intelligence: 1 token ≈ 3-4 characters (using 3 to be safe)
+    private func estimateTokens(_ text: String) -> Int {
+        return (text.count + 2) / 3  // Round up: chars / 3
+    }
+
     private func identifyChapters(
         text: String,
         startWordIndex: Int,
         totalWords: Int,
-        wordsPerSecond: Double,
-        session: LanguageModelSession
+        wordsPerSecond: Double
     ) async throws -> [AIChapterData] {
 
-        let prompt = """
-        Analyze this podcast transcript and identify 3-8 distinct topic segments or chapters.
+        // Create a FRESH session for each call - context is cumulative within a session
+        let session = LanguageModelSession()
 
-        For each chapter, provide:
-        1. A concise title (2-5 words)
-        2. A brief summary (1 sentence)
-        3. The approximate word position where it starts (as a number)
-        4. 2-3 relevant keywords
+        let promptTemplate = """
+        Identify 3-6 chapters in this podcast transcript. For each:
+        CHAPTER N
+        TITLE: 2-5 word title
+        SUMMARY: one sentence
+        WORD_POSITION: number (word count from start)
+        KEYWORDS: 2-3 words
 
         TRANSCRIPT:
-        \(text.prefix(8000))
-
-        FORMAT YOUR RESPONSE EXACTLY LIKE THIS:
-        CHAPTER 1
-        TITLE: [title]
-        SUMMARY: [summary]
-        WORD_POSITION: [number]
-        KEYWORDS: [keyword1], [keyword2], [keyword3]
-
-        CHAPTER 2
-        TITLE: [title]
-        ...
-
-        Focus on identifying clear topic shifts, new subjects, or segment transitions.
-        Word positions should be relative to the start of this transcript (starting at 0).
         """
+
+        // Calculate how much text we can fit
+        let maxTokens = 4096
+        let responseBuffer = 800  // Reserve tokens for AI response
+        let promptTokens = estimateTokens(promptTemplate)
+        let availableTokens = maxTokens - responseBuffer - promptTokens
+
+        // Convert available tokens to character limit (1 token ≈ 3 chars)
+        let maxChars = availableTokens * 3
+
+        // Truncate text to fit
+        let truncatedText = String(text.prefix(maxChars))
+
+        // Log token estimation
+        let estimatedTotal = promptTokens + estimateTokens(truncatedText)
+        print("✨ Token estimate: ~\(estimatedTotal) (prompt: \(promptTokens), text: \(estimateTokens(truncatedText)), max: \(maxTokens - responseBuffer))")
+
+        let prompt = promptTemplate + truncatedText
 
         let response = try await session.respond(to: prompt)
         let content = response.content
+
+        // Debug: log the AI response
+        print("✨ AI Response (\(content.count) chars):")
+        print(content.prefix(500))
+        if content.count > 500 {
+            print("... (truncated)")
+        }
 
         // Parse the response
         var chapters: [AIChapterData] = []
         let chapterBlocks = content.components(separatedBy: "CHAPTER")
 
-        for block in chapterBlocks where !block.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        print("✨ Found \(chapterBlocks.count) chapter blocks")
+
+        for (index, block) in chapterBlocks.enumerated() where !block.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             if let chapter = parseChapterBlock(
                 block,
                 startWordIndex: startWordIndex,
                 totalWords: totalWords,
-                wordsPerSecond: wordsPerSecond
+                wordsPerSecond: wordsPerSecond,
+                chunkIndex: index  // Pass index for fallback positioning
             ) {
+                print("✨ Parsed chapter: \(chapter.title) @ word \(Int(chapter.startTime * wordsPerSecond))")
                 chapters.append(chapter)
+            } else {
+                // Debug: show first 100 chars of block that failed to parse
+                let preview = block.prefix(100).replacingOccurrences(of: "\n", with: " ")
+                print("✨ Failed to parse block \(index): \(preview)...")
             }
         }
 
@@ -257,36 +284,66 @@ final class ChapterGenerationService: ObservableObject {
         _ block: String,
         startWordIndex: Int,
         totalWords: Int,
-        wordsPerSecond: Double
+        wordsPerSecond: Double,
+        chunkIndex: Int = 0
     ) -> AIChapterData? {
         var title = ""
         var summary = ""
-        var wordPosition = 0
+        var wordPosition: Int? = nil  // nil means we'll use fallback
         var keywords: [String] = []
 
         let lines = block.components(separatedBy: "\n")
 
         for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            // Strip markdown formatting and bullet points before parsing
+            var cleaned = line
+                .trimmingCharacters(in: .whitespaces)
+                .replacingOccurrences(of: "**", with: "")
+                .replacingOccurrences(of: "###", with: "")
+                .replacingOccurrences(of: "##", with: "")
+                .replacingOccurrences(of: "#", with: "")
+                .trimmingCharacters(in: .whitespaces)
 
-            if trimmed.uppercased().hasPrefix("TITLE:") {
-                title = trimmed.replacingOccurrences(of: "TITLE:", with: "", options: .caseInsensitive)
+            // Remove leading bullet points (-, *, •)
+            while cleaned.hasPrefix("-") || cleaned.hasPrefix("*") || cleaned.hasPrefix("•") {
+                cleaned = String(cleaned.dropFirst()).trimmingCharacters(in: .whitespaces)
+            }
+
+            // Check for title in various formats
+            if cleaned.uppercased().hasPrefix("TITLE:") {
+                title = cleaned.replacingOccurrences(of: "TITLE:", with: "", options: .caseInsensitive)
                     .trimmingCharacters(in: .whitespaces)
-                    .replacingOccurrences(of: "**", with: "")
-            } else if trimmed.uppercased().hasPrefix("SUMMARY:") {
-                summary = trimmed.replacingOccurrences(of: "SUMMARY:", with: "", options: .caseInsensitive)
+                    .replacingOccurrences(of: "\"", with: "")
+            }
+            // Handle "1: Title Name" format from chapter header
+            else if title.isEmpty, let colonRange = cleaned.range(of: ":"),
+                    cleaned.prefix(upTo: colonRange.lowerBound).allSatisfy({ $0.isNumber || $0.isWhitespace }) {
+                title = String(cleaned.suffix(from: colonRange.upperBound))
                     .trimmingCharacters(in: .whitespaces)
-            } else if trimmed.uppercased().hasPrefix("WORD_POSITION:") {
-                let posStr = trimmed.replacingOccurrences(of: "WORD_POSITION:", with: "", options: .caseInsensitive)
+            }
+            // Summary
+            else if cleaned.uppercased().hasPrefix("SUMMARY:") {
+                summary = cleaned.replacingOccurrences(of: "SUMMARY:", with: "", options: .caseInsensitive)
                     .trimmingCharacters(in: .whitespaces)
-                    .components(separatedBy: CharacterSet.decimalDigits.inverted)
-                    .joined()
-                wordPosition = Int(posStr) ?? 0
-            } else if trimmed.uppercased().hasPrefix("KEYWORDS:") {
-                let keywordStr = trimmed.replacingOccurrences(of: "KEYWORDS:", with: "", options: .caseInsensitive)
+            }
+            // Word position - extract first number
+            else if cleaned.uppercased().hasPrefix("WORD_POSITION:") {
+                let posStr = cleaned.replacingOccurrences(of: "WORD_POSITION:", with: "", options: .caseInsensitive)
+                    .trimmingCharacters(in: .whitespaces)
+                // Extract just the first number (handles "22 (from start)" or "0-140" formats)
+                if let firstNumber = posStr.components(separatedBy: CharacterSet.decimalDigits.inverted)
+                    .first(where: { !$0.isEmpty }),
+                   let pos = Int(firstNumber) {
+                    wordPosition = pos
+                }
+            }
+            // Keywords
+            else if cleaned.uppercased().hasPrefix("KEYWORDS:") {
+                let keywordStr = cleaned.replacingOccurrences(of: "KEYWORDS:", with: "", options: .caseInsensitive)
                     .trimmingCharacters(in: .whitespaces)
                 keywords = keywordStr.components(separatedBy: ",").map {
                     $0.trimmingCharacters(in: .whitespaces)
+                        .replacingOccurrences(of: "\"", with: "")
                 }
             }
         }
@@ -294,7 +351,9 @@ final class ChapterGenerationService: ObservableObject {
         guard !title.isEmpty else { return nil }
 
         // Calculate timestamp from word position
-        let absoluteWordPosition = startWordIndex + wordPosition
+        // Use parsed position if available, otherwise use chunk index as fallback
+        let effectiveWordPosition = wordPosition ?? (chunkIndex * 50)  // ~10 sec spacing fallback
+        let absoluteWordPosition = startWordIndex + effectiveWordPosition
         let startTime = Double(absoluteWordPosition) / wordsPerSecond
 
         return AIChapterData(
