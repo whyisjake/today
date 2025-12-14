@@ -11,12 +11,13 @@ struct AIChapterListView: View {
     let chapters: [AIChapterData]
     let currentTime: TimeInterval
     let onChapterTap: (AIChapterData) -> Void
+    @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Image(systemName: "sparkles")
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(accentColor.color)
                 Text("AI Chapters")
                     .font(.subheadline.weight(.semibold))
             }
@@ -49,6 +50,7 @@ private struct ChapterRow: View {
     let chapter: AIChapterData
     let isActive: Bool
     let onTap: () -> Void
+    @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
 
     var body: some View {
         Button(action: onTap) {
@@ -56,14 +58,14 @@ private struct ChapterRow: View {
                 // Timestamp
                 Text(formatTime(chapter.startTime))
                     .font(.caption.monospacedDigit())
-                    .foregroundStyle(isActive ? .purple : .secondary)
+                    .foregroundStyle(isActive ? accentColor.color : .secondary)
                     .frame(width: 44, alignment: .leading)
 
                 // Content
                 VStack(alignment: .leading, spacing: 4) {
                     Text(chapter.title)
                         .font(.subheadline.weight(isActive ? .semibold : .medium))
-                        .foregroundStyle(isActive ? .purple : .primary)
+                        .foregroundStyle(isActive ? accentColor.color : .primary)
                         .lineLimit(2)
 
                     if !chapter.summary.isEmpty && chapter.summary != "Chapter segment" {
@@ -80,8 +82,8 @@ private struct ChapterRow: View {
                                     .font(.caption2)
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
-                                    .background(Color.purple.opacity(0.1))
-                                    .foregroundStyle(.purple)
+                                    .background(accentColor.color.opacity(0.1))
+                                    .foregroundStyle(accentColor.color)
                                     .cornerRadius(4)
                             }
                         }
@@ -94,12 +96,12 @@ private struct ChapterRow: View {
                 if isActive {
                     Image(systemName: "speaker.wave.2.fill")
                         .font(.caption)
-                        .foregroundStyle(.purple)
+                        .foregroundStyle(accentColor.color)
                 }
             }
             .padding(.vertical, 8)
             .padding(.horizontal, 12)
-            .background(isActive ? Color.purple.opacity(0.08) : Color.clear)
+            .background(isActive ? accentColor.color.opacity(0.08) : Color.clear)
             .cornerRadius(8)
         }
         .buttonStyle(.plain)
@@ -118,17 +120,18 @@ struct CompactChapterView: View {
     let chapter: AIChapterData
     let isActive: Bool
     let onTap: () -> Void
+    @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
 
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 8) {
                 Text(formatTime(chapter.startTime))
                     .font(.caption.monospacedDigit())
-                    .foregroundStyle(isActive ? .purple : .secondary)
+                    .foregroundStyle(isActive ? accentColor.color : .secondary)
 
                 Text(chapter.title)
                     .font(.caption.weight(isActive ? .semibold : .regular))
-                    .foregroundStyle(isActive ? .purple : .primary)
+                    .foregroundStyle(isActive ? accentColor.color : .primary)
                     .lineLimit(1)
 
                 Spacer()
@@ -136,12 +139,12 @@ struct CompactChapterView: View {
                 if isActive {
                     Image(systemName: "play.fill")
                         .font(.caption2)
-                        .foregroundStyle(.purple)
+                        .foregroundStyle(accentColor.color)
                 }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(isActive ? Color.purple.opacity(0.1) : Color(.systemGray6))
+            .background(isActive ? accentColor.color.opacity(0.1) : Color(.systemGray6))
             .cornerRadius(6)
         }
         .buttonStyle(.plain)
@@ -159,6 +162,7 @@ struct CompactChapterView: View {
 struct FullChapterListView: View {
     let download: PodcastDownload
     @StateObject private var podcastPlayer = PodcastAudioPlayer.shared
+    @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
 
     var body: some View {
         List {
@@ -205,6 +209,7 @@ private struct ChapterDetailRow: View {
     let chapter: AIChapterData
     let isActive: Bool
     let onTap: () -> Void
+    @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
 
     var body: some View {
         Button(action: onTap) {
@@ -212,7 +217,7 @@ private struct ChapterDetailRow: View {
                 HStack {
                     Text(formatTime(chapter.startTime))
                         .font(.subheadline.monospacedDigit().weight(.medium))
-                        .foregroundStyle(isActive ? .purple : .secondary)
+                        .foregroundStyle(isActive ? accentColor.color : .secondary)
 
                     if let endTime = chapter.endTime {
                         Text("→")
@@ -228,13 +233,13 @@ private struct ChapterDetailRow: View {
                     if isActive {
                         Label("Playing", systemImage: "speaker.wave.2.fill")
                             .font(.caption)
-                            .foregroundStyle(.purple)
+                            .foregroundStyle(accentColor.color)
                     }
                 }
 
                 Text(chapter.title)
                     .font(.headline)
-                    .foregroundStyle(isActive ? .purple : .primary)
+                    .foregroundStyle(isActive ? accentColor.color : .primary)
 
                 if !chapter.summary.isEmpty && chapter.summary != "Chapter segment" {
                     Text(chapter.summary)
@@ -249,8 +254,8 @@ private struct ChapterDetailRow: View {
                                 .font(.caption)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
-                                .background(Color.purple.opacity(0.1))
-                                .foregroundStyle(.purple)
+                                .background(accentColor.color.opacity(0.1))
+                                .foregroundStyle(accentColor.color)
                                 .cornerRadius(4)
                         }
                     }
@@ -261,7 +266,7 @@ private struct ChapterDetailRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .listRowBackground(isActive ? Color.purple.opacity(0.05) : nil)
+        .listRowBackground(isActive ? accentColor.color.opacity(0.05) : nil)
     }
 
     private func formatTime(_ seconds: TimeInterval) -> String {

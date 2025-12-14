@@ -199,7 +199,7 @@ struct NowPlayingView: View {
                 } else {
                     Image(systemName: "sparkles")
                         .font(.caption)
-                        .foregroundStyle(.purple)
+                        .foregroundStyle(accentColor.color)
                 }
 
                 if hasMP3Chapters {
@@ -217,12 +217,12 @@ struct NowPlayingView: View {
                     if let chapter = currentAIChapter {
                         Text(chapter.title)
                             .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.purple)
+                            .foregroundStyle(accentColor.color)
                             .lineLimit(1)
                     } else {
                         Text("AI Chapters")
                             .font(.subheadline)
-                            .foregroundStyle(.purple)
+                            .foregroundStyle(accentColor.color)
                     }
                 }
 
@@ -473,7 +473,7 @@ struct NowPlayingView: View {
                     // AI chapters
                     HStack(spacing: 6) {
                         Image(systemName: "sparkles")
-                            .foregroundStyle(.purple)
+                            .foregroundStyle(accentColor.color)
                         Text("AI Chapters")
                             .font(.headline)
                     }
@@ -508,9 +508,9 @@ struct AIChapterRowView: View {
     let onTap: () -> Void
     @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
 
-    // Color based on whether this is an ad
+    // Color based on whether this is an ad (ads stay orange, content uses accent)
     private var chapterColor: Color {
-        chapter.isAd ? .orange : .purple
+        chapter.isAd ? .orange : accentColor.color
     }
 
     var body: some View {
