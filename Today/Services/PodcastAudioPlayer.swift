@@ -794,6 +794,7 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
 
     /// Prefetch chapters for an article (call from article detail view)
     /// This fetches ID3 chapter data in the background so it's ready when playback starts
+    /// Priority: 1) AI chapters (skip prefetch), 2) Local file, 3) Network request
     func prefetchChapters(for article: Article) {
         guard let audioUrlString = article.audioUrl,
               let audioUrl = URL(string: audioUrlString),
@@ -801,17 +802,70 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
             return // Only prefetch for MP3 files
         }
 
+        // Check if article already has AI-generated chapters - no need to prefetch ID3
+        if let download = article.podcastDownload,
+           let aiChapters = download.aiChapters,
+           !aiChapters.isEmpty {
+            print("📖 Skipping prefetch - AI chapters already exist (\(aiChapters.count) chapters)")
+            return
+        }
+
         // Don't prefetch if already cached or in progress
         // Use atomic check-and-set to prevent race conditions
         guard prefetchedChapters[audioUrlString] == nil else {
             return
         }
-        
+
         // Atomically check and insert to prevent multiple concurrent prefetch tasks
         guard prefetchingURLs.insert(audioUrlString).inserted else {
             return // Already being prefetched
         }
-        print("📖 Prefetching chapters for: \(audioUrl.lastPathComponent)")
+
+        // Check if file is downloaded locally - use local extraction instead of network
+        if let download = article.podcastDownload,
+           download.downloadStatus == .completed,
+           let localURL = PodcastDownloadManager.shared.getLocalFileURL(for: download) {
+            print("📖 Prefetching chapters from local file: \(localURL.lastPathComponent)")
+
+            Task {
+                do {
+                    let id3Chapters = try ID3ChapterService.shared.extractChaptersFromLocalFile(at: localURL)
+
+                    if !id3Chapters.isEmpty {
+                        let podcastChapters = id3Chapters.map { chapter in
+                            PodcastChapter(
+                                title: chapter.title,
+                                startTime: chapter.startTime,
+                                endTime: chapter.endTime,
+                                imageUrl: nil,
+                                url: chapter.url,
+                                image: chapter.image
+                            )
+                        }.sorted { $0.startTime < $1.startTime }
+
+                        await MainActor.run {
+                            self.prefetchedChapters[audioUrlString] = podcastChapters
+                            self.prefetchingURLs.remove(audioUrlString)
+                            print("📖 Prefetched \(podcastChapters.count) chapters from local file")
+                        }
+                    } else {
+                        await MainActor.run {
+                            self.prefetchingURLs.remove(audioUrlString)
+                            print("📖 No ID3 chapters found in local file")
+                        }
+                    }
+                } catch {
+                    await MainActor.run { [self] in
+                        _ = prefetchingURLs.remove(audioUrlString)
+                    }
+                    print("📖 Local file chapter extraction failed: \(error.localizedDescription)")
+                }
+            }
+            return
+        }
+
+        // File not downloaded locally - fetch from network
+        print("📖 Prefetching chapters from network: \(audioUrl.lastPathComponent)")
 
         Task {
             do {
@@ -832,18 +886,18 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
                     await MainActor.run {
                         self.prefetchedChapters[audioUrlString] = podcastChapters
                         self.prefetchingURLs.remove(audioUrlString)
-                        print("📖 Prefetched \(podcastChapters.count) chapters for \(audioUrl.lastPathComponent)")
+                        print("📖 Prefetched \(podcastChapters.count) chapters from network")
                     }
                 } else {
-                    _ = await MainActor.run {
-                        self.prefetchingURLs.remove(audioUrlString)
+                    await MainActor.run { [self] in
+                        _ = prefetchingURLs.remove(audioUrlString)
                     }
                 }
             } catch {
-                _ = await MainActor.run {
-                    self.prefetchingURLs.remove(audioUrlString)
+                await MainActor.run { [self] in
+                    _ = prefetchingURLs.remove(audioUrlString)
                 }
-                print("📖 Prefetch failed: \(error.localizedDescription)")
+                print("📖 Network prefetch failed: \(error.localizedDescription)")
             }
         }
     }

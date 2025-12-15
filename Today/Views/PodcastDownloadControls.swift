@@ -20,6 +20,10 @@ struct PodcastDownloadControls: View {
     @State private var chapterError: String?
     @State private var showingChapterError = false
     @State private var isGeneratingChapters = false
+    @State private var chapterProgress: Double = 0.0
+
+    // Timer for polling progress during operations
+    @State private var progressTimer: Timer?
 
     var body: some View {
         VStack(spacing: 12) {
@@ -259,7 +263,7 @@ struct PodcastDownloadControls: View {
             transcribeButton(download: download)
 
         case .inProgress:
-            transcribingView(progress: isTranscribing ? transcriptionProgress : download.transcriptionProgress)
+            transcribingView(progress: transcriptionProgress > 0 ? transcriptionProgress : download.transcriptionProgress)
 
         case .completed:
             transcribedView(download: download)
@@ -274,12 +278,15 @@ struct PodcastDownloadControls: View {
         Button {
             Task {
                 isTranscribing = true
+                transcriptionProgress = 0.0
+                startProgressPolling(for: .transcription)
                 do {
                     try await TranscriptionService.shared.transcribe(download: download)
                 } catch {
                     transcriptionError = error.localizedDescription
                     showingTranscriptionError = true
                 }
+                stopProgressPolling()
                 isTranscribing = false
             }
         } label: {
@@ -402,12 +409,15 @@ struct PodcastDownloadControls: View {
             Button {
                 Task {
                     isTranscribing = true
+                    transcriptionProgress = 0.0
+                    startProgressPolling(for: .transcription)
                     do {
                         try await TranscriptionService.shared.transcribe(download: download)
                     } catch {
                         transcriptionError = error.localizedDescription
                         showingTranscriptionError = true
                     }
+                    stopProgressPolling()
                     isTranscribing = false
                 }
             } label: {
@@ -449,12 +459,15 @@ struct PodcastDownloadControls: View {
         Button {
             Task {
                 isGeneratingChapters = true
+                chapterProgress = 0.0
+                startProgressPolling(for: .chapterGeneration)
                 do {
                     try await ChapterGenerationService.shared.generateChapters(for: download)
                 } catch {
                     chapterError = error.localizedDescription
                     showingChapterError = true
                 }
+                stopProgressPolling()
                 isGeneratingChapters = false
             }
         } label: {
@@ -473,16 +486,29 @@ struct PodcastDownloadControls: View {
     }
 
     private var generatingChaptersView: some View {
-        HStack {
-            HStack(spacing: 8) {
-                ProgressView()
-                    .scaleEffect(0.8)
-                Text("Generating chapters...")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+        VStack(spacing: 8) {
+            HStack {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("Generating chapters...")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if chapterProgress > 0 {
+                    Text("\(Int(chapterProgress * 100))%")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
             }
-            Spacer()
+
+            if chapterProgress > 0 {
+                ProgressView(value: chapterProgress)
+                    .tint(.accentColor)
+            }
         }
+        .frame(maxWidth: .infinity)
         .padding()
         .background(Color(.systemGray6))
         .cornerRadius(10)
@@ -552,13 +578,16 @@ struct PodcastDownloadControls: View {
             Button {
                 Task {
                     isGeneratingChapters = true
+                    chapterProgress = 0.0
                     download.resetChapterGeneration()
+                    startProgressPolling(for: .chapterGeneration)
                     do {
                         try await ChapterGenerationService.shared.generateChapters(for: download)
                     } catch {
                         chapterError = error.localizedDescription
                         showingChapterError = true
                     }
+                    stopProgressPolling()
                     isGeneratingChapters = false
                 }
             } label: {
@@ -573,6 +602,33 @@ struct PodcastDownloadControls: View {
         .padding()
         .background(Color(.systemGray6))
         .cornerRadius(10)
+    }
+
+    // MARK: - Progress Polling
+
+    private enum ProgressType {
+        case transcription
+        case chapterGeneration
+    }
+
+    @available(iOS 26.0, *)
+    private func startProgressPolling(for type: ProgressType) {
+        stopProgressPolling()
+        progressTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [self] _ in
+            Task { @MainActor in
+                switch type {
+                case .transcription:
+                    self.transcriptionProgress = TranscriptionService.shared.currentProgress
+                case .chapterGeneration:
+                    self.chapterProgress = ChapterGenerationService.shared.currentProgress
+                }
+            }
+        }
+    }
+
+    private func stopProgressPolling() {
+        progressTimer?.invalidate()
+        progressTimer = nil
     }
 }
 
