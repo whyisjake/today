@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import NaturalLanguage
 
 struct PodcastDownloadControls: View {
     let article: Article
@@ -21,6 +22,9 @@ struct PodcastDownloadControls: View {
     @State private var showingChapterError = false
     @State private var isGeneratingChapters = false
     @State private var chapterProgress: Double = 0.0
+
+    // Transcription mode selection (stored as string for iOS version compatibility)
+    @State private var selectedTranscriptionModeRaw: String = "accurate"
 
     // Timer for polling progress during operations
     @State private var progressTimer: Timer?
@@ -275,43 +279,78 @@ struct PodcastDownloadControls: View {
 
     @available(iOS 26.0, *)
     private func transcribeButton(download: PodcastDownload) -> some View {
-        Button {
-            Task {
-                isTranscribing = true
-                transcriptionProgress = 0.0
-                startProgressPolling(for: .transcription)
-                do {
-                    try await TranscriptionService.shared.transcribe(download: download)
-                } catch {
-                    transcriptionError = error.localizedDescription
-                    showingTranscriptionError = true
+        let selectedMode = TranscriptionMode(rawValue: selectedTranscriptionModeRaw) ?? .accurate
+
+        return VStack(spacing: 8) {
+            // Mode selector
+            HStack {
+                Text("Mode:")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Picker("Mode", selection: $selectedTranscriptionModeRaw) {
+                    Text("Accurate").tag("accurate")
+                    Text("Fast").tag("fast")
                 }
-                stopProgressPolling()
-                isTranscribing = false
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 200)
+
+                Spacer()
             }
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "waveform")
-                Text("Transcribe Episode")
+            .padding(.horizontal, 4)
+
+            Button {
+                Task {
+                    isTranscribing = true
+                    transcriptionProgress = 0.0
+                    startProgressPolling(for: .transcription)
+                    do {
+                        try await TranscriptionService.shared.transcribe(download: download, mode: selectedMode)
+                    } catch {
+                        transcriptionError = error.localizedDescription
+                        showingTranscriptionError = true
+                    }
+                    stopProgressPolling()
+                    isTranscribing = false
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "waveform")
+                    Text("Transcribe Episode")
+                    if selectedMode == .fast {
+                        Text("(Fast)")
+                            .font(.caption)
+                    }
+                }
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(Color.accentColor)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(Color.accentColor.opacity(0.1))
+                .cornerRadius(10)
             }
-            .font(.subheadline.weight(.medium))
-            .foregroundStyle(Color.accentColor)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .background(Color.accentColor.opacity(0.1))
-            .cornerRadius(10)
         }
     }
 
+    @available(iOS 26.0, *)
     private func transcribingView(progress: Double) -> some View {
-        VStack(spacing: 8) {
+        let phase = TranscriptionService.shared.currentPhase
+
+        return VStack(spacing: 8) {
             HStack {
                 HStack(spacing: 8) {
                     ProgressView()
                         .scaleEffect(0.8)
-                    Text("Transcribing...")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Transcribing...")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        if !phase.isEmpty {
+                            Text(phase)
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
                 }
                 Spacer()
                 if progress > 0 {
@@ -637,32 +676,421 @@ struct PodcastDownloadControls: View {
 struct TranscriptionView: View {
     let download: PodcastDownload
     @StateObject private var podcastPlayer = PodcastAudioPlayer.shared
+    @State private var sections: [TranscriptSection] = []
+    @State private var searchText = ""
+    @State private var isSearching = false
+    @AppStorage("transcriptFontSize") private var fontSize: Double = 17
 
     var body: some View {
-        ScrollView {
-            if let transcription = download.transcription {
-                Text(transcription)
-                    .font(.body)
+        ScrollViewReader { proxy in
+            ScrollView {
+                if let transcription = download.transcription {
+                    LazyVStack(alignment: .leading, spacing: 24) {
+                        // Episode info header
+                        transcriptHeader
+
+                        // Search results indicator
+                        if !searchText.isEmpty {
+                            searchResultsHeader
+                        }
+
+                        // Formatted sections
+                        ForEach(filteredSections) { section in
+                            TranscriptSectionView(
+                                section: section,
+                                searchText: searchText,
+                                fontSize: fontSize
+                            )
+                            .id(section.id)
+                        }
+                    }
                     .padding()
-            } else {
-                ContentUnavailableView(
-                    "No Transcription",
-                    systemImage: "doc.text",
-                    description: Text("This episode hasn't been transcribed yet.")
-                )
+                } else {
+                    ContentUnavailableView(
+                        "No Transcription",
+                        systemImage: "doc.text",
+                        description: Text("This episode hasn't been transcribed yet.")
+                    )
+                }
             }
         }
         .navigationTitle("Transcription")
         .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $searchText, isPresented: $isSearching, prompt: "Search transcript")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                if let transcription = download.transcription {
-                    ShareLink(item: transcription) {
-                        Image(systemName: "square.and.arrow.up")
+                Menu {
+                    // Font size controls
+                    Menu {
+                        Button {
+                            fontSize = max(14, fontSize - 2)
+                        } label: {
+                            Label("Smaller", systemImage: "textformat.size.smaller")
+                        }
+                        Button {
+                            fontSize = min(24, fontSize + 2)
+                        } label: {
+                            Label("Larger", systemImage: "textformat.size.larger")
+                        }
+                        Button {
+                            fontSize = 17
+                        } label: {
+                            Label("Reset", systemImage: "arrow.counterclockwise")
+                        }
+                    } label: {
+                        Label("Text Size", systemImage: "textformat.size")
                     }
+
+                    Divider()
+
+                    // Share
+                    if let transcription = download.transcription {
+                        ShareLink(item: transcription) {
+                            Label("Share", systemImage: "square.and.arrow.up")
+                        }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
                 }
             }
         }
+        .onAppear {
+            parseTranscription()
+        }
+    }
+
+    private var transcriptHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let articleTitle = download.article?.title {
+                Text(articleTitle)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+            }
+
+            HStack(spacing: 16) {
+                if let wordCount = download.transcription?.split(separator: " ").count {
+                    Label("\(wordCount.formatted()) words", systemImage: "text.word.spacing")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Label("\(sections.count) sections", systemImage: "list.bullet")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if let duration = download.article?.audioDuration, duration > 0 {
+                    Label(formatDuration(duration), systemImage: "clock")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Divider()
+        }
+    }
+
+    private var searchResultsHeader: some View {
+        let matchCount = filteredSections.reduce(0) { count, section in
+            count + section.paragraphs.filter { paragraph in
+                paragraph.localizedCaseInsensitiveContains(searchText)
+            }.count
+        }
+
+        return HStack {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            Text("\(matchCount) matches found")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(Color(.systemGray6))
+        .cornerRadius(8)
+    }
+
+    private var filteredSections: [TranscriptSection] {
+        guard !searchText.isEmpty else { return sections }
+
+        return sections.filter { section in
+            section.title.localizedCaseInsensitiveContains(searchText) ||
+            section.paragraphs.contains { $0.localizedCaseInsensitiveContains(searchText) }
+        }
+    }
+
+    private func parseTranscription() {
+        guard let transcription = download.transcription else { return }
+
+        // Parse into sections using NLP-based detection
+        sections = TranscriptParser.parse(transcription)
+    }
+
+    private func formatDuration(_ seconds: TimeInterval) -> String {
+        let hours = Int(seconds) / 3600
+        let minutes = (Int(seconds) % 3600) / 60
+        if hours > 0 {
+            return "\(hours)h \(minutes)m"
+        } else {
+            return "\(minutes) min"
+        }
+    }
+}
+
+// MARK: - Transcript Section Model
+
+struct TranscriptSection: Identifiable {
+    let id = UUID()
+    let title: String
+    let paragraphs: [String]
+    let sectionNumber: Int
+}
+
+// MARK: - Transcript Section View
+
+struct TranscriptSectionView: View {
+    let section: TranscriptSection
+    let searchText: String
+    let fontSize: Double
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Section header
+            HStack(spacing: 8) {
+                Text("Section \(section.sectionNumber)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.accentColor)
+                    .cornerRadius(4)
+
+                Text(section.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+            }
+
+            // Paragraphs
+            ForEach(Array(section.paragraphs.enumerated()), id: \.offset) { _, paragraph in
+                if searchText.isEmpty {
+                    Text(paragraph)
+                        .font(.system(size: fontSize))
+                        .lineSpacing(4)
+                        .foregroundStyle(.primary.opacity(0.9))
+                } else {
+                    HighlightedText(text: paragraph, searchText: searchText, fontSize: fontSize)
+                }
+            }
+        }
+        .padding()
+        .background(Color(.systemBackground))
+        .cornerRadius(12)
+        .shadow(color: .black.opacity(0.05), radius: 2, y: 1)
+    }
+}
+
+// MARK: - Highlighted Text for Search
+
+struct HighlightedText: View {
+    let text: String
+    let searchText: String
+    let fontSize: Double
+
+    var body: some View {
+        let attributedString = createHighlightedText()
+        Text(attributedString)
+            .font(.system(size: fontSize))
+            .lineSpacing(4)
+    }
+
+    private func createHighlightedText() -> AttributedString {
+        var attributedString = AttributedString(text)
+
+        guard !searchText.isEmpty else { return attributedString }
+
+        // Find all ranges of the search text (case insensitive)
+        var searchStartIndex = text.startIndex
+        while let range = text.range(of: searchText, options: .caseInsensitive, range: searchStartIndex..<text.endIndex) {
+            // Convert String.Index range to AttributedString range
+            if let attrRange = Range(NSRange(range, in: text), in: attributedString) {
+                attributedString[attrRange].backgroundColor = .yellow.opacity(0.4)
+                attributedString[attrRange].foregroundColor = .black
+            }
+            searchStartIndex = range.upperBound
+        }
+
+        return attributedString
+    }
+}
+
+// MARK: - Transcript Parser
+
+struct TranscriptParser {
+    /// Parse raw transcription text into logical sections
+    static func parse(_ text: String) -> [TranscriptSection] {
+        // Clean and normalize the text
+        let cleanedText = text
+            .replacingOccurrences(of: "  ", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Split into sentences
+        let sentences = splitIntoSentences(cleanedText)
+
+        guard !sentences.isEmpty else { return [] }
+
+        // Group sentences into paragraphs (roughly 3-5 sentences each)
+        let paragraphs = groupIntoParagraphs(sentences)
+
+        // Detect topic boundaries and create sections
+        let sections = detectSections(paragraphs)
+
+        return sections
+    }
+
+    private static func splitIntoSentences(_ text: String) -> [String] {
+        var sentences: [String] = []
+
+        // Use NaturalLanguage framework for sentence detection
+        let tokenizer = NLTokenizer(unit: .sentence)
+        tokenizer.string = text
+
+        tokenizer.enumerateTokens(in: text.startIndex..<text.endIndex) { range, _ in
+            let sentence = String(text[range]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !sentence.isEmpty {
+                sentences.append(sentence)
+            }
+            return true
+        }
+
+        // Fallback if NL framework returns nothing
+        if sentences.isEmpty {
+            // Simple regex-based sentence splitting
+            let pattern = "[^.!?]+[.!?]+"
+            if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
+                let nsText = text as NSString
+                let matches = regex.matches(in: text, options: [], range: NSRange(location: 0, length: nsText.length))
+                sentences = matches.map { nsText.substring(with: $0.range).trimmingCharacters(in: .whitespacesAndNewlines) }
+            }
+        }
+
+        return sentences
+    }
+
+    private static func groupIntoParagraphs(_ sentences: [String]) -> [String] {
+        var paragraphs: [String] = []
+        var currentParagraph: [String] = []
+        let sentencesPerParagraph = 4
+
+        for sentence in sentences {
+            currentParagraph.append(sentence)
+
+            if currentParagraph.count >= sentencesPerParagraph {
+                paragraphs.append(currentParagraph.joined(separator: " "))
+                currentParagraph = []
+            }
+        }
+
+        // Don't forget remaining sentences
+        if !currentParagraph.isEmpty {
+            paragraphs.append(currentParagraph.joined(separator: " "))
+        }
+
+        return paragraphs
+    }
+
+    private static func detectSections(_ paragraphs: [String]) -> [TranscriptSection] {
+        guard !paragraphs.isEmpty else { return [] }
+
+        var sections: [TranscriptSection] = []
+        var currentSectionParagraphs: [String] = []
+        var sectionNumber = 1
+
+        // Target ~5-8 paragraphs per section
+        let paragraphsPerSection = 6
+
+        for (index, paragraph) in paragraphs.enumerated() {
+            currentSectionParagraphs.append(paragraph)
+
+            let shouldCreateSection = currentSectionParagraphs.count >= paragraphsPerSection ||
+                                     index == paragraphs.count - 1 ||
+                                     detectTopicShift(from: paragraph, to: paragraphs[safe: index + 1])
+
+            if shouldCreateSection && !currentSectionParagraphs.isEmpty {
+                let title = generateSectionTitle(for: currentSectionParagraphs, sectionNumber: sectionNumber)
+                sections.append(TranscriptSection(
+                    title: title,
+                    paragraphs: currentSectionParagraphs,
+                    sectionNumber: sectionNumber
+                ))
+                currentSectionParagraphs = []
+                sectionNumber += 1
+            }
+        }
+
+        return sections
+    }
+
+    private static func detectTopicShift(from current: String, to next: String?) -> Bool {
+        guard let next = next else { return false }
+
+        // Simple heuristic: look for transition words or significant keyword changes
+        let transitionIndicators = [
+            "now let's", "moving on", "next", "another thing", "speaking of",
+            "that brings us to", "let's talk about", "on a different note",
+            "but first", "before we", "anyway", "so basically"
+        ]
+
+        let nextLower = next.lowercased()
+        return transitionIndicators.contains { nextLower.hasPrefix($0) }
+    }
+
+    private static func generateSectionTitle(for paragraphs: [String], sectionNumber: Int) -> String {
+        guard let firstParagraph = paragraphs.first else {
+            return "Part \(sectionNumber)"
+        }
+
+        // Extract key topics using NLTagger
+        let tagger = NLTagger(tagSchemes: [.nameType, .lexicalClass])
+        tagger.string = firstParagraph
+
+        var nouns: [String] = []
+        let options: NLTagger.Options = [.omitWhitespace, .omitPunctuation]
+
+        tagger.enumerateTags(in: firstParagraph.startIndex..<firstParagraph.endIndex,
+                           unit: .word,
+                           scheme: .lexicalClass,
+                           options: options) { tag, tokenRange in
+            if let tag = tag, tag == .noun {
+                let word = String(firstParagraph[tokenRange])
+                if word.count > 3 && !commonWords.contains(word.lowercased()) {
+                    nouns.append(word.capitalized)
+                }
+            }
+            return true
+        }
+
+        // Take top 2-3 unique nouns for the title
+        let uniqueNouns = Array(Set(nouns)).prefix(3)
+
+        if uniqueNouns.isEmpty {
+            return "Discussion Part \(sectionNumber)"
+        } else {
+            return uniqueNouns.joined(separator: ", ")
+        }
+    }
+
+    // Common words to filter out from section titles
+    private static let commonWords: Set<String> = [
+        "thing", "things", "way", "ways", "time", "times", "people", "person",
+        "year", "years", "day", "days", "week", "weeks", "lot", "kind", "part",
+        "something", "anything", "nothing", "everything", "someone", "anyone",
+        "stuff", "fact", "point", "case", "place", "world", "life", "work"
+    ]
+}
+
+// Safe array subscript extension
+private extension Array {
+    subscript(safe index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }
 

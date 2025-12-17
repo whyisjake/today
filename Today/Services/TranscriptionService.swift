@@ -11,6 +11,31 @@ import SwiftData
 import Combine
 import AVFoundation
 
+/// Transcription speed mode
+@available(iOS 26.0, *)
+enum TranscriptionMode: String, CaseIterable {
+    case accurate = "accurate"      // .transcription preset - slower, more accurate
+    case fast = "fast"              // .progressiveTranscription preset - faster, may be less accurate
+
+    var preset: SpeechTranscriber.Preset {
+        switch self {
+        case .accurate:
+            return .transcription
+        case .fast:
+            return .progressiveTranscription
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .accurate:
+            return "Accurate"
+        case .fast:
+            return "Fast"
+        }
+    }
+}
+
 /// Service for transcribing podcast episodes using on-device speech recognition
 @available(iOS 26.0, *)
 @MainActor
@@ -22,10 +47,20 @@ final class TranscriptionService: NSObject, ObservableObject {
     @Published var isTranscribing = false
     @Published var currentProgress: Double = 0.0
     @Published var currentArticleId: String?
+    @Published var currentPhase: String = ""
 
     // MARK: - Private Properties
 
     private var modelContext: ModelContext?
+
+    // MARK: - Progress Constants (based on real-world testing)
+
+    /// Analysis phase takes roughly 1 second per minute of audio
+    private let analysisSecondsPerMinute: Double = 1.0
+    /// Results phase processes at roughly 5x realtime
+    private let resultsRealtimeFactor: Double = 5.0
+    /// Analysis phase represents 10% of total progress
+    private let analysisProgressWeight: Double = 0.10
 
     // MARK: - Initialization
 
@@ -132,7 +167,10 @@ final class TranscriptionService: NSObject, ObservableObject {
 
     /// Transcribe a downloaded podcast episode
     /// For episodes longer than 15 minutes, schedules a background processing task
-    func transcribe(download: PodcastDownload) async throws {
+    /// - Parameters:
+    ///   - download: The podcast download to transcribe
+    ///   - mode: Transcription mode (.accurate or .fast)
+    func transcribe(download: PodcastDownload, mode: TranscriptionMode = .accurate) async throws {
         guard let localPath = download.localFilePath else {
             throw TranscriptionError.noLocalFile
         }
@@ -148,24 +186,33 @@ final class TranscriptionService: NSObject, ObservableObject {
 
         // Get audio duration for metrics
         let audioDuration = download.article?.audioDuration ?? 0
+        let audioDurationMinutes = audioDuration / 60.0
 
         // Check episode duration - schedule background task for long episodes
         if audioDuration > 900 {
             // Episodes > 15 minutes - schedule background processing in case app goes to background
-            print("🎙️ Long episode detected (\(Int(audioDuration / 60)) min) - scheduling background task")
+            print("🎙️ Long episode detected (\(Int(audioDurationMinutes)) min) - scheduling background task")
             BackgroundSyncManager.shared.scheduleTranscriptionTask(for: download.audioUrl)
         }
+
+        // Calculate estimated times for progress tracking
+        let estimatedAnalysisTime = audioDurationMinutes * analysisSecondsPerMinute
+        let estimatedResultsTime = audioDuration / resultsRealtimeFactor
+        let estimatedTotalTime = estimatedAnalysisTime + estimatedResultsTime
 
         // Start timing
         let transcriptionStartTime = Date()
         print("🎙️ ⏱️ Starting transcription at \(transcriptionStartTime.formatted(date: .omitted, time: .standard))")
+        print("🎙️ ⚙️ Mode: \(mode.displayName) (preset: \(mode == .accurate ? ".transcription" : ".progressiveTranscription"))")
         if audioDuration > 0 {
             print("🎙️ ⏱️ Audio duration: \(formatDuration(audioDuration))")
+            print("🎙️ ⏱️ Estimated total time: \(formatDuration(estimatedTotalTime))")
         }
 
         // Update status
         isTranscribing = true
         currentProgress = 0.0
+        currentPhase = "Preparing..."
         currentArticleId = download.article?.guid
         download.transcriptionStatus = .inProgress
         download.transcriptionProgress = 0.0
@@ -173,6 +220,7 @@ final class TranscriptionService: NSObject, ObservableObject {
         defer {
             isTranscribing = false
             currentArticleId = nil
+            currentPhase = ""
         }
 
         do {
@@ -182,8 +230,8 @@ final class TranscriptionService: NSObject, ObservableObject {
             // Ensure model is available
             try await ensureModelAvailable(for: transcriptionLocale)
 
-            // Create transcriber for offline file transcription
-            let transcriber = SpeechTranscriber(locale: transcriptionLocale, preset: .transcription)
+            // Create transcriber with selected preset
+            let transcriber = SpeechTranscriber(locale: transcriptionLocale, preset: mode.preset)
 
             // Create analyzer with the transcriber module
             let analyzer = SpeechAnalyzer(modules: [transcriber])
@@ -191,27 +239,49 @@ final class TranscriptionService: NSObject, ObservableObject {
             // Load the audio file
             let audioFile = try AVAudioFile(forReading: fileURL)
 
-            // Time the analysis phase
+            // PHASE 1: Audio Analysis (0% - 10%)
+            currentPhase = "Analyzing audio..."
             let analysisStartTime = Date()
+
+            // Update progress during analysis phase using time-based estimation
+            let analysisProgressTask = Task {
+                while !Task.isCancelled {
+                    let elapsed = Date().timeIntervalSince(analysisStartTime)
+                    let analysisProgress = min(elapsed / max(estimatedAnalysisTime, 1), 1.0)
+                    let totalProgress = analysisProgress * analysisProgressWeight
+
+                    await MainActor.run {
+                        self.currentProgress = totalProgress
+                        download.transcriptionProgress = totalProgress
+                    }
+
+                    try await Task.sleep(for: .milliseconds(500))
+                }
+            }
 
             // Analyze the audio file
             if let lastSample = try await analyzer.analyzeSequence(from: audioFile) {
                 try await analyzer.finalizeAndFinish(through: lastSample)
             }
 
+            analysisProgressTask.cancel()
+
             let analysisEndTime = Date()
             let analysisDuration = analysisEndTime.timeIntervalSince(analysisStartTime)
             print("🎙️ ⏱️ Audio analysis completed in \(formatDuration(analysisDuration))")
 
-            // Collect transcription results
-            // Estimate ~1 segment per 2.5 seconds of audio for progress calculation
-            let estimatedTotalSegments = max(Int(audioDuration / 2.5), 100)
+            // Set progress to 10% (end of analysis phase)
+            currentProgress = analysisProgressWeight
+            download.transcriptionProgress = analysisProgressWeight
+
+            // PHASE 2: Results Collection (10% - 100%)
+            currentPhase = "Transcribing..."
             var finalTranscription = ""
             var processedSegments = 0
             let resultsStartTime = Date()
             var lastProgressLog = Date()
 
-            print("🎙️ 📝 Starting results collection (estimated ~\(estimatedTotalSegments) segments)...")
+            print("🎙️ 📝 Starting results collection...")
 
             for try await result in transcriber.results {
                 if result.isFinal {
@@ -219,24 +289,22 @@ final class TranscriptionService: NSObject, ObservableObject {
                     finalTranscription += " "
                     processedSegments += 1
 
-                    // Calculate progress based on estimated total segments
-                    let progress = min(Double(processedSegments) / Double(estimatedTotalSegments), 0.99)
+                    // Calculate progress based on elapsed time vs estimated results time
+                    let resultsElapsed = Date().timeIntervalSince(resultsStartTime)
+                    let resultsProgress = min(resultsElapsed / max(estimatedResultsTime, 1), 1.0)
+                    let totalProgress = analysisProgressWeight + (resultsProgress * (1.0 - analysisProgressWeight))
 
-                    // Log progress every 10 seconds or every 50 segments
+                    // Log progress every 10 seconds
                     let now = Date()
-                    if now.timeIntervalSince(lastProgressLog) >= 10 || processedSegments % 50 == 0 {
-                        let elapsed = now.timeIntervalSince(resultsStartTime)
-                        let segmentsPerSecond = Double(processedSegments) / max(elapsed, 1)
-                        let remainingSegments = estimatedTotalSegments - processedSegments
-                        let estimatedRemaining = Double(remainingSegments) / max(segmentsPerSecond, 0.1)
-
-                        print("🎙️ 📝 Progress: \(processedSegments)/~\(estimatedTotalSegments) segments (\(Int(progress * 100))%) - ETA: \(formatDuration(estimatedRemaining))")
+                    if now.timeIntervalSince(lastProgressLog) >= 10 {
+                        let estimatedRemaining = max(estimatedResultsTime - resultsElapsed, 0)
+                        print("🎙️ 📝 Progress: \(Int(totalProgress * 100))% - \(processedSegments) segments - ETA: \(formatDuration(estimatedRemaining))")
                         lastProgressLog = now
                     }
 
                     await MainActor.run {
-                        self.currentProgress = progress
-                        download.transcriptionProgress = progress
+                        self.currentProgress = min(totalProgress, 0.99)
+                        download.transcriptionProgress = min(totalProgress, 0.99)
                     }
                 }
             }
@@ -255,6 +323,7 @@ final class TranscriptionService: NSObject, ObservableObject {
 
             // Log comprehensive metrics
             print("🎙️ ✅ Transcription completed!")
+            print("🎙️ ⚙️ Mode used: \(mode.displayName)")
             print("🎙️ ⏱️ Total time: \(formatDuration(totalDuration))")
             if audioDuration > 0 {
                 let realtimeFactor = audioDuration / totalDuration
@@ -275,6 +344,7 @@ final class TranscriptionService: NSObject, ObservableObject {
             download.transcribedAt = Date()
 
             currentProgress = 1.0
+            currentPhase = "Complete"
 
             print("🎙️ Preview: \(cleanedTranscription.prefix(100))...")
 
@@ -284,6 +354,7 @@ final class TranscriptionService: NSObject, ObservableObject {
             print("🎙️ ❌ Transcription failed after \(formatDuration(elapsedTime)): \(error)")
             download.transcriptionStatus = .failed
             download.transcriptionProgress = 0.0
+            currentPhase = "Failed"
             throw error
         }
     }
