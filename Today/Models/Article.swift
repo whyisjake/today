@@ -60,6 +60,12 @@ final class Article {
         self.feed = feed
     }
 
+    /// The article's link as a URL, or nil if the link is empty or invalid
+    var articleURL: URL? {
+        guard !link.isEmpty else { return nil }
+        return URL(string: link)
+    }
+
     /// Returns true if the article has minimal content (short summary only)
     /// These articles should open directly in web view for full content
     var hasMinimalContent: Bool {

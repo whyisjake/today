@@ -274,7 +274,7 @@ struct TodayView: View {
                                     switch shortArticleBehavior {
                                     case .openInBrowser:
                                         // Open in default browser (Safari)
-                                        if let url = URL(string: article.link) {
+                                        if let url = article.articleURL {
                                             openURL(url)
                                             article.isRead = true
                                             try? modelContext.save()
@@ -762,7 +762,7 @@ struct ArticleDetailView: View {
                 }
 
                 Button {
-                    if let url = URL(string: article.link) {
+                    if let url = article.articleURL {
                         openURL(url)
                     }
                 } label: {
