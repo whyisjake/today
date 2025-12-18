@@ -74,7 +74,7 @@ struct ArticleDetailSimple: View {
 
                 // For short articles with "Open in Today Browser", show full web page
                 if article.hasMinimalContent && shortArticleBehavior == .openInAppBrowser && !article.isRedditPost,
-                   let url = URL(string: article.link) {
+                   let url = article.articleURL {
                     WebViewRepresentable(url: url)
                         .frame(height: geometry.size.height - 200)
                 }
@@ -108,9 +108,11 @@ struct ArticleDetailSimple: View {
                     .foregroundStyle(Color.accentColor)
                     .accessibilityLabel(isPlayingThisArticle ? "Pause article audio" : "Play article audio")
 
-                    // Share button
-                    ShareLink(item: URL(string: article.link)!, subject: Text(article.title)) {
-                        Image(systemName: "square.and.arrow.up")
+                    // Share button (only show if article has a valid link)
+                    if let url = article.articleURL {
+                        ShareLink(item: url, subject: Text(article.title)) {
+                            Image(systemName: "square.and.arrow.up")
+                        }
                     }
                 }
             }
@@ -142,31 +144,31 @@ struct ArticleDetailSimple: View {
                         }
                     }
 
-                    // Read in App button with long-press menu
-                    NavigationLink {
-                        ArticleWebViewSimple(url: URL(string: article.link)!)
-                    } label: {
-                        Label("Read in App", systemImage: "doc.text")
-                    }
-                    .contextMenu {
-                        Button {
-                            if let url = URL(string: article.link) {
+                    // Read in App button with long-press menu (only show if article has a valid link)
+                    if let url = article.articleURL {
+                        NavigationLink {
+                            ArticleWebViewSimple(url: url)
+                        } label: {
+                            Label("Read in App", systemImage: "doc.text")
+                        }
+                        .contextMenu {
+                            Button {
                                 openURL(url)
+                            } label: {
+                                Label("Open in Safari", systemImage: "safari")
                             }
-                        } label: {
-                            Label("Open in Safari", systemImage: "safari")
-                        }
 
-                        ShareLink(item: URL(string: article.link)!, subject: Text(article.title)) {
-                            Label("Share", systemImage: "square.and.arrow.up")
-                        }
+                            ShareLink(item: url, subject: Text(article.title)) {
+                                Label("Share", systemImage: "square.and.arrow.up")
+                            }
 
-                        Divider()
+                            Divider()
 
-                        Button {
-                            markAsUnreadAndGoBack()
-                        } label: {
-                            Label("Mark as Unread", systemImage: "envelope.badge")
+                            Button {
+                                markAsUnreadAndGoBack()
+                            } label: {
+                                Label("Mark as Unread", systemImage: "envelope.badge")
+                            }
                         }
                     }
 

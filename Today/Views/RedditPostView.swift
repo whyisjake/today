@@ -108,7 +108,7 @@ struct RedditPostView: View {
                     Image(systemName: "square.and.arrow.up")
                 }
                 .contextMenu {
-                    if let url = URL(string: article.link) {
+                    if let url = article.articleURL {
                         ShareLink(item: url, subject: Text(article.title)) {
                             Label("Share", systemImage: "square.and.arrow.up")
                         }
@@ -130,26 +130,26 @@ struct RedditPostView: View {
 
                     // Open in Safari button
                     Button {
-                        if let url = URL(string: article.link) {
+                        if let url = article.articleURL {
                             openURL(url)
                         }
                     } label: {
                         Label("Safari", systemImage: "safari")
                     }
                     .contextMenu {
-                        Button {
-                            if let url = URL(string: article.link) {
+                        if let url = article.articleURL {
+                            Button {
                                 openURL(url)
+                            } label: {
+                                Label("Open in Safari", systemImage: "safari")
                             }
-                        } label: {
-                            Label("Open in Safari", systemImage: "safari")
-                        }
 
-                        ShareLink(item: URL(string: article.link)!, subject: Text(article.title)) {
-                            Label("Share", systemImage: "square.and.arrow.up")
-                        }
+                            ShareLink(item: url, subject: Text(article.title)) {
+                                Label("Share", systemImage: "square.and.arrow.up")
+                            }
 
-                        Divider()
+                            Divider()
+                        }
 
                         Button {
                             markAsUnreadAndGoBack()

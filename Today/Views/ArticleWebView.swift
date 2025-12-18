@@ -82,7 +82,7 @@ struct ArticleDetailViewEnhanced: View {
     var body: some View {
         ZStack {
             if showSafariView {
-                if let url = URL(string: article.link) {
+                if let url = article.articleURL {
                     // Use SafariView for full WebAuthn/passkey support
                     SafariView(url: url)
                         .ignoresSafeArea()
@@ -130,7 +130,7 @@ struct ArticleDetailViewEnhanced: View {
                             .buttonStyle(.plain)
 
                             Button {
-                                if let url = URL(string: article.link) {
+                                if let url = article.articleURL {
                                     openURL(url)
                                 }
                             } label: {
