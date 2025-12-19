@@ -15,6 +15,7 @@ struct TodayApp: App {
         let schema = Schema([
             Feed.self,
             Article.self,
+            PodcastDownload.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 

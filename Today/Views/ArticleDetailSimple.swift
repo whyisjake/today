@@ -69,6 +69,11 @@ struct ArticleDetailSimple: View {
                 // Show podcast controls if this is a podcast episode
                 if article.hasPodcastAudio {
                     PodcastAudioControls(article: article)
+
+                    // Download/transcription controls
+                    PodcastDownloadControls(article: article)
+                        .padding(.top, 8)
+
                     Divider()
                 }
 

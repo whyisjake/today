@@ -390,7 +390,7 @@ struct PodcastAudioControls: View {
                 }
             }
 
-            HStack(spacing: 20) {
+            HStack(spacing: 12) {
                 // Play/Pause button
                 Button {
                     if podcastPlayer.currentArticle?.id == article.id {
@@ -409,7 +409,7 @@ struct PodcastAudioControls: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                     .background(Color.accentColor)
-                    .cornerRadius(12)
+                    .cornerRadius(10)
                 }
 
                 // Stop button (only show when playing)
@@ -423,7 +423,7 @@ struct PodcastAudioControls: View {
                             .foregroundStyle(.secondary)
                             .frame(width: 44, height: 44)
                             .background(Color(.systemGray6))
-                            .cornerRadius(12)
+                            .cornerRadius(10)
                     }
                 }
 
@@ -436,17 +436,14 @@ struct PodcastAudioControls: View {
                         Text(AudioFormatters.formatSpeed(podcastPlayer.playbackRate))
                     }
                     .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .frame(minWidth: 60)
+                    .foregroundStyle(Color.accentColor)
                     .padding(.vertical, 12)
                     .padding(.horizontal, 12)
-                    .background(Color(.systemGray6))
-                    .cornerRadius(12)
+                    .background(Color.accentColor.opacity(0.1))
+                    .cornerRadius(10)
                 }
             }
         }
-        .padding()
-        .background(Color(.systemBackground))
         .sheet(isPresented: $showSpeedPicker) {
             PodcastSpeedPickerView(podcastPlayer: podcastPlayer)
                 .presentationDetents([.height(300)])

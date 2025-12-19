@@ -14,6 +14,19 @@ struct NowPlayingView: View {
     @State private var showChapterList = false
     @State private var showSpeedPicker = false
 
+    // Computed properties for chapter display
+    private var hasMP3Chapters: Bool {
+        !podcastPlayer.chapters.isEmpty
+    }
+
+    private var hasAIChapters: Bool {
+        !podcastPlayer.aiChapters.isEmpty
+    }
+
+    private var hasAnyChapters: Bool {
+        hasMP3Chapters || hasAIChapters
+    }
+
     var body: some View {
         NavigationStack {
             GeometryReader { geometry in
@@ -25,8 +38,8 @@ struct NowPlayingView: View {
                         // Track info
                         trackInfoView
 
-                        // Chapter indicator (if chapters exist)
-                        if !podcastPlayer.chapters.isEmpty {
+                        // Chapter indicator (if chapters exist - MP3 or AI)
+                        if hasAnyChapters {
                             chapterIndicatorView
                         }
 
@@ -39,8 +52,8 @@ struct NowPlayingView: View {
                         // Additional controls
                         additionalControls
 
-                        // Chapter list (expandable)
-                        if !podcastPlayer.chapters.isEmpty {
+                        // Chapter list (expandable) - MP3 or AI chapters
+                        if hasAnyChapters {
                             chapterListSection
                         }
 
@@ -179,22 +192,49 @@ struct NowPlayingView: View {
             }
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: "list.bullet")
-                    .font(.caption)
-
-                if let chapter = podcastPlayer.currentChapter {
-                    Text(chapter.title)
-                        .font(.subheadline.weight(.medium))
-                        .lineLimit(1)
+                // Show sparkles icon for AI chapters
+                if hasMP3Chapters {
+                    Image(systemName: "list.bullet")
+                        .font(.caption)
                 } else {
-                    Text("No chapters")
-                        .font(.subheadline)
+                    Image(systemName: "sparkles")
+                        .font(.caption)
+                        .foregroundStyle(accentColor.color)
+                }
+
+                if hasMP3Chapters {
+                    // MP3 chapter display
+                    if let chapter = podcastPlayer.currentChapter {
+                        Text(chapter.title)
+                            .font(.subheadline.weight(.medium))
+                            .lineLimit(1)
+                    } else {
+                        Text("Chapters")
+                            .font(.subheadline)
+                    }
+                } else if hasAIChapters {
+                    // AI chapter display
+                    if let chapter = currentAIChapter {
+                        Text(chapter.title)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(accentColor.color)
+                            .lineLimit(1)
+                    } else {
+                        Text("AI Chapters")
+                            .font(.subheadline)
+                            .foregroundStyle(accentColor.color)
+                    }
                 }
 
                 Spacer()
 
-                if let currentIndex = currentChapterIndex {
+                // Chapter count
+                if hasMP3Chapters, let currentIndex = currentChapterIndex {
                     Text("\(currentIndex + 1) of \(podcastPlayer.chapters.count)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if hasAIChapters, let currentIndex = currentAIChapterIndex {
+                    Text("\(currentIndex + 1) of \(podcastPlayer.aiChapters.count)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -213,6 +253,30 @@ struct NowPlayingView: View {
     private var currentChapterIndex: Int? {
         guard let current = podcastPlayer.currentChapter else { return nil }
         return podcastPlayer.chapters.firstIndex { $0.id == current.id }
+    }
+
+    // MARK: - AI Chapter Helpers
+
+    private var currentAIChapter: AIChapterData? {
+        let currentTime = podcastPlayer.currentTime
+        // Find the chapter that contains current time
+        for (index, chapter) in podcastPlayer.aiChapters.enumerated() {
+            let isAfterStart = currentTime >= chapter.startTime
+            if let endTime = chapter.endTime {
+                if isAfterStart && currentTime < endTime {
+                    return chapter
+                }
+            } else if index == podcastPlayer.aiChapters.count - 1 && isAfterStart {
+                // Last chapter with no end time
+                return chapter
+            }
+        }
+        return nil
+    }
+
+    private var currentAIChapterIndex: Int? {
+        guard let current = currentAIChapter else { return nil }
+        return podcastPlayer.aiChapters.firstIndex { $0.id == current.id }
     }
 
     // MARK: - Progress View
@@ -248,15 +312,17 @@ struct NowPlayingView: View {
         HStack(spacing: 40) {
             // Previous chapter / Skip back
             Button {
-                if podcastPlayer.chapters.isEmpty {
+                if hasMP3Chapters {
+                    podcastPlayer.previousChapter()
+                } else if hasAIChapters {
+                    previousAIChapter()
+                } else {
                     // Skip back 15 seconds
                     let newProgress = (podcastPlayer.currentTime - 15) / podcastPlayer.duration
                     podcastPlayer.seek(to: max(0, newProgress))
-                } else {
-                    podcastPlayer.previousChapter()
                 }
             } label: {
-                Image(systemName: podcastPlayer.chapters.isEmpty ? "gobackward.15" : "backward.end.fill")
+                Image(systemName: hasAnyChapters ? "backward.end.fill" : "gobackward.15")
                     .font(.title)
                     .foregroundStyle(.primary)
             }
@@ -272,18 +338,42 @@ struct NowPlayingView: View {
 
             // Next chapter / Skip forward
             Button {
-                if podcastPlayer.chapters.isEmpty {
+                if hasMP3Chapters {
+                    podcastPlayer.nextChapter()
+                } else if hasAIChapters {
+                    nextAIChapter()
+                } else {
                     // Skip forward 30 seconds
                     let newProgress = (podcastPlayer.currentTime + 30) / podcastPlayer.duration
                     podcastPlayer.seek(to: min(1, newProgress))
-                } else {
-                    podcastPlayer.nextChapter()
                 }
             } label: {
-                Image(systemName: podcastPlayer.chapters.isEmpty ? "goforward.30" : "forward.end.fill")
+                Image(systemName: hasAnyChapters ? "forward.end.fill" : "goforward.30")
                     .font(.title)
                     .foregroundStyle(.primary)
             }
+        }
+    }
+
+    // AI Chapter Navigation
+
+    private func nextAIChapter() {
+        guard let currentIndex = currentAIChapterIndex,
+              currentIndex + 1 < podcastPlayer.aiChapters.count else { return }
+        podcastPlayer.seekToAIChapter(podcastPlayer.aiChapters[currentIndex + 1])
+    }
+
+    private func previousAIChapter() {
+        guard let currentIndex = currentAIChapterIndex,
+              let current = currentAIChapter else { return }
+
+        // If more than 3 seconds into chapter, restart it
+        if podcastPlayer.currentTime - current.startTime > 3 {
+            podcastPlayer.seekToAIChapter(current)
+        } else if currentIndex > 0 {
+            podcastPlayer.seekToAIChapter(podcastPlayer.aiChapters[currentIndex - 1])
+        } else {
+            podcastPlayer.seekToAIChapter(current) // Restart first chapter
         }
     }
 
@@ -364,22 +454,140 @@ struct NowPlayingView: View {
             if showChapterList {
                 Divider()
 
-                Text("Chapters")
-                    .font(.headline)
+                if hasMP3Chapters {
+                    // MP3 chapters
+                    Text("Chapters")
+                        .font(.headline)
+                        .padding(.top, 8)
+
+                    ForEach(podcastPlayer.chapters) { chapter in
+                        ChapterRowView(
+                            chapter: chapter,
+                            isCurrentChapter: chapter.id == podcastPlayer.currentChapter?.id,
+                            onTap: {
+                                podcastPlayer.seekToChapter(chapter)
+                            }
+                        )
+                    }
+                } else if hasAIChapters {
+                    // AI chapters
+                    HStack(spacing: 6) {
+                        Image(systemName: "sparkles")
+                            .foregroundStyle(accentColor.color)
+                        Text("AI Chapters")
+                            .font(.headline)
+                    }
                     .padding(.top, 8)
 
-                ForEach(podcastPlayer.chapters) { chapter in
-                    ChapterRowView(
-                        chapter: chapter,
-                        isCurrentChapter: chapter.id == podcastPlayer.currentChapter?.id,
-                        onTap: {
-                            podcastPlayer.seekToChapter(chapter)
-                        }
-                    )
+                    ForEach(podcastPlayer.aiChapters) { chapter in
+                        AIChapterRowView(
+                            chapter: chapter,
+                            isActive: currentAIChapter?.id == chapter.id,
+                            onTap: {
+                                podcastPlayer.seekToAIChapter(chapter)
+                            }
+                        )
+                    }
+
+                    Text("Generated from transcription")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 4)
                 }
             }
         }
         .animation(.easeInOut(duration: 0.2), value: showChapterList)
+    }
+}
+
+// MARK: - AI Chapter Row View
+
+struct AIChapterRowView: View {
+    let chapter: AIChapterData
+    let isActive: Bool
+    let onTap: () -> Void
+    @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
+
+    // Color based on whether this is an ad (ads stay orange, content uses accent)
+    private var chapterColor: Color {
+        chapter.isAd ? .orange : accentColor.color
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Timestamp or playing indicator
+            if isActive {
+                Image(systemName: "speaker.wave.2.fill")
+                    .font(.caption)
+                    .foregroundStyle(chapterColor)
+                    .frame(width: 52)
+            } else {
+                Text(formatTime(chapter.startTime))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 52, alignment: .leading)
+            }
+
+            // Chapter info
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    if chapter.isAd {
+                        Image(systemName: "megaphone.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                    }
+                    Text(chapter.title)
+                        .font(.subheadline)
+                        .foregroundStyle(isActive ? chapterColor : .primary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                }
+
+                if !chapter.summary.isEmpty && chapter.summary != "Chapter segment" && chapter.summary != "Advertisement" {
+                    Text(chapter.summary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                if !chapter.keywords.isEmpty {
+                    HStack(spacing: 4) {
+                        ForEach(chapter.keywords.prefix(3), id: \.self) { keyword in
+                            Text(keyword)
+                                .font(.caption2)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(chapterColor.opacity(0.1))
+                                .foregroundStyle(chapterColor)
+                                .cornerRadius(4)
+                        }
+                    }
+                }
+            }
+
+            Spacer()
+
+            // Duration
+            if let endTime = chapter.endTime {
+                let duration = endTime - chapter.startTime
+                Text(formatTime(duration))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(isActive ? chapterColor.opacity(0.1) : (chapter.isAd ? Color.orange.opacity(0.05) : Color.clear))
+        .cornerRadius(8)
+        .onTapGesture {
+            onTap()
+        }
+    }
+
+    private func formatTime(_ seconds: TimeInterval) -> String {
+        let mins = Int(seconds) / 60
+        let secs = Int(seconds) % 60
+        return String(format: "%d:%02d", mins, secs)
     }
 }
 

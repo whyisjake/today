@@ -36,6 +36,9 @@ final class Article {
 
     var feed: Feed?
 
+    // Podcast download tracking
+    var podcastDownload: PodcastDownload?
+
     init(title: String, link: String, articleDescription: String? = nil, content: String? = nil, contentEncoded: String? = nil, imageUrl: String? = nil, publishedDate: Date, author: String? = nil, guid: String, feed: Feed? = nil, redditSubreddit: String? = nil, redditCommentsUrl: String? = nil, redditPostId: String? = nil, audioUrl: String? = nil, audioDuration: TimeInterval? = nil, audioType: String? = nil) {
         self.title = title
         self.link = link
