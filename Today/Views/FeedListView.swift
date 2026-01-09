@@ -1203,6 +1203,10 @@ struct EditFeedView: View {
     @State private var url: String
     @State private var category: String
     @State private var useCustomCategory: Bool
+    @State private var episodeLimit: Int
+    @AppStorage("defaultEpisodeLimit") private var defaultEpisodeLimit: Int = 5
+
+    private let episodeLimitOptions = [0, 1, 2, 3, 5, 10, 20] // 0 = use default
 
     init(feed: Feed, modelContext: ModelContext) {
         self.feed = feed
@@ -1213,6 +1217,7 @@ struct EditFeedView: View {
         // Check if current category is a predefined one
         let isPredefined = FeedCategory(rawValue: feed.category) != nil
         _useCustomCategory = State(initialValue: !isPredefined)
+        _episodeLimit = State(initialValue: feed.downloadEpisodeLimit ?? 0)
     }
 
     var body: some View {
@@ -1249,6 +1254,23 @@ struct EditFeedView: View {
                     Text("Select from predefined categories")
                 }
             }
+
+            // Podcast download settings (only show for feeds with audio content)
+            if feed.isPodcastFeed {
+                Section {
+                    Picker("Keep downloaded episodes", selection: $episodeLimit) {
+                        Text("Use Default (\(defaultEpisodeLimit == 0 ? "Unlimited" : "\(defaultEpisodeLimit)"))").tag(0)
+                        ForEach(episodeLimitOptions.filter { $0 > 0 }, id: \.self) { limit in
+                            Text("\(limit) episodes").tag(limit)
+                        }
+                        Text("Unlimited").tag(-1)
+                    }
+                } header: {
+                    Text("Podcast Downloads")
+                } footer: {
+                    Text("Older downloaded episodes will be automatically removed when this limit is exceeded.")
+                }
+            }
         }
         .navigationTitle("Edit Feed")
         .navigationBarTitleDisplayMode(.inline)
@@ -1275,6 +1297,15 @@ struct EditFeedView: View {
         // Save custom category to CategoryManager if it's a custom category
         if useCustomCategory {
             _ = categoryManager.addCustomCategory(trimmedCategory)
+        }
+
+        // Save episode limit (0 = use default, -1 = unlimited, >0 = specific limit)
+        if episodeLimit == 0 {
+            feed.downloadEpisodeLimit = nil // Use global default
+        } else if episodeLimit == -1 {
+            feed.downloadEpisodeLimit = 0 // 0 in model means unlimited
+        } else {
+            feed.downloadEpisodeLimit = episodeLimit
         }
 
         do {

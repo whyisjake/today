@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 import AVFoundation
 
 enum AppearanceMode: String, CaseIterable {
@@ -205,6 +206,23 @@ struct SettingsView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+                }
+
+                Section {
+                    NavigationLink {
+                        DownloadsSettingsView()
+                    } label: {
+                        HStack {
+                            Text("Downloaded Episodes")
+                            Spacer()
+                            Text(PodcastDownloadManager.shared.formattedTotalSize())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } header: {
+                    Text("Downloads")
+                } footer: {
+                    Text("Manage downloaded podcast episodes and storage.")
                 }
 
                 Section("About") {
@@ -471,5 +489,199 @@ struct ShortArticleBehaviorPickerView: View {
         }
         .navigationTitle(String(localized: "Short Article Behavior"))
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - Downloads Settings View
+
+struct DownloadsSettingsView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \PodcastDownload.downloadedAt, order: .reverse) private var downloads: [PodcastDownload]
+    @AppStorage("autoDeleteDownloadsAfterDays") private var autoDeleteDays: Int = 30
+    @AppStorage("defaultEpisodeLimit") private var defaultEpisodeLimit: Int = 5
+    @State private var showingDeleteAlert = false
+
+    private let deleteOptions = [7, 14, 30, 60, 90, 0] // 0 = never
+    private let episodeLimitOptions = [1, 2, 3, 5, 10, 20, 0] // 0 = unlimited
+
+    var body: some View {
+        List {
+            // Storage summary
+            Section {
+                HStack {
+                    Text("Total Storage Used")
+                    Spacer()
+                    Text(PodcastDownloadManager.shared.formattedTotalSize())
+                        .foregroundStyle(.secondary)
+                }
+
+                HStack {
+                    Text("Downloaded Episodes")
+                    Spacer()
+                    Text("\(downloads.filter { $0.downloadStatus == .completed }.count)")
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Storage")
+            }
+
+            // Episode limit setting
+            Section {
+                Picker("Keep episodes per feed", selection: $defaultEpisodeLimit) {
+                    ForEach(episodeLimitOptions, id: \.self) { limit in
+                        if limit == 0 {
+                            Text("Unlimited").tag(limit)
+                        } else {
+                            Text("\(limit) episodes").tag(limit)
+                        }
+                    }
+                }
+            } header: {
+                Text("Episode Limits")
+            } footer: {
+                Text("When downloading new episodes, older downloads from the same feed will be removed to stay within this limit. Individual feeds can override this setting.")
+            }
+
+            // Auto-delete setting
+            Section {
+                Picker("Auto-delete after", selection: $autoDeleteDays) {
+                    ForEach(deleteOptions, id: \.self) { days in
+                        if days == 0 {
+                            Text("Never").tag(days)
+                        } else {
+                            Text("\(days) days").tag(days)
+                        }
+                    }
+                }
+            } header: {
+                Text("Automatic Cleanup")
+            } footer: {
+                Text("Downloaded episodes will be automatically deleted after this period to save storage.")
+            }
+
+            // Stuck transcriptions section
+            let stuckTranscriptions = downloads.filter { $0.isTranscriptionStuck }
+            if !stuckTranscriptions.isEmpty {
+                Section {
+                    ForEach(stuckTranscriptions) { download in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(download.article?.title ?? "Unknown Episode")
+                                    .font(.subheadline)
+                                    .lineLimit(1)
+                                HStack(spacing: 4) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundStyle(.orange)
+                                    Text("Transcription stuck at \(Int(download.transcriptionProgress * 100))%")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            Spacer()
+                            Button("Reset") {
+                                download.resetTranscription()
+                            }
+                            .font(.subheadline)
+                            .foregroundStyle(Color.accentColor)
+                        }
+                    }
+                } header: {
+                    Text("Stuck Transcriptions")
+                } footer: {
+                    Text("These transcriptions were interrupted. Reset them to try again.")
+                }
+            }
+
+            // Downloaded episodes list
+            if !downloads.isEmpty {
+                Section {
+                    ForEach(downloads.filter { $0.downloadStatus == .completed }) { download in
+                        DownloadRowView(download: download)
+                    }
+                    .onDelete(perform: deleteDownloads)
+                } header: {
+                    Text("Downloaded Episodes")
+                }
+            }
+
+            // Delete all button
+            Section {
+                Button(role: .destructive) {
+                    showingDeleteAlert = true
+                } label: {
+                    HStack {
+                        Spacer()
+                        Text("Delete All Downloads")
+                        Spacer()
+                    }
+                }
+                .disabled(downloads.isEmpty)
+            }
+        }
+        .navigationTitle("Downloads")
+        .navigationBarTitleDisplayMode(.inline)
+        .alert("Delete All Downloads?", isPresented: $showingDeleteAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete All", role: .destructive) {
+                deleteAllDownloads()
+            }
+        } message: {
+            Text("This will delete all downloaded episodes and their transcriptions. This action cannot be undone.")
+        }
+    }
+
+    private func deleteDownloads(at offsets: IndexSet) {
+        let completedDownloads = downloads.filter { $0.downloadStatus == .completed }
+        for index in offsets {
+            let download = completedDownloads[index]
+            PodcastDownloadManager.shared.deleteDownload(for: download)
+        }
+    }
+
+    private func deleteAllDownloads() {
+        for download in downloads {
+            PodcastDownloadManager.shared.deleteDownload(for: download)
+        }
+    }
+}
+
+// MARK: - Download Row View
+
+struct DownloadRowView: View {
+    let download: PodcastDownload
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let article = download.article {
+                Text(article.title)
+                    .font(.subheadline)
+                    .lineLimit(2)
+
+                HStack(spacing: 8) {
+                    if let fileSize = download.fileSize {
+                        Text(ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if download.transcriptionStatus == .completed {
+                        Label("Transcribed", systemImage: "waveform")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                    }
+
+                    if download.chapterGenerationStatus == .completed {
+                        Label("Chapters", systemImage: "sparkles")
+                            .font(.caption)
+                            .foregroundStyle(.purple)
+                    }
+                }
+            } else {
+                Text("Unknown Episode")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
     }
 }
