@@ -100,6 +100,7 @@ class BackgroundSyncManager: ObservableObject {
     }
 
     /// Manually trigger a sync (useful for testing and launch sync)
+    /// Note: This is safe to call multiple times - isSyncInProgress guard in performBackgroundSync prevents overlaps
     func triggerManualSync() {
         Task {
             await self.performBackgroundSync()

@@ -607,14 +607,19 @@ struct TodayView: View {
         }
         
         isRefreshing = true
-        defer { isRefreshing = false }
         
         // Use BackgroundSyncManager for off-main-thread sync
         BackgroundSyncManager.shared.triggerManualSync()
         
-        // Wait for sync to start and give it time to show progress
-        // The @Query will automatically update as articles are added
-        try? await Task.sleep(for: .seconds(1))
+        // Wait for sync to complete by observing isSyncInProgress
+        // This provides better UX than hardcoded delays
+        while syncManager.isSyncInProgress {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        
+        // Keep refresh indicator visible for a moment so user sees it completed
+        try? await Task.sleep(for: .milliseconds(300))
+        isRefreshing = false
     }
 
     private func loadMoreDays() {

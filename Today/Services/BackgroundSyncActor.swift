@@ -85,7 +85,9 @@ enum BackgroundFeedSync {
         let maxConcurrentRequests = 5
         var results: [ParsedFeedData] = []
         
-        // Process feeds in chunks
+        // Process feeds in chunks to limit concurrency
+        // Each chunk is processed concurrently, but we wait for a chunk to complete before starting the next
+        // This ensures we never have more than maxConcurrentRequests active at once
         for chunk in feedInfos.chunked(into: maxConcurrentRequests) {
             let chunkResults = await withTaskGroup(of: ParsedFeedData?.self) { group in
                 for (feedID, feedURL, lastModified, etag) in chunk {
