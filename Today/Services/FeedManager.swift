@@ -22,7 +22,12 @@ enum FeedFetchResult {
     )
 
     /// Feed was not modified (304 response)
-    case notModified
+    /// Includes redirect information in case URL was permanently redirected before 304
+    case notModified(
+        lastModified: String?,
+        etag: String?,
+        finalURL: URL?
+    )
 }
 
 @MainActor
@@ -90,13 +95,13 @@ class FeedManager: ObservableObject {
             initialEtag = etag
             // Use final URL if there was a permanent redirect
             actualURL = finalURL?.absoluteString ?? feedURL
-        case .notModified:
+        case .notModified(let lastModified, let etag, let finalURL):
             // Shouldn't happen for a new feed, but handle gracefully
             feedTitle = feedURL
             feedDescription = ""
-            initialLastModified = nil
-            initialEtag = nil
-            actualURL = feedURL
+            initialLastModified = lastModified
+            initialEtag = etag
+            actualURL = finalURL?.absoluteString ?? feedURL
         }
 
         let feed = Feed(
@@ -163,7 +168,11 @@ class FeedManager: ObservableObject {
 
             // Handle 304 Not Modified
             guard response.wasModified, let data = response.data else {
-                return .notModified
+                return .notModified(
+                    lastModified: lastModified,
+                    etag: etag,
+                    finalURL: response.hadPermanentRedirect ? response.finalURL : nil
+                )
             }
 
             // Parse the Reddit JSON response
@@ -233,7 +242,11 @@ class FeedManager: ObservableObject {
 
         // Handle 304 Not Modified
         guard response.wasModified, let data = response.data else {
-            return .notModified
+            return .notModified(
+                lastModified: lastModified,
+                etag: etag,
+                finalURL: response.hadPermanentRedirect ? response.finalURL : nil
+            )
         }
 
         // Parse the JSON Feed response
@@ -270,7 +283,11 @@ class FeedManager: ObservableObject {
 
         // Handle 304 Not Modified
         guard response.wasModified, let data = response.data else {
-            return .notModified
+            return .notModified(
+                lastModified: lastModified,
+                etag: etag,
+                finalURL: response.hadPermanentRedirect ? response.finalURL : nil
+            )
         }
 
         // Try RSS parser first
@@ -321,9 +338,16 @@ class FeedManager: ObservableObject {
                 print("📋 Updating feed URL from \(feed.url) to \(newURL.absoluteString) (301 redirect)")
                 feed.url = newURL.absoluteString
             }
-        case .notModified:
-            // Feed hasn't changed, just update lastFetched
+        case .notModified(let lastModified, let etag, let finalURL):
+            // Feed hasn't changed, just update lastFetched and cache headers
             feed.lastFetched = Date()
+            feed.httpLastModified = lastModified
+            feed.httpEtag = etag
+            // Update URL if there was a permanent redirect
+            if let newURL = finalURL {
+                print("📋 Updating feed URL from \(feed.url) to \(newURL.absoluteString) (301 redirect before 304)")
+                feed.url = newURL.absoluteString
+            }
             print("📋 Feed \(feed.title) not modified (304)")
         }
     }
@@ -357,9 +381,16 @@ class FeedManager: ObservableObject {
                 print("📋 Updating feed URL from \(updatedFeed.url) to \(newURL.absoluteString) (301 redirect)")
                 updatedFeed.url = newURL.absoluteString
             }
-        case .notModified:
-            // Feed hasn't changed, just update lastFetched
+        case .notModified(let lastModified, let etag, let finalURL):
+            // Feed hasn't changed, just update lastFetched and cache headers
             updatedFeed.lastFetched = Date()
+            updatedFeed.httpLastModified = lastModified
+            updatedFeed.httpEtag = etag
+            // Update URL if there was a permanent redirect
+            if let newURL = finalURL {
+                print("📋 Updating feed URL from \(updatedFeed.url) to \(newURL.absoluteString) (301 redirect before 304)")
+                updatedFeed.url = newURL.absoluteString
+            }
             print("📋 Feed \(updatedFeed.title) not modified (304)")
         }
     }

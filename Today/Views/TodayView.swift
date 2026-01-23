@@ -14,6 +14,7 @@ struct TodayView: View {
 
     @Query(sort: \Article.publishedDate, order: .reverse) private var allArticles: [Article]
     @StateObject private var categoryManager = CategoryManager.shared
+    @StateObject private var syncManager = BackgroundSyncManager.shared
 
     @State private var selectedCategory: String = "All"
     @State private var searchText = ""
@@ -600,13 +601,20 @@ struct TodayView: View {
     }
 
     private func refreshFeeds() async {
+        // Prevent multiple overlapping syncs
+        guard !syncManager.isSyncInProgress else {
+            return
+        }
+        
         isRefreshing = true
+        defer { isRefreshing = false }
+        
         // Use BackgroundSyncManager for off-main-thread sync
         BackgroundSyncManager.shared.triggerManualSync()
-        // Brief delay to let sync start, then hide refresh indicator
+        
+        // Wait for sync to start and give it time to show progress
         // The @Query will automatically update as articles are added
         try? await Task.sleep(for: .seconds(1))
-        isRefreshing = false
     }
 
     private func loadMoreDays() {

@@ -9,7 +9,8 @@ import Foundation
 import BackgroundTasks
 import SwiftData
 
-class BackgroundSyncManager {
+@MainActor
+class BackgroundSyncManager: ObservableObject {
     static let shared = BackgroundSyncManager()
 
     private let syncTaskIdentifier = "com.today.feedsync"
@@ -17,6 +18,9 @@ class BackgroundSyncManager {
     /// Shared ModelContainer for background sync operations
     /// Set by TodayApp on launch
     var modelContainer: ModelContainer?
+    
+    /// Track whether a sync is currently in progress
+    @Published var isSyncInProgress = false
 
     private init() {}
 
@@ -73,6 +77,15 @@ class BackgroundSyncManager {
     /// Perform the actual background sync
     /// Parsing runs in background, inserts run on main thread in chunks
     private func performBackgroundSync() async {
+        // Prevent concurrent syncs
+        guard !isSyncInProgress else {
+            print("⚠️ Sync already in progress, skipping")
+            return
+        }
+        
+        isSyncInProgress = true
+        defer { isSyncInProgress = false }
+        
         print("🔄 Performing background sync...")
 
         guard let container = modelContainer else {
@@ -82,12 +95,8 @@ class BackgroundSyncManager {
 
         // Use BackgroundFeedSync which parses in background
         // and inserts on main thread in small chunks with yields
-        await MainActor.run {
-            let context = container.mainContext
-            Task {
-                await BackgroundFeedSync.syncAllFeeds(modelContext: context)
-            }
-        }
+        let context = await MainActor.run { container.mainContext }
+        await BackgroundFeedSync.syncAllFeeds(modelContext: context)
     }
 
     /// Manually trigger a sync (useful for testing and launch sync)

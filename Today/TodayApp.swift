@@ -80,7 +80,7 @@ struct TodayApp: App {
                 try? await Task.sleep(for: .milliseconds(500))
                 // BackgroundSyncManager uses BackgroundSyncActor which runs all
                 // SwiftData operations on a background thread
-                await BackgroundSyncManager.shared.triggerManualSync()
+                BackgroundSyncManager.shared.triggerManualSync()
             }
         } else {
             if let lastSync = FeedManager.getLastSyncDate() {
@@ -134,7 +134,7 @@ struct TodayApp: App {
         Task.detached(priority: .utility) {
             try? await Task.sleep(for: .milliseconds(500))
             // Use BackgroundSyncManager for off-main-thread sync
-            await BackgroundSyncManager.shared.triggerManualSync()
+            BackgroundSyncManager.shared.triggerManualSync()
         }
     }
 }
