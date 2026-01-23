@@ -14,6 +14,10 @@ class BackgroundSyncManager {
 
     private let syncTaskIdentifier = "com.today.feedsync"
 
+    /// Shared ModelContainer for background sync operations
+    /// Set by TodayApp on launch
+    var modelContainer: ModelContainer?
+
     private init() {}
 
     /// Register background task on app launch
@@ -67,33 +71,29 @@ class BackgroundSyncManager {
     }
 
     /// Perform the actual background sync
-    @MainActor
+    /// Parsing runs in background, inserts run on main thread in chunks
     private func performBackgroundSync() async {
         print("🔄 Performing background sync...")
 
-        // Create a temporary model container for background work
-        let schema = Schema([
-            Feed.self,
-            Article.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
-        guard let modelContainer = try? ModelContainer(for: schema, configurations: [modelConfiguration]) else {
-            print("❌ Failed to create model container for background sync")
+        guard let container = modelContainer else {
+            print("❌ ModelContainer not set - cannot perform background sync")
             return
         }
 
-        let modelContext = ModelContext(modelContainer)
-        let feedManager = FeedManager(modelContext: modelContext)
-
-        // Sync all feeds (FeedManager.syncAllFeeds has detailed logging)
-        await feedManager.syncAllFeeds()
+        // Use BackgroundFeedSync which parses in background
+        // and inserts on main thread in small chunks with yields
+        await MainActor.run {
+            let context = container.mainContext
+            Task {
+                await BackgroundFeedSync.syncAllFeeds(modelContext: context)
+            }
+        }
     }
 
-    /// Manually trigger a sync (useful for testing)
+    /// Manually trigger a sync (useful for testing and launch sync)
     func triggerManualSync() {
         Task {
-            await performBackgroundSync()
+            await self.performBackgroundSync()
         }
     }
 }

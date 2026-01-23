@@ -601,8 +601,11 @@ struct TodayView: View {
 
     private func refreshFeeds() async {
         isRefreshing = true
-        let feedManager = FeedManager(modelContext: modelContext)
-        await feedManager.syncAllFeeds()
+        // Use BackgroundSyncManager for off-main-thread sync
+        BackgroundSyncManager.shared.triggerManualSync()
+        // Brief delay to let sync start, then hide refresh indicator
+        // The @Query will automatically update as articles are added
+        try? await Task.sleep(for: .seconds(1))
         isRefreshing = false
     }
 

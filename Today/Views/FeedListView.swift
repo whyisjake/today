@@ -267,13 +267,11 @@ struct FeedListView: View {
         ToolbarItem(placement: .topBarLeading) {
             Menu {
                 Button {
-                    Task {
-                        await feedManager.syncAllFeeds()
-                    }
+                    // Use BackgroundSyncManager for off-main-thread sync
+                    BackgroundSyncManager.shared.triggerManualSync()
                 } label: {
                     Label("Sync All Feeds", systemImage: "arrow.clockwise")
                 }
-                .disabled(feedManager.isSyncing)
 
                 Divider()
 

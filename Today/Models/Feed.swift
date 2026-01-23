@@ -17,6 +17,10 @@ final class Feed {
     var lastFetched: Date?
     var isActive: Bool
 
+    // HTTP caching headers for conditional GET
+    var httpLastModified: String?  // Server's Last-Modified header value
+    var httpEtag: String?          // Server's ETag header value
+
     @Relationship(deleteRule: .cascade, inverse: \Article.feed)
     var articles: [Article]?
 
