@@ -70,12 +70,6 @@ class Texturizer {
             return text
         }
 
-        // Debug logging
-        let hasQuotes = text.contains("'") || text.contains("\"")
-        if hasQuotes {
-            print("📝 Texturizer input: '\(text.prefix(80))...'")
-        }
-
         // Static replacements (simple string substitutions)
         var result = text
         result = result.replacingOccurrences(of: "...", with: ellipsis)
@@ -156,13 +150,6 @@ class Texturizer {
         }
 
         result = texturizedParts.joined()
-
-        // Debug logging
-        if hasQuotes && result != text {
-            print("✅ Texturizer output: '\(result.prefix(80))...'")
-        } else if hasQuotes {
-            print("⚠️ Texturizer: NO CHANGE")
-        }
 
         return result
     }

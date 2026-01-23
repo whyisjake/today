@@ -238,32 +238,17 @@ class RSSParser: NSObject, XMLParserDelegate {
                 finalImageUrl = feedImageUrl
             }
 
-            // Debug: log title processing steps
-            let normalizedTitle = normalizeWhitespace(currentTitle)
-            let decodedTitle = decodeHTMLEntities(normalizedTitle)
-            let processedTitle = decodedTitle.texturize()
-
-            if currentTitle.contains("&#") || currentTitle.contains("Dark Days") {
-                print("🔍 Title processing:")
-                print("   Raw:        '\(currentTitle)'")
-                print("   Normalized: '\(normalizedTitle)'")
-                print("   Decoded:    '\(decodedTitle)'")
-                print("   Texturized: '\(processedTitle)'")
-            }
+            let processedTitle = decodeHTMLEntities(normalizeWhitespace(currentTitle)).texturize()
             let processedDescription = currentDescription.isEmpty ? nil : decodeHTMLEntities(normalizeWhitespace(currentDescription)).texturize()
 
             var processedContent: String? = nil
             if !currentContent.isEmpty {
-                let decoded = decodeHTMLEntities(normalizeWhitespace(currentContent))
-                print("🔍 Content before texturize (first 200 chars): '\(decoded.prefix(200))'")
-                processedContent = decoded.texturize()
+                processedContent = decodeHTMLEntities(normalizeWhitespace(currentContent)).texturize()
             }
 
             var processedContentEncoded: String? = nil
             if !currentContentEncoded.isEmpty {
-                let decoded = decodeHTMLEntities(normalizeWhitespace(currentContentEncoded))
-                print("🔍 ContentEncoded before texturize (first 200 chars): '\(decoded.prefix(200))'")
-                processedContentEncoded = decoded.texturize()
+                processedContentEncoded = decodeHTMLEntities(normalizeWhitespace(currentContentEncoded)).texturize()
             }
 
             // Extract Reddit metadata if this is a Reddit post

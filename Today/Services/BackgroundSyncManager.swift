@@ -9,10 +9,18 @@ import Foundation
 import BackgroundTasks
 import SwiftData
 
-class BackgroundSyncManager {
+@MainActor
+class BackgroundSyncManager: ObservableObject {
     static let shared = BackgroundSyncManager()
 
     private let syncTaskIdentifier = "com.today.feedsync"
+
+    /// Shared ModelContainer for background sync operations
+    /// Set by TodayApp on launch
+    var modelContainer: ModelContainer?
+    
+    /// Track whether a sync is currently in progress
+    @Published var isSyncInProgress = false
 
     private init() {}
 
@@ -67,33 +75,35 @@ class BackgroundSyncManager {
     }
 
     /// Perform the actual background sync
-    @MainActor
+    /// Parsing runs in background, inserts run on main thread in chunks
     private func performBackgroundSync() async {
+        // Prevent concurrent syncs
+        guard !isSyncInProgress else {
+            print("⚠️ Sync already in progress, skipping")
+            return
+        }
+        
+        isSyncInProgress = true
+        defer { isSyncInProgress = false }
+        
         print("🔄 Performing background sync...")
 
-        // Create a temporary model container for background work
-        let schema = Schema([
-            Feed.self,
-            Article.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
-        guard let modelContainer = try? ModelContainer(for: schema, configurations: [modelConfiguration]) else {
-            print("❌ Failed to create model container for background sync")
+        guard let container = modelContainer else {
+            print("❌ ModelContainer not set - cannot perform background sync")
             return
         }
 
-        let modelContext = ModelContext(modelContainer)
-        let feedManager = FeedManager(modelContext: modelContext)
-
-        // Sync all feeds (FeedManager.syncAllFeeds has detailed logging)
-        await feedManager.syncAllFeeds()
+        // Use BackgroundFeedSync which parses in background
+        // and inserts on main thread in small chunks with yields
+        let context = await MainActor.run { container.mainContext }
+        await BackgroundFeedSync.syncAllFeeds(modelContext: context)
     }
 
-    /// Manually trigger a sync (useful for testing)
+    /// Manually trigger a sync (useful for testing and launch sync)
+    /// Note: This is safe to call multiple times - isSyncInProgress guard in performBackgroundSync prevents overlaps
     func triggerManualSync() {
         Task {
-            await performBackgroundSync()
+            await self.performBackgroundSync()
         }
     }
 }

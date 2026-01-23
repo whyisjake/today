@@ -37,6 +37,9 @@ struct TodayApp: App {
 
         // Register background tasks
         BackgroundSyncManager.shared.registerBackgroundTasks()
+
+        // Set the model container for background sync operations
+        BackgroundSyncManager.shared.modelContainer = sharedModelContainer
     }
 
     var body: some Scene {
@@ -63,24 +66,21 @@ struct TodayApp: App {
 
     @MainActor
     private func checkAndSyncIfNeeded() {
-        // Check if a sync is already in progress before proceeding
-        guard !FeedManager.isSyncInProgress() else {
-            print("⏭️ Sync already in progress, skipping launch sync check")
-            return
-        }
-        
         if FeedManager.needsSync() {
             let lastSync = FeedManager.getLastSyncDate()
             if let lastSync = lastSync {
                 let hoursSince = Date().timeIntervalSince(lastSync) / 3600
-                print("⚠️ Content is stale (last sync: \(String(format: "%.1f", hoursSince))h ago). Triggering sync...")
+                print("⚠️ Content is stale (last sync: \(String(format: "%.1f", hoursSince))h ago). Triggering background sync...")
             } else {
-                print("⚠️ No previous sync detected. Triggering initial sync...")
+                print("⚠️ No previous sync detected. Triggering initial background sync...")
             }
 
-            Task {
-                let feedManager = FeedManager(modelContext: sharedModelContainer.mainContext)
-                await feedManager.syncAllFeeds()
+            // Delay sync slightly to let UI render first, then run entirely in background
+            Task.detached(priority: .utility) {
+                try? await Task.sleep(for: .milliseconds(500))
+                // BackgroundSyncManager uses BackgroundSyncActor which runs all
+                // SwiftData operations on a background thread
+                BackgroundSyncManager.shared.triggerManualSync()
             }
         } else {
             if let lastSync = FeedManager.getLastSyncDate() {
@@ -129,10 +129,11 @@ struct TodayApp: App {
         // Save the context
         try? context.save()
 
-        // Sync the feeds to get initial articles
-        Task {
-            let feedManager = FeedManager(modelContext: context)
-            await feedManager.syncAllFeeds()
+        // Sync the feeds to get initial articles (delay to let UI render first)
+        Task.detached(priority: .utility) {
+            try? await Task.sleep(for: .milliseconds(500))
+            // Use BackgroundSyncManager for off-main-thread sync
+            BackgroundSyncManager.shared.triggerManualSync()
         }
     }
 }
