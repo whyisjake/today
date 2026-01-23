@@ -14,6 +14,7 @@ struct TodayView: View {
 
     @Query(sort: \Article.publishedDate, order: .reverse) private var allArticles: [Article]
     @StateObject private var categoryManager = CategoryManager.shared
+    @StateObject private var syncManager = BackgroundSyncManager.shared
 
     @State private var selectedCategory: String = "All"
     @State private var searchText = ""
@@ -600,9 +601,24 @@ struct TodayView: View {
     }
 
     private func refreshFeeds() async {
+        // Prevent multiple overlapping syncs
+        guard !syncManager.isSyncInProgress else {
+            return
+        }
+
         isRefreshing = true
-        let feedManager = FeedManager(modelContext: modelContext)
-        await feedManager.syncAllFeeds()
+
+        // Use BackgroundSyncManager for off-main-thread sync
+        BackgroundSyncManager.shared.triggerManualSync()
+
+        // Wait for sync to complete by observing isSyncInProgress
+        // This provides better UX than hardcoded delays
+        while syncManager.isSyncInProgress {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+
+        // Keep refresh indicator visible for a moment so user sees it completed
+        try? await Task.sleep(for: .milliseconds(300))
         isRefreshing = false
     }
 

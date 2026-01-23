@@ -48,6 +48,7 @@ struct FeedListView: View {
     @Query(sort: \Feed.title) private var feeds: [Feed]
     @StateObject private var feedManager: FeedManager
     @StateObject private var categoryManager = CategoryManager.shared
+    @StateObject private var syncManager = BackgroundSyncManager.shared
 
     @State private var showingAddFeed = false
     @State private var feedType: FeedType = .rss
@@ -270,13 +271,12 @@ struct FeedListView: View {
         ToolbarItem(placement: .topBarLeading) {
             Menu {
                 Button {
-                    Task {
-                        await feedManager.syncAllFeeds()
-                    }
+                    // Use BackgroundSyncManager for off-main-thread sync
+                    BackgroundSyncManager.shared.triggerManualSync()
                 } label: {
                     Label("Sync All Feeds", systemImage: "arrow.clockwise")
                 }
-                .disabled(feedManager.isSyncing)
+                .disabled(syncManager.isSyncInProgress)
 
                 Divider()
 
