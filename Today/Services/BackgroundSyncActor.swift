@@ -77,41 +77,53 @@ enum BackgroundFeedSync {
     }
 
     /// Parse all feeds in background without any SwiftData access
+    /// Limits concurrency to avoid overwhelming the system with many simultaneous requests
     private static func parseAllFeedsInBackground(
         feedInfos: [(id: PersistentIdentifier, url: String, lastModified: String?, etag: String?)]
     ) async -> [ParsedFeedData] {
-        await withTaskGroup(of: ParsedFeedData?.self) { group in
-            for (feedID, feedURL, lastModified, etag) in feedInfos {
-                group.addTask {
-                    do {
-                        let result = try await fetchAndParseFeed(
-                            url: feedURL,
-                            lastModified: lastModified,
-                            etag: etag
-                        )
-                        return ParsedFeedData(
-                            feedID: feedID,
-                            articles: result.articles,
-                            wasModified: result.wasModified,
-                            newLastModified: result.lastModified,
-                            newEtag: result.etag,
-                            finalURL: result.finalURL
-                        )
-                    } catch {
-                        print("❌ [Sync] Failed to parse \(feedURL): \(error.localizedDescription)")
-                        return nil
+        // Limit concurrent network requests to avoid overwhelming the system
+        let maxConcurrentRequests = 5
+        var results: [ParsedFeedData] = []
+
+        // Process feeds in chunks to limit concurrency
+        // Each chunk is processed concurrently, but we wait for a chunk to complete before starting the next
+        // This ensures we never have more than maxConcurrentRequests active at once
+        for chunk in feedInfos.chunked(into: maxConcurrentRequests) {
+            let chunkResults = await withTaskGroup(of: ParsedFeedData?.self) { group in
+                for (feedID, feedURL, lastModified, etag) in chunk {
+                    group.addTask {
+                        do {
+                            let result = try await fetchAndParseFeed(
+                                url: feedURL,
+                                lastModified: lastModified,
+                                etag: etag
+                            )
+                            return ParsedFeedData(
+                                feedID: feedID,
+                                articles: result.articles,
+                                wasModified: result.wasModified,
+                                newLastModified: result.lastModified,
+                                newEtag: result.etag,
+                                finalURL: result.finalURL
+                            )
+                        } catch {
+                            print("❌ [Sync] Failed to parse \(feedURL): \(error.localizedDescription)")
+                            return nil
+                        }
                     }
                 }
-            }
 
-            var results: [ParsedFeedData] = []
-            for await result in group {
-                if let data = result {
-                    results.append(data)
+                var chunkResults: [ParsedFeedData] = []
+                for await result in group {
+                    if let data = result {
+                        chunkResults.append(data)
+                    }
                 }
+                return chunkResults
             }
-            return results
+            results.append(contentsOf: chunkResults)
         }
+        return results
     }
 
     /// Result of fetching and parsing a feed with conditional GET support
@@ -168,7 +180,7 @@ enum BackgroundFeedSync {
                 wasModified: false,
                 lastModified: lastModified,
                 etag: etag,
-                finalURL: nil
+                finalURL: response.hadPermanentRedirect ? response.finalURL : nil
             )
         }
 
@@ -203,7 +215,7 @@ enum BackgroundFeedSync {
                 wasModified: false,
                 lastModified: lastModified,
                 etag: etag,
-                finalURL: nil
+                finalURL: response.hadPermanentRedirect ? response.finalURL : nil
             )
         }
 
@@ -239,7 +251,7 @@ enum BackgroundFeedSync {
                 wasModified: false,
                 lastModified: lastModified,
                 etag: etag,
-                finalURL: nil
+                finalURL: response.hadPermanentRedirect ? response.finalURL : nil
             )
         }
 
