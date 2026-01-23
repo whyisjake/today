@@ -48,6 +48,7 @@ struct FeedListView: View {
     @Query(sort: \Feed.title) private var feeds: [Feed]
     @StateObject private var feedManager: FeedManager
     @StateObject private var categoryManager = CategoryManager.shared
+    @StateObject private var syncManager = BackgroundSyncManager.shared
 
     @State private var showingAddFeed = false
     @State private var feedType: FeedType = .rss
@@ -272,6 +273,7 @@ struct FeedListView: View {
                 } label: {
                     Label("Sync All Feeds", systemImage: "arrow.clockwise")
                 }
+                .disabled(syncManager.isSyncInProgress)
 
                 Divider()
 
