@@ -95,7 +95,8 @@ class BackgroundSyncManager: ObservableObject {
 
         // Use BackgroundFeedSync which parses in background
         // and inserts on main thread in small chunks with yields
-        let context = await MainActor.run { container.mainContext }
+        // Since this class is @MainActor, we can access mainContext directly
+        let context = container.mainContext
         await BackgroundFeedSync.syncAllFeeds(modelContext: context)
     }
 
