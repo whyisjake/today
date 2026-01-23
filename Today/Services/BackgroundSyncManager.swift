@@ -19,7 +19,6 @@ class BackgroundSyncManager: ObservableObject {
     /// Shared ModelContainer for background sync operations
     /// Set by TodayApp on launch
     var modelContainer: ModelContainer?
-
     /// Track whether a sync is currently in progress
     @Published var isSyncInProgress = false
 
@@ -96,8 +95,7 @@ class BackgroundSyncManager: ObservableObject {
 
         // Use BackgroundFeedSync which parses in background
         // and inserts on main thread in small chunks with yields
-        // Since this class is @MainActor, we can access mainContext directly
-        let context = container.mainContext
+        let context = await MainActor.run { container.mainContext }
         await BackgroundFeedSync.syncAllFeeds(modelContext: context)
     }
 

@@ -84,7 +84,6 @@ enum BackgroundFeedSync {
         // Limit concurrent network requests to avoid overwhelming the system
         let maxConcurrentRequests = 5
         var results: [ParsedFeedData] = []
-
         // Process feeds in chunks to limit concurrency
         // Each chunk is processed concurrently, but we wait for a chunk to complete before starting the next
         // This ensures we never have more than maxConcurrentRequests active at once
