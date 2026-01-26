@@ -150,13 +150,13 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
             return
         }
 
-        // Configure audio session for playback (only when actually starting to play)
-        setupAudioSession()
-
         // Stop current playback if switching articles
         if currentArticle?.id != article.id {
             stop()
         }
+
+        // Configure audio session for playback (only when actually starting to play)
+        setupAudioSession()
 
         currentArticle = article
 
