@@ -28,9 +28,10 @@ struct TodayApp: App {
     init() {
         // Configure audio session to mix with other audio (music, podcasts, etc.)
         // This allows animated GIFs and videos to play without interrupting user's audio
+        // Note: We only configure the category here, not activate the session.
+        // The session will be activated when audio playback is needed (TTS or podcasts).
         do {
             try AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default)
-            try AVAudioSession.sharedInstance().setActive(true)
         } catch {
             print("Failed to set audio session category: \(error)")
         }

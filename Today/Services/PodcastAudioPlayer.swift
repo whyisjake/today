@@ -90,7 +90,6 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
         }
 
         setupRemoteCommandCenter()
-        setupAudioSession()
         setupAppLifecycleObservers()
     }
 
@@ -132,6 +131,16 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
         }
     }
 
+    private func restoreAmbientAudioSession() {
+        do {
+            // Restore .ambient category (for videos/GIFs that mix with other audio)
+            try AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default)
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            print("Failed to restore audio session: \(error)")
+        }
+    }
+
     // MARK: - Playback Control
 
     func play(article: Article) {
@@ -140,6 +149,9 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
             print("No audio URL found for article")
             return
         }
+
+        // Configure audio session for playback (only when actually starting to play)
+        setupAudioSession()
 
         // Stop current playback if switching articles
         if currentArticle?.id != article.id {
@@ -214,6 +226,9 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
         // Clear artwork cache
         cachedArtwork = nil
         cachedArtworkArticleId = nil
+
+        // Restore ambient audio session for videos/GIFs
+        restoreAmbientAudioSession()
     }
 
     func togglePlayPause() {
