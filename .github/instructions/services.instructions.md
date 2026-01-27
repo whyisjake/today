@@ -20,11 +20,12 @@ Services handle business logic, network operations, and data processing. Follow 
 
 ### Service Organization
 
-**Parsers** (`RSSParser`, `JSONFeedParser`, `RedditJSONParser`, `AtomFeedTests`):
+**Parsers** (`RSSParser`, `JSONFeedParser`, `RedditJSONParser`):
 - Stateless parsing logic
 - XMLParser/JSONDecoder based
 - Return parsed data structures, don't interact with database
 - Support multiple date formats and edge cases
+- `RSSParser` handles both RSS and Atom feed formats
 
 **Managers** (`FeedManager`, `BackgroundSyncManager`, `CategoryManager`):
 - Own ModelContext for database operations

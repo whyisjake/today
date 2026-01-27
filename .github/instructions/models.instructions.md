@@ -18,7 +18,7 @@ applyTo: "Today/Models/**/*.swift"
 
 ### Schema Updates
 When adding new models or modifying existing ones:
-1. Add new models to the schema array in `TodayApp.swift` (lines 14-17)
+1. Add new models to the schema array in `TodayApp.swift`
 2. SwiftData handles simple migrations automatically
 3. For complex changes, consider migration strategy or accept data loss in development
 
@@ -52,6 +52,11 @@ class ExampleModel {
 ```
 
 ### Testing Models
-- Use in-memory ModelContainer for tests: `ModelContainer(for: [Feed.self, Article.self], configurations: ModelConfiguration(isStoredInMemoryOnly: true))`
+- Use in-memory ModelContainer for tests:
+  ```swift
+  let schema = Schema([Feed.self, Article.self])
+  let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+  let container = try ModelContainer(for: schema, configurations: [config])
+  ```
 - Test relationships by creating and deleting parent objects
 - Verify cascade delete behavior
