@@ -1314,7 +1314,8 @@ struct FeedArticlesView: View {
         if !searchText.isEmpty {
             articles = articles.filter {
                 $0.title.localizedCaseInsensitiveContains(searchText) ||
-                $0.articleDescription?.localizedCaseInsensitiveContains(searchText) == true
+                $0.articleDescription?.localizedCaseInsensitiveContains(searchText) == true ||
+                $0.content?.localizedCaseInsensitiveContains(searchText) == true
             }
         }
 
