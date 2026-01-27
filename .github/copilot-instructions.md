@@ -34,13 +34,28 @@ open Today.xcodeproj
 
 ### Running Tests
 
+**Important**: Tests require an iOS Simulator. The project must be run on macOS with Xcode installed.
+
 ```bash
 # Run all tests
 xcodebuild test -project Today.xcodeproj -scheme Today -destination 'platform=iOS Simulator,name=iPhone 15'
 
 # Run specific test suite
 xcodebuild test -project Today.xcodeproj -scheme Today -destination 'platform=iOS Simulator,name=iPhone 15' -only-testing:TodayTests/TexturizerTests
+
+# List available simulators
+xcrun simctl list devices available
 ```
+
+**Available Test Suites:**
+- `TodayTests/RSSParserTests` - RSS feed parsing tests
+- `TodayTests/AtomFeedTests` - Atom feed format tests
+- `TodayTests/JSONFeedTests` - JSON feed format tests
+- `TodayTests/RedditRSSTests` - Reddit JSON API tests
+- `TodayTests/TexturizerTests` - Typography/text processing tests
+- `TodayTests/CategoryManagerTests` - Category management tests
+- `TodayTests/ConditionalHTTPClientTests` - HTTP client tests
+- `TodayTests/HTMLHelperTests` - HTML parsing helper tests
 
 ### Version Management
 
@@ -159,12 +174,27 @@ When adding new SwiftData models:
 
 ## Testing
 
+### Test Structure
+
+Tests are located in `TodayTests/` directory:
+- Tests use XCTest framework
+- Parser tests include sample RSS/Atom/JSON feed data
+- Tests run in iOS Simulator environment
+- Use `XCTAssert*` macros for assertions
+
 ### Common Test Scenarios
 
 - **Test RSS parsing**: Use `RSSParser` with sample XML in tests
 - **Test feed sync**: Mock FeedManager methods
 - **Test AI summaries**: Use sample article text
 - **Test SwiftData**: Use in-memory ModelContainer for tests
+
+### Running Tests in Xcode
+
+1. Open project: `open Today.xcodeproj`
+2. Select a simulator device (iPhone 15 or later)
+3. Press `Cmd+U` to run all tests
+4. Use Test Navigator (Cmd+6) to run individual tests
 
 ## License Information
 
@@ -180,6 +210,13 @@ When modifying or adding code:
 
 ## Development Tips
 
+### Environment Requirements
+
+- **macOS Required**: This is an iOS project that requires Xcode on macOS
+- **Xcode 16.0+**: Required for iOS 18.0+ development
+- **iOS Simulator**: Tests and development require iOS Simulator
+- **No CI/CD**: This project uses manual Xcode builds and App Store Connect for releases
+
 ### Common Tasks
 
 - **Manually trigger sync**: Call `FeedManager.syncAllFeeds()` from any view
@@ -192,6 +229,14 @@ When modifying or adding code:
 - Use breakpoints in Xcode for stepping through code
 - Use Instruments for performance profiling
 - Check Console.app for background task logs
+
+### Common Issues and Workarounds
+
+- **Build fails after version bump**: If `agvtool` doesn't update `MARKETING_VERSION` in project.pbxproj, manually update it with sed or text editor
+- **Simulator not found**: Use `xcrun simctl list devices available` to see available simulators
+- **Tests timeout**: Some tests may need longer timeout for network operations
+- **Background fetch not triggering**: iOS controls when background tasks run; use Debug > Simulate Background Fetch for testing
+- **SwiftData migration issues**: For complex schema changes, may need to delete app and reinstall during development
 
 ### Code Style
 
@@ -219,9 +264,33 @@ When modifying or adding code:
 - **BackgroundTasks**: Background sync support
 - **SafariServices**: In-app web browsing
 
+## Validation Steps
+
+Before committing changes, validate:
+
+1. **Build succeeds**: Clean build with no warnings
+   ```bash
+   xcodebuild -project Today.xcodeproj -scheme Today -configuration Debug clean build
+   ```
+
+2. **Tests pass**: All test suites complete successfully
+   ```bash
+   xcodebuild test -project Today.xcodeproj -scheme Today -destination 'platform=iOS Simulator,name=iPhone 15'
+   ```
+
+3. **Manual testing**: Run app in simulator and verify:
+   - Can add RSS feeds
+   - Articles display correctly
+   - Navigation works between tabs
+   - Background sync can be triggered manually
+
+4. **Version numbers**: If releasing, verify version/build numbers are updated correctly
+
 ## Additional Resources
 
 - [README.md](../README.md) - User-facing documentation
-- [CLAUDE.md](../CLAUDE.md) - Detailed architecture guide
-- [RELEASE_PROCESS.md](../RELEASE_PROCESS.md) - Release and deployment guide
+- [CLAUDE.md](../CLAUDE.md) - Detailed architecture guide for Claude AI
+- [RELEASE_PROCESS.md](../RELEASE_PROCESS.md) - Detailed release and App Store submission guide
 - [PROJECT_SUMMARY.md](../PROJECT_SUMMARY.md) - Feature documentation
+- [SETUP.md](../SETUP.md) - Initial setup instructions for new developers
+- [BACKGROUND_SETUP.md](../BACKGROUND_SETUP.md) - Background fetch configuration
