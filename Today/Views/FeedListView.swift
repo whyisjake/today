@@ -1293,6 +1293,7 @@ struct FeedArticlesView: View {
     @Query(sort: \Article.publishedDate, order: .reverse) private var allArticles: [Article]
 
     @State private var showReadArticles = false
+    @State private var searchText = ""
     @State private var navigationState: NavigationState?
     @AppStorage("fontOption") private var fontOption: FontOption = .serif
 
@@ -1307,6 +1308,15 @@ struct FeedArticlesView: View {
 
         if !showReadArticles {
             articles = articles.filter { !$0.isRead }
+        }
+
+        // Filter by search text
+        if !searchText.isEmpty {
+            articles = articles.filter {
+                $0.title.localizedCaseInsensitiveContains(searchText) ||
+                $0.articleDescription?.localizedCaseInsensitiveContains(searchText) == true ||
+                $0.content?.localizedCaseInsensitiveContains(searchText) == true
+            }
         }
 
         return articles
@@ -1383,6 +1393,7 @@ struct FeedArticlesView: View {
         }
         .navigationTitle(feed.title)
         .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $searchText, prompt: "Search in \(feed.title)")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
