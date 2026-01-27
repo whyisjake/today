@@ -25,14 +25,16 @@ class BackgroundSyncManager: ObservableObject {
     private init() {}
 
     /// Register background task on app launch
-    func registerBackgroundTasks() {
+    nonisolated func registerBackgroundTasks() {
         BGTaskScheduler.shared.register(forTaskWithIdentifier: syncTaskIdentifier, using: nil) { task in
-            self.handleBackgroundSync(task: task as! BGAppRefreshTask)
+            Task { @MainActor in
+                self.handleBackgroundSync(task: task as! BGAppRefreshTask)
+            }
         }
     }
 
     /// Schedule the next background sync
-    func scheduleBackgroundSync() {
+    nonisolated func scheduleBackgroundSync() {
         let request = BGAppRefreshTaskRequest(identifier: syncTaskIdentifier)
         // Schedule for 1 hour from now (minimum is 15 minutes for BGAppRefreshTask)
         let scheduledDate = Date(timeIntervalSinceNow: 60 * 60)
@@ -78,24 +80,15 @@ class BackgroundSyncManager: ObservableObject {
     /// Parsing runs in background, inserts run on main thread in chunks
     private func performBackgroundSync() async {
         // Prevent concurrent syncs
-        guard !isSyncInProgress else {
-            print("⚠️ Sync already in progress, skipping")
-            return
-        }
+        guard !isSyncInProgress else { return }
 
         isSyncInProgress = true
         defer { isSyncInProgress = false }
 
-        print("🔄 Performing background sync...")
-
-        guard let container = modelContainer else {
-            print("❌ ModelContainer not set - cannot perform background sync")
-            return
-        }
+        guard let container = modelContainer else { return }
 
         // Use BackgroundFeedSync which parses in background
         // and inserts on main thread in small chunks with yields
-        // Since this class is @MainActor, we can access mainContext directly
         let context = container.mainContext
         await BackgroundFeedSync.syncAllFeeds(modelContext: context)
     }
@@ -113,7 +106,7 @@ class BackgroundSyncManager: ObservableObject {
 
 extension BackgroundSyncManager {
     /// Enable background fetch when user opens the app
-    func enableBackgroundFetch() {
+    nonisolated func enableBackgroundFetch() {
         scheduleBackgroundSync()
     }
 }

@@ -13,8 +13,8 @@ struct TodayView: View {
     @Environment(\.openURL) private var openURL
 
     @Query(sort: \Article.publishedDate, order: .reverse) private var allArticles: [Article]
-    @StateObject private var categoryManager = CategoryManager.shared
-    @StateObject private var syncManager = BackgroundSyncManager.shared
+    @ObservedObject private var categoryManager = CategoryManager.shared
+    @ObservedObject private var syncManager = BackgroundSyncManager.shared
 
     @State private var selectedCategory: String = "All"
     @State private var searchText = ""

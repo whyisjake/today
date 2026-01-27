@@ -17,34 +17,11 @@ struct ConditionalHTTPResponse: Sendable {
     let hadPermanentRedirect: Bool
 }
 
-/// Delegate to track HTTP redirects
-private final class RedirectTracker: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
-    var finalURL: URL?
-    var wasRedirected: Bool = false
-    var hadPermanentRedirect: Bool = false
-
-    func urlSession(
-        _ session: URLSession,
-        task: URLSessionTask,
-        willPerformHTTPRedirection response: HTTPURLResponse,
-        newRequest request: URLRequest
-    ) async -> URLRequest? {
-        wasRedirected = true
-        finalURL = request.url
-
-        // Track 301 permanent redirects so we can update the stored URL
-        if response.statusCode == 301 {
-            hadPermanentRedirect = true
-        }
-
-        return request // Follow the redirect
-    }
-}
-
 /// Helper for making conditional HTTP requests
+/// Uses URLSession.shared to avoid creating ephemeral sessions/delegates
 enum ConditionalHTTPClient {
 
-    /// Perform a conditional GET request with redirect tracking
+    /// Perform a conditional GET request
     /// - Parameters:
     ///   - url: The URL to fetch
     ///   - lastModified: Previous Last-Modified header value (optional)
@@ -72,19 +49,8 @@ enum ConditionalHTTPClient {
             request.setValue(value, forHTTPHeaderField: key)
         }
 
-        // Create a custom session with redirect tracking delegate
-        let redirectTracker = RedirectTracker()
-        let session = URLSession(
-            configuration: .default,
-            delegate: redirectTracker,
-            delegateQueue: nil
-        )
-
-        defer {
-            session.finishTasksAndInvalidate()
-        }
-
-        let (data, response) = try await session.data(for: request)
+        // Use shared session - avoids creating ephemeral sessions/delegates that can cause crashes
+        let (data, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             // Non-HTTP response, treat as modified with no cache headers
@@ -98,6 +64,14 @@ enum ConditionalHTTPClient {
             )
         }
 
+        // Check if URL changed (indicates redirect occurred)
+        // URLSession.shared follows redirects automatically; response.url is the final URL
+        let responseURL = httpResponse.url
+        let wasRedirected = responseURL != nil && responseURL != url
+        // Treat any redirect as potentially permanent (we can't distinguish 301 vs 302 with shared session)
+        // This is conservative - we update the URL if it changed
+        let finalURL = wasRedirected ? responseURL : nil
+
         // Check for 304 Not Modified
         if httpResponse.statusCode == 304 {
             return ConditionalHTTPResponse(
@@ -105,8 +79,8 @@ enum ConditionalHTTPClient {
                 wasModified: false,
                 lastModified: lastModified, // Keep existing values
                 etag: etag,
-                finalURL: redirectTracker.finalURL,
-                hadPermanentRedirect: redirectTracker.hadPermanentRedirect
+                finalURL: finalURL,
+                hadPermanentRedirect: wasRedirected
             )
         }
 
@@ -119,8 +93,8 @@ enum ConditionalHTTPClient {
             wasModified: true,
             lastModified: newLastModified,
             etag: newEtag,
-            finalURL: redirectTracker.finalURL,
-            hadPermanentRedirect: redirectTracker.hadPermanentRedirect
+            finalURL: finalURL,
+            hadPermanentRedirect: wasRedirected
         )
     }
 }

@@ -29,7 +29,6 @@ enum BackgroundFeedSync {
     @MainActor
     static func syncAllFeeds(modelContext: ModelContext) async {
         let syncStartTime = Date()
-        print("📡 [Sync] Starting feed sync at \(syncStartTime.formatted(date: .omitted, time: .standard))")
 
         do {
             // Fetch all active feeds
@@ -38,10 +37,8 @@ enum BackgroundFeedSync {
             )
             let feeds = try modelContext.fetch(descriptor)
             let totalFeeds = feeds.count
-            print("📋 [Sync] Syncing \(totalFeeds) active feeds")
 
             guard totalFeeds > 0 else {
-                print("ℹ️ [Sync] No active feeds to sync")
                 return
             }
 
@@ -50,16 +47,14 @@ enum BackgroundFeedSync {
                 feeds.map { ($0.persistentModelID, $0.url, $0.httpLastModified, $0.httpEtag) }
 
             // PHASE 1: Parse all feeds in background (no SwiftData access)
-            print("🔄 [Sync] Phase 1: Parsing feeds in background...")
             let parsedResults = await parseAllFeedsInBackground(feedInfos: feedInfos)
 
             let notModifiedCount = parsedResults.filter { !$0.wasModified }.count
             let successCount = parsedResults.filter { $0.wasModified && !$0.articles.isEmpty }.count
             let failureCount = totalFeeds - parsedResults.count
-            print("📊 [Sync] Parsing complete: \(successCount) fetched, \(notModifiedCount) not modified (304), \(failureCount) failed")
+            print("📡 [Sync] \(successCount) fetched, \(notModifiedCount) not modified (304), \(failureCount) failed")
 
             // PHASE 2: Insert articles on main thread in small chunks
-            print("💾 [Sync] Phase 2: Inserting articles in chunks...")
             await insertArticlesInChunks(parsedResults: parsedResults, modelContext: modelContext)
 
             // Save once at the end
@@ -69,7 +64,7 @@ enum BackgroundFeedSync {
             UserDefaults.standard.set(syncStartTime, forKey: "com.today.lastGlobalSyncDate")
 
             let duration = Date().timeIntervalSince(syncStartTime)
-            print("✅ [Sync] Feed sync completed in \(String(format: "%.1f", duration))s")
+            print("✅ [Sync] Completed in \(String(format: "%.1f", duration))s")
 
         } catch {
             print("❌ [Sync] Error: \(error.localizedDescription)")
@@ -84,12 +79,18 @@ enum BackgroundFeedSync {
         // Limit concurrent network requests to avoid overwhelming the system
         let maxConcurrentRequests = 5
         var results: [ParsedFeedData] = []
+
         // Process feeds in chunks to limit concurrency
-        // Each chunk is processed concurrently, but we wait for a chunk to complete before starting the next
-        // This ensures we never have more than maxConcurrentRequests active at once
-        for chunk in feedInfos.chunked(into: maxConcurrentRequests) {
+        let chunks = feedInfos.chunked(into: maxConcurrentRequests)
+
+        for chunk in chunks {
             let chunkResults = await withTaskGroup(of: ParsedFeedData?.self) { group in
-                for (feedID, feedURL, lastModified, etag) in chunk {
+                for feedInfo in chunk {
+                    let feedID = feedInfo.id
+                    let feedURL = feedInfo.url
+                    let lastModified = feedInfo.lastModified
+                    let etag = feedInfo.etag
+
                     group.addTask {
                         do {
                             let result = try await fetchAndParseFeed(
@@ -106,7 +107,6 @@ enum BackgroundFeedSync {
                                 finalURL: result.finalURL
                             )
                         } catch {
-                            print("❌ [Sync] Failed to parse \(feedURL): \(error.localizedDescription)")
                             return nil
                         }
                     }
@@ -295,14 +295,12 @@ enum BackgroundFeedSync {
 
             // Update URL if there was a 301 permanent redirect
             if let newURL = feedData.finalURL {
-                print("📋 [Sync] Updating feed URL from \(feed.url) to \(newURL.absoluteString) (301 redirect)")
                 feed.url = newURL.absoluteString
             }
 
             // If feed wasn't modified, just update lastFetched and move on
             if !feedData.wasModified {
                 feed.lastFetched = Date()
-                print("📋 [Sync] Feed \(feed.title) not modified (304)")
                 continue
             }
 

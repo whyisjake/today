@@ -35,17 +35,17 @@ struct TodayApp: App {
             print("Failed to set audio session category: \(error)")
         }
 
-        // Register background tasks
+        // Register background tasks (nonisolated - safe to call from init)
         BackgroundSyncManager.shared.registerBackgroundTasks()
-
-        // Set the model container for background sync operations
-        BackgroundSyncManager.shared.modelContainer = sharedModelContainer
     }
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .onAppear {
+                    // Set the model container for background sync (must be on MainActor)
+                    BackgroundSyncManager.shared.modelContainer = sharedModelContainer
+
                     // Schedule background sync when app launches
                     BackgroundSyncManager.shared.enableBackgroundFetch()
 
@@ -66,27 +66,12 @@ struct TodayApp: App {
 
     @MainActor
     private func checkAndSyncIfNeeded() {
-        if FeedManager.needsSync() {
-            let lastSync = FeedManager.getLastSyncDate()
-            if let lastSync = lastSync {
-                let hoursSince = Date().timeIntervalSince(lastSync) / 3600
-                print("⚠️ Content is stale (last sync: \(String(format: "%.1f", hoursSince))h ago). Triggering background sync...")
-            } else {
-                print("⚠️ No previous sync detected. Triggering initial background sync...")
-            }
+        guard FeedManager.needsSync() else { return }
 
-            // Delay sync slightly to let UI render first, then run entirely in background
-            Task.detached(priority: .utility) {
-                try? await Task.sleep(for: .milliseconds(500))
-                // BackgroundSyncManager uses BackgroundSyncActor which runs all
-                // SwiftData operations on a background thread
-                await BackgroundSyncManager.shared.triggerManualSync()
-            }
-        } else {
-            if let lastSync = FeedManager.getLastSyncDate() {
-                let minutesSince = Date().timeIntervalSince(lastSync) / 60
-                print("✅ Content is fresh (last sync: \(String(format: "%.0f", minutesSince))m ago). No sync needed.")
-            }
+        // Delay sync slightly to let UI render first, then run entirely in background
+        Task.detached(priority: .utility) {
+            try? await Task.sleep(for: .milliseconds(500))
+            await BackgroundSyncManager.shared.triggerManualSync()
         }
     }
 

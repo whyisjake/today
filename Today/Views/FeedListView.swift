@@ -47,8 +47,8 @@ struct FeedListView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Feed.title) private var feeds: [Feed]
     @StateObject private var feedManager: FeedManager
-    @StateObject private var categoryManager = CategoryManager.shared
-    @StateObject private var syncManager = BackgroundSyncManager.shared
+    @ObservedObject private var categoryManager = CategoryManager.shared
+    @ObservedObject private var syncManager = BackgroundSyncManager.shared
 
     @State private var showingAddFeed = false
     @State private var feedType: FeedType = .rss
@@ -1197,7 +1197,7 @@ struct EditFeedView: View {
     @Environment(\.dismiss) private var dismiss
     let feed: Feed
     let modelContext: ModelContext
-    @StateObject private var categoryManager = CategoryManager.shared
+    @ObservedObject private var categoryManager = CategoryManager.shared
 
     @State private var title: String
     @State private var url: String
