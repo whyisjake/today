@@ -9,6 +9,10 @@ import Foundation
 import StoreKit
 import SwiftUI
 
+#if os(iOS)
+import UIKit
+#endif
+
 @MainActor
 class ReviewRequestManager {
     static let shared = ReviewRequestManager()
@@ -50,13 +54,18 @@ class ReviewRequestManager {
             return
         }
 
-        // Request review (iOS handles rate limiting automatically)
+        // Request review (system handles rate limiting automatically)
+        #if os(iOS)
         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
             AppStore.requestReview(in: windowScene)
-
             // Mark that we requested a review for this version
             UserDefaults.standard.set(currentVersion, forKey: lastReviewRequestVersionKey)
         }
+        #elseif os(macOS)
+        // macOS uses SKStoreReviewController
+        SKStoreReviewController.requestReview()
+        UserDefaults.standard.set(currentVersion, forKey: lastReviewRequestVersionKey)
+        #endif
     }
 
     /// Check if user has used the app enough to warrant a review request
@@ -98,10 +107,15 @@ class ReviewRequestManager {
     #if DEBUG
     /// Force a review request for testing (bypasses all requirements)
     func forceReviewRequest() {
+        #if os(iOS)
         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
             AppStore.requestReview(in: windowScene)
             print("🧪 DEBUG: Force requested app review")
         }
+        #elseif os(macOS)
+        SKStoreReviewController.requestReview()
+        print("🧪 DEBUG: Force requested app review")
+        #endif
     }
 
     /// Reset all review tracking data (for testing fresh state)

@@ -11,6 +11,12 @@ import MediaPlayer
 import SwiftUI
 import SwiftData
 
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
+
 // MARK: - Chapter Model
 
 struct PodcastChapter: Identifiable, Equatable {
@@ -20,13 +26,13 @@ struct PodcastChapter: Identifiable, Equatable {
     let endTime: TimeInterval?
     let imageUrl: String?
     let url: String?  // Link associated with chapter
-    let image: UIImage?  // Chapter artwork (from ID3 tags)
+    let image: PlatformImage?  // Chapter artwork (from ID3 tags)
 
     var formattedStartTime: String {
         AudioFormatters.formatDuration(startTime)
     }
 
-    // Equatable conformance (UIImage doesn't conform by default)
+    // Equatable conformance (PlatformImage doesn't conform by default)
     static func == (lhs: PodcastChapter, rhs: PodcastChapter) -> Bool {
         lhs.id == rhs.id &&
         lhs.title == rhs.title &&
@@ -36,7 +42,7 @@ struct PodcastChapter: Identifiable, Equatable {
         lhs.url == rhs.url
     }
 
-    init(title: String, startTime: TimeInterval, endTime: TimeInterval?, imageUrl: String?, url: String?, image: UIImage? = nil) {
+    init(title: String, startTime: TimeInterval, endTime: TimeInterval?, imageUrl: String?, url: String?, image: PlatformImage? = nil) {
         self.title = title
         self.startTime = startTime
         self.endTime = endTime
@@ -96,8 +102,16 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
 
     private func setupAppLifecycleObservers() {
         // Save playback position when app goes to background
+        #if os(iOS)
+        let resignNotification = UIApplication.willResignActiveNotification
+        let terminateNotification = UIApplication.willTerminateNotification
+        #elseif os(macOS)
+        let resignNotification = NSApplication.willResignActiveNotification
+        let terminateNotification = NSApplication.willTerminateNotification
+        #endif
+
         NotificationCenter.default.addObserver(
-            forName: UIApplication.willResignActiveNotification,
+            forName: resignNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
@@ -109,7 +123,7 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
 
         // Save playback position when app is about to terminate
         NotificationCenter.default.addObserver(
-            forName: UIApplication.willTerminateNotification,
+            forName: terminateNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
@@ -123,6 +137,7 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
     // MARK: - Audio Session Configuration
 
     private func setupAudioSession() {
+        #if os(iOS)
         do {
             // Use .playback category for audio playback (allows background playback)
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
@@ -130,6 +145,8 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
         } catch {
             print("Failed to configure audio session: \(error)")
         }
+        #endif
+        // macOS doesn't require explicit audio session configuration
     }
 
     // MARK: - Playback Control
@@ -387,7 +404,7 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
                 Task {
                     do {
                         let (data, _) = try await URLSession.shared.data(from: imageUrl)
-                        if let image = UIImage(data: data) {
+                        if let image = PlatformImage(data: data) {
                             await MainActor.run {
                                 // Only cache and update if still playing the same article
                                 guard self.currentArticle?.id == article.id else { return }
@@ -411,7 +428,7 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
             }
 
             // Use app icon as fallback artwork (immediate)
-            if let image = UIImage(named: "AppIcon") {
+            if let image = PlatformImage(named: "AppIcon") {
                 let fallbackArtwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
                 nowPlayingInfo[MPMediaItemPropertyArtwork] = fallbackArtwork
 

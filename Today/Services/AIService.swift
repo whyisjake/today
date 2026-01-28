@@ -65,7 +65,7 @@ class AIService {
     }
 
     // Computed properties to safely cast from storage
-    @available(iOS 26.0, *)
+    @available(iOS 26.0, macOS 26.0, *)
     private var systemModel: SystemLanguageModel? {
         #if canImport(FoundationModels)
         return systemModelStorage as? SystemLanguageModel
@@ -74,7 +74,7 @@ class AIService {
         #endif
     }
 
-    @available(iOS 26.0, *)
+    @available(iOS 26.0, macOS 26.0, *)
     private var session: LanguageModelSession? {
         #if canImport(FoundationModels)
         return sessionStorage as? LanguageModelSession
@@ -85,7 +85,7 @@ class AIService {
 
     private init() {
         // Initialize session if Apple Intelligence is available (iOS 26+)
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, macOS 26.0, *) {
             #if canImport(FoundationModels)
             print("🧠 AIService: FoundationModels can be imported")
             let model = SystemLanguageModel.default
@@ -109,7 +109,7 @@ class AIService {
 
     /// Check if Apple Intelligence is available on this device
     var isAppleIntelligenceAvailable: Bool {
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, macOS 26.0, *) {
             #if canImport(FoundationModels)
             if let model = systemModelStorage as? SystemLanguageModel {
                 return model.isAvailable
@@ -121,7 +121,7 @@ class AIService {
 
     /// Get detailed availability status
     var availabilityStatus: String {
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, macOS 26.0, *) {
             #if canImport(FoundationModels)
             guard let systemModel = systemModel else {
                 return "Apple Intelligence not initialized"
@@ -152,7 +152,7 @@ class AIService {
         }
 
         // Try Apple Intelligence first if available (iOS 26+)
-        if #available(iOS 26.0, *), isAppleIntelligenceAvailable {
+        if #available(iOS 26.0, macOS 26.0, *), isAppleIntelligenceAvailable {
             #if canImport(FoundationModels)
             if let session = session {
                 do {
@@ -173,7 +173,7 @@ class AIService {
 
     /// Generate summary using Apple's on-device LLM (iOS 26+)
     #if canImport(FoundationModels)
-    @available(iOS 26.0, *)
+    @available(iOS 26.0, macOS 26.0, *)
     private func generateAISummary(articles: [Article], session: LanguageModelSession) async throws -> String {
         // Select the most important articles from the last 24 hours
         let selectedArticles = selectImportantArticles(from: articles, limit: 10)
@@ -275,7 +275,7 @@ class AIService {
 
     /// Generate conversational response using Apple's on-device LLM (iOS 26+)
     #if canImport(FoundationModels)
-    @available(iOS 26.0, *)
+    @available(iOS 26.0, macOS 26.0, *)
     private func generateAIResponse(query: String, articles: [Article], session: LanguageModelSession) async throws -> (String, [Article]?) {
         // Prepare article context (limit to avoid token limits)
         let articleContext = articles.prefix(15).map { article in
@@ -367,7 +367,7 @@ class AIService {
                 // Try to generate AI intro if available, fallback to static
                 var intro = getNewsletterIntro(for: category, itemNumber: itemNumber)
                 var usedAI = false
-                if #available(iOS 26.0, *), isAppleIntelligenceAvailable {
+                if #available(iOS 26.0, macOS 26.0, *), isAppleIntelligenceAvailable {
                     #if canImport(FoundationModels)
                     if let session = session {
                         do {
@@ -473,7 +473,7 @@ class AIService {
     }
 
     /// Public wrapper to generate AI-powered intro (for use by other services)
-    @available(iOS 26.0, *)
+    @available(iOS 26.0, macOS 26.0, *)
     func generateIntro(for category: String, articleTitle: String, articleContent: String = "") async -> String? {
         guard isAppleIntelligenceAvailable else {
             return nil
@@ -513,7 +513,7 @@ class AIService {
 
     /// Generate creative newsletter title and intro paragraph using Apple Intelligence
     /// Returns (title, intro) tuple or nil if AI is unavailable
-    @available(iOS 26.0, *)
+    @available(iOS 26.0, macOS 26.0, *)
     func generateNewsletterHeader(articles: [Article]) async -> (String, String)? {
         guard isAppleIntelligenceAvailable else {
             return nil
@@ -628,7 +628,7 @@ class AIService {
 
     /// Generate dynamic newsletter intro using Apple Intelligence (async version)
     /// Punchy, snarky, personality-driven style
-    @available(iOS 26.0, *)
+    @available(iOS 26.0, macOS 26.0, *)
     private func generateNewsletterIntro(for category: String, articleTitle: String, articleContent: String = "", session: LanguageModelSession) async throws -> String {
         let contentSnippet = articleContent.isEmpty ? "" : "\nContext: \(String(articleContent.prefix(150)))"
         let prompt = """
@@ -745,7 +745,7 @@ class AIService {
     /// Generate a conversational response about articles using Apple Intelligence when available
     func generateResponse(for query: String, articles: [Article]) async -> (String, [Article]?) {
         // Try Apple Intelligence for more natural responses (iOS 26+)
-        if #available(iOS 26.0, *), isAppleIntelligenceAvailable {
+        if #available(iOS 26.0, macOS 26.0, *), isAppleIntelligenceAvailable {
             #if canImport(FoundationModels)
             if let session = session {
                 do {

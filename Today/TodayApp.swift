@@ -26,6 +26,7 @@ struct TodayApp: App {
     }()
 
     init() {
+        #if os(iOS)
         // Configure audio session to mix with other audio (music, podcasts, etc.)
         // This allows animated GIFs and videos to play without interrupting user's audio
         do {
@@ -37,6 +38,7 @@ struct TodayApp: App {
 
         // Register background tasks (nonisolated - safe to call from init)
         BackgroundSyncManager.shared.registerBackgroundTasks()
+        #endif
     }
 
     var body: some Scene {
@@ -62,6 +64,23 @@ struct TodayApp: App {
                 }
         }
         .modelContainer(sharedModelContainer)
+        #if os(macOS)
+        .commands {
+            CommandMenu("Feeds") {
+                Button("Sync All Feeds") {
+                    BackgroundSyncManager.shared.triggerManualSync()
+                }
+                .keyboardShortcut("r", modifiers: .command)
+            }
+        }
+        #endif
+
+        #if os(macOS)
+        Settings {
+            SettingsView()
+                .modelContainer(sharedModelContainer)
+        }
+        #endif
     }
 
     @MainActor

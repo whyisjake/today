@@ -294,8 +294,8 @@ class OnDeviceAIService {
 
     /// Generate dynamic intro using AI - delegate to AIService which has Apple Intelligence
     private func generateDynamicIntro(title: String, content: String, category: String) async -> String {
-        // Try using AIService's Apple Intelligence integration if available (iOS 26+)
-        if #available(iOS 26.0, *) {
+        // Try using AIService's Apple Intelligence integration if available (iOS 26+ / macOS 26+)
+        if #available(iOS 26.0, macOS 26.0, *) {
             if let aiIntro = await AIService.shared.generateIntro(for: category, articleTitle: title, articleContent: content) {
                 return aiIntro
             }
@@ -374,8 +374,8 @@ class OnDeviceAIService {
     /// Generate creative newsletter title and intro paragraph using AI
     /// Clever titles and personality-driven intros
     private func generateNewsletterTitleAndIntro(articles: [Article]) async -> (title: String, intro: String) {
-        // Try using AIService's Apple Intelligence integration if available (iOS 26+)
-        if #available(iOS 26.0, *) {
+        // Try using AIService's Apple Intelligence integration if available (iOS 26+ / macOS 26+)
+        if #available(iOS 26.0, macOS 26.0, *) {
             if let (aiTitle, aiIntro) = await AIService.shared.generateNewsletterHeader(articles: articles) {
                 return (aiTitle, aiIntro)
             }

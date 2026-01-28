@@ -130,173 +130,379 @@ struct SettingsView: View {
     }
 
     var body: some View {
+        #if os(iOS)
         NavigationStack {
-            Form {
-                Section("Appearance") {
-                    Picker("Theme", selection: $appearanceMode) {
-                        ForEach(AppearanceMode.allCases, id: \.self) { mode in
-                            Text(mode.localizedName).tag(mode)
-                        }
+            iOSSettingsContent
+                .navigationTitle("Settings")
+        }
+        #else
+        macOSSettingsContent
+        #endif
+    }
+
+    // MARK: - iOS Settings
+
+    #if os(iOS)
+    private var iOSSettingsContent: some View {
+        Form {
+            Section("Appearance") {
+                Picker("Theme", selection: $appearanceMode) {
+                    ForEach(AppearanceMode.allCases, id: \.self) { mode in
+                        Text(mode.localizedName).tag(mode)
                     }
-                    .pickerStyle(.segmented)
+                }
+                .pickerStyle(.segmented)
 
-                    Picker("Font", selection: $fontOption) {
-                        ForEach(FontOption.allCases) { option in
-                            Text(option.localizedName).tag(option)
-                        }
+                Picker("Font", selection: $fontOption) {
+                    ForEach(FontOption.allCases) { option in
+                        Text(option.localizedName).tag(option)
                     }
-                    .pickerStyle(.segmented)
+                }
+                .pickerStyle(.segmented)
 
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Accent Color")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Accent Color")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
 
-                        HStack(spacing: 16) {
-                            ForEach(AccentColorOption.allCases) { option in
-                                Button {
-                                    accentColor = option
-                                } label: {
-                                    ZStack {
-                                        Circle()
-                                            .fill(option.color)
-                                            .frame(width: 44, height: 44)
+                    HStack(spacing: 16) {
+                        ForEach(AccentColorOption.allCases) { option in
+                            Button {
+                                accentColor = option
+                            } label: {
+                                ZStack {
+                                    Circle()
+                                        .fill(option.color)
+                                        .frame(width: 44, height: 44)
 
-                                        if accentColor == option {
-                                            Image(systemName: "checkmark")
-                                                .font(.body.bold())
-                                                .foregroundStyle(.white)
-                                        }
+                                    if accentColor == option {
+                                        Image(systemName: "checkmark")
+                                            .font(.body.bold())
+                                            .foregroundStyle(.white)
                                     }
                                 }
-                                .buttonStyle(.plain)
                             }
-                        }
-                    }
-                    .padding(.vertical, 8)
-                }
-
-                Section {
-                    NavigationLink {
-                        ShortArticleBehaviorPickerView(selectedBehavior: $shortArticleBehavior)
-                    } label: {
-                        HStack {
-                            Text("Short Article Behavior")
-                            Spacer()
-                            Text(shortArticleBehavior.localizedName)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                } header: {
-                    Text("Reading")
-                } footer: {
-                    Text("Short articles have minimal content (less than 300 characters) and are indicated by an external link icon.")
-                        .font(.caption)
-                }
-
-                Section("Audio") {
-                    NavigationLink {
-                        VoicePickerView(selectedVoiceIdentifier: $selectedVoiceIdentifier)
-                    } label: {
-                        HStack {
-                            Text("Text-to-Speech Voice")
-                            Spacer()
-                            Text(selectedVoiceName)
-                                .foregroundStyle(.secondary)
+                            .buttonStyle(.plain)
                         }
                     }
                 }
-
-                Section("About") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Today \(appVersion)")
-                            .font(.headline)
-                        Text("A modern RSS reader for iOS")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 4)
-                }
-
-                Section("Developer") {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Jake Spurlock")
-                            .font(.headline)
-                        Text("Software Engineer")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 4)
-
-                    Button {
-                        if let url = URL(string: "https://jakespurlock.com") {
-                            openURL(url)
-                        }
-                    } label: {
-                        Label("Website", systemImage: "globe")
-                    }
-
-                    Button {
-                        if let url = URL(string: "https://github.com/whyisjake") {
-                            openURL(url)
-                        }
-                    } label: {
-                        Label("GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
-                    }
-
-                    Button {
-                        if let url = URL(string: "https://twitter.com/whyisjake") {
-                            openURL(url)
-                        }
-                    } label: {
-                        Label("Twitter", systemImage: "at")
-                    }
-
-                    Button {
-                        if let url = URL(string: "https://linkedin.com/in/jakespurlock") {
-                            openURL(url)
-                        }
-                    } label: {
-                        Label("LinkedIn", systemImage: "person.crop.circle")
-                    }
-                }
-
-                Section {
-                    HStack {
-                        Spacer()
-                        Text("Made with ♥️ in California")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                }
-
-                #if DEBUG
-                Section("🧪 Debug - Review Testing") {
-                    Button("Force Review Prompt") {
-                        Task { @MainActor in
-                            ReviewRequestManager.shared.forceReviewRequest()
-                        }
-                    }
-
-                    Button("Reset Review Data") {
-                        Task { @MainActor in
-                            ReviewRequestManager.shared.resetAllReviewData()
-                        }
-                    }
-
-                    Button("Show Review Status") {
-                        Task { @MainActor in
-                            print(ReviewRequestManager.shared.getReviewStatus())
-                        }
-                    }
-                }
-                .foregroundStyle(accentColor.color)
-                #endif
+                .padding(.vertical, 8)
             }
-            .navigationTitle("Settings")
+
+            Section {
+                NavigationLink {
+                    ShortArticleBehaviorPickerView(selectedBehavior: $shortArticleBehavior)
+                } label: {
+                    HStack {
+                        Text("Short Article Behavior")
+                        Spacer()
+                        Text(shortArticleBehavior.localizedName)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } header: {
+                Text("Reading")
+            } footer: {
+                Text("Short articles have minimal content (less than 300 characters) and are indicated by an external link icon.")
+                    .font(.caption)
+            }
+
+            Section("Audio") {
+                NavigationLink {
+                    VoicePickerView(selectedVoiceIdentifier: $selectedVoiceIdentifier)
+                } label: {
+                    HStack {
+                        Text("Text-to-Speech Voice")
+                        Spacer()
+                        Text(selectedVoiceName)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            Section("About") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Today \(appVersion)")
+                        .font(.headline)
+                    Text("A modern RSS reader for iOS")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 4)
+            }
+
+            Section("Developer") {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Jake Spurlock")
+                        .font(.headline)
+                    Text("Software Engineer")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 4)
+
+                Button {
+                    if let url = URL(string: "https://jakespurlock.com") {
+                        openURL(url)
+                    }
+                } label: {
+                    Label("Website", systemImage: "globe")
+                }
+
+                Button {
+                    if let url = URL(string: "https://github.com/whyisjake") {
+                        openURL(url)
+                    }
+                } label: {
+                    Label("GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
+                }
+
+                Button {
+                    if let url = URL(string: "https://twitter.com/whyisjake") {
+                        openURL(url)
+                    }
+                } label: {
+                    Label("Twitter", systemImage: "at")
+                }
+
+                Button {
+                    if let url = URL(string: "https://linkedin.com/in/jakespurlock") {
+                        openURL(url)
+                    }
+                } label: {
+                    Label("LinkedIn", systemImage: "person.crop.circle")
+                }
+            }
+
+            Section {
+                HStack {
+                    Spacer()
+                    Text("Made with ♥️ in California")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+            }
+
+            #if DEBUG
+            Section("🧪 Debug - Review Testing") {
+                Button("Force Review Prompt") {
+                    Task { @MainActor in
+                        ReviewRequestManager.shared.forceReviewRequest()
+                    }
+                }
+
+                Button("Reset Review Data") {
+                    Task { @MainActor in
+                        ReviewRequestManager.shared.resetAllReviewData()
+                    }
+                }
+
+                Button("Show Review Status") {
+                    Task { @MainActor in
+                        print(ReviewRequestManager.shared.getReviewStatus())
+                    }
+                }
+            }
+            .foregroundStyle(accentColor.color)
+            #endif
         }
     }
+    #endif
+
+    // MARK: - macOS Settings
+
+    #if os(macOS)
+    private var macOSSettingsContent: some View {
+        TabView {
+            // General Tab
+            macOSGeneralTab
+                .tabItem {
+                    Label("General", systemImage: "gearshape")
+                }
+
+            // Reading Tab
+            macOSReadingTab
+                .tabItem {
+                    Label("Reading", systemImage: "doc.text")
+                }
+
+            // Audio Tab
+            macOSAudioTab
+                .tabItem {
+                    Label("Audio", systemImage: "speaker.wave.2")
+                }
+
+            // About Tab
+            macOSAboutTab
+                .tabItem {
+                    Label("About", systemImage: "info.circle")
+                }
+        }
+        .frame(width: 450, height: 280)
+    }
+
+    private var macOSGeneralTab: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            // Theme
+            HStack(alignment: .firstTextBaseline) {
+                Text("Appearance:")
+                    .frame(width: 100, alignment: .trailing)
+                Picker("", selection: $appearanceMode) {
+                    ForEach(AppearanceMode.allCases, id: \.self) { mode in
+                        Text(mode.localizedName).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 200)
+            }
+
+            // Font
+            HStack(alignment: .firstTextBaseline) {
+                Text("Article Font:")
+                    .frame(width: 100, alignment: .trailing)
+                Picker("", selection: $fontOption) {
+                    ForEach(FontOption.allCases) { option in
+                        Text(option.localizedName).tag(option)
+                    }
+                }
+                .pickerStyle(.radioGroup)
+            }
+
+            // Accent Color
+            HStack(alignment: .center) {
+                Text("Accent Color:")
+                    .frame(width: 100, alignment: .trailing)
+                HStack(spacing: 8) {
+                    ForEach(AccentColorOption.allCases) { option in
+                        Button {
+                            accentColor = option
+                        } label: {
+                            ZStack {
+                                Circle()
+                                    .fill(option.color)
+                                    .frame(width: 24, height: 24)
+                                if accentColor == option {
+                                    Circle()
+                                        .strokeBorder(.white, lineWidth: 2)
+                                        .frame(width: 24, height: 24)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .help(option.rawValue)
+                    }
+                }
+            }
+
+            Spacer()
+        }
+        .padding(20)
+    }
+
+    private var macOSReadingTab: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(alignment: .top) {
+                Text("Short Articles:")
+                    .frame(width: 100, alignment: .trailing)
+                VStack(alignment: .leading, spacing: 8) {
+                    Picker("", selection: $shortArticleBehavior) {
+                        ForEach(ShortArticleBehavior.allCases) { behavior in
+                            Text(behavior.localizedName).tag(behavior)
+                        }
+                    }
+                    .pickerStyle(.radioGroup)
+
+                    Text("Short articles have minimal content (less than 300 characters).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer()
+        }
+        .padding(20)
+    }
+
+    private var macOSAudioTab: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Voice:")
+                    .frame(width: 100, alignment: .trailing)
+                Picker("", selection: $selectedVoiceIdentifier) {
+                    Text("Default (System Voice)").tag("")
+                    Divider()
+                    ForEach(availableVoices, id: \.identifier) { voice in
+                        Text(voice.name).tag(voice.identifier)
+                    }
+                }
+                .frame(width: 200)
+            }
+
+            Spacer()
+        }
+        .padding(20)
+    }
+
+    private var availableVoices: [AVSpeechSynthesisVoice] {
+        let unwantedVoiceNames = [
+            "Zarvox", "Organ", "Bells", "Bad News", "Bahh", "Boing",
+            "Bubbles", "Cellos", "Good News", "Trinoids", "Whisper",
+            "Albert", "Fred", "Hysterical", "Junior", "Ralph",
+            "Wobble", "Superstar", "Jester", "Kathy"
+        ]
+        let currentLanguage = Locale.current.language.languageCode?.identifier ?? "en"
+
+        return AVSpeechSynthesisVoice.speechVoices()
+            .filter { voice in
+                let isUnwanted = unwantedVoiceNames.contains { voice.name.contains($0) }
+                return !isUnwanted && voice.language.hasPrefix(currentLanguage)
+            }
+            .sorted { $0.name < $1.name }
+    }
+
+    private var macOSAboutTab: some View {
+        VStack(spacing: 16) {
+            // App Icon and Name
+            VStack(spacing: 8) {
+                Image(systemName: "newspaper.fill")
+                    .font(.system(size: 48))
+                    .foregroundStyle(accentColor.color)
+
+                Text("Today")
+                    .font(.title2.bold())
+                Text(appVersion)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("A modern RSS reader")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Divider()
+                .padding(.horizontal, 40)
+
+            // Developer Info
+            VStack(spacing: 4) {
+                Text("Developed by Jake Spurlock")
+                    .font(.subheadline)
+
+                HStack(spacing: 16) {
+                    Link("Website", destination: URL(string: "https://jakespurlock.com")!)
+                    Link("GitHub", destination: URL(string: "https://github.com/whyisjake")!)
+                }
+                .font(.caption)
+            }
+
+            Text("Made with ♥️ in California")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Spacer()
+        }
+        .padding(20)
+    }
+    #endif
 }
 
 // MARK: - Voice Picker View
@@ -400,7 +606,17 @@ struct VoicePickerView: View {
             }
         }
         .navigationTitle(String(localized: "Select Voice"))
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #else
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Done") {
+                    dismiss()
+                }
+            }
+        }
+        #endif
     }
 
     private func languageDisplayName(for languageCode: String) -> String {
@@ -470,6 +686,16 @@ struct ShortArticleBehaviorPickerView: View {
             }
         }
         .navigationTitle(String(localized: "Short Article Behavior"))
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #else
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Done") {
+                    dismiss()
+                }
+            }
+        }
+        #endif
     }
 }

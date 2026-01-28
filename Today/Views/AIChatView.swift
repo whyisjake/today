@@ -205,18 +205,30 @@ struct AIChatView: View {
                 .padding()
             }
             .navigationTitle("AI Summary")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
+                #if os(iOS)
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        messages.removeAll()
-                    } label: {
-                        Image(systemName: "arrow.counterclockwise")
-                    }
-                    .disabled(messages.isEmpty)
+                    clearButton
                 }
+                #else
+                ToolbarItem(placement: .primaryAction) {
+                    clearButton
+                }
+                #endif
             }
         }
+    }
+
+    private var clearButton: some View {
+        Button {
+            messages.removeAll()
+        } label: {
+            Image(systemName: "arrow.counterclockwise")
+        }
+        .disabled(messages.isEmpty)
     }
 
     private func sendMessage(_ text: String) {

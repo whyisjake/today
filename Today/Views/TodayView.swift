@@ -461,81 +461,15 @@ struct TodayView: View {
                 }
             }
             .toolbar {
+                #if os(iOS)
                 ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Section("Read Status") {
-                            Button {
-                                Task { @MainActor in
-                                    try? await Task.sleep(nanoseconds: 50_000_000)
-                                    hideReadArticles = false
-                                }
-                            } label: {
-                                Label("Show All", systemImage: hideReadArticles ? "circle" : "checkmark.circle")
-                            }
-
-                            Button {
-                                Task { @MainActor in
-                                    try? await Task.sleep(nanoseconds: 50_000_000)
-                                    hideReadArticles = true
-                                }
-                            } label: {
-                                Label("Unread Only", systemImage: hideReadArticles ? "checkmark.circle" : "circle")
-                            }
-                        }
-
-                        Section("Favorites") {
-                            Button {
-                                Task { @MainActor in
-                                    try? await Task.sleep(nanoseconds: 50_000_000)
-                                    showFavoritesOnly = false
-                                }
-                            } label: {
-                                Label("All Articles", systemImage: showFavoritesOnly ? "circle" : "checkmark.circle")
-                            }
-
-                            Button {
-                                Task { @MainActor in
-                                    try? await Task.sleep(nanoseconds: 50_000_000)
-                                    showFavoritesOnly = true
-                                }
-                            } label: {
-                                Label("Favorites Only", systemImage: showFavoritesOnly ? "checkmark.circle" : "circle")
-                            }
-                        }
-
-                        Divider()
-
-                        Button(role: .destructive) {
-                            showMarkAllReadConfirmation = true
-                        } label: {
-                            Label("Mark All as Read", systemImage: "checkmark.circle.fill")
-                        }
-
-                        Divider()
-
-                        // Show filtered counts with total in parentheses
-                        if daysToLoad > 1 || selectedCategory != "All" {
-                            Text("\(unreadCount) unread (\(totalUnreadCount) total) • \(favoritesCount) favorites (\(totalFavoritesCount) total)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Text("\(unreadCount) unread • \(favoritesCount) favorites")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: (hideReadArticles || showFavoritesOnly) ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
-                            if hideReadArticles || showFavoritesOnly {
-                                if activeFilterCount > 0 {
-                                    Text("\(activeFilterCount)")
-                                        .font(.caption2)
-                                        .fontWeight(.semibold)
-                                }
-                            }
-                        }
-                    }
+                    filterMenu
                 }
+                #else
+                ToolbarItem(placement: .primaryAction) {
+                    filterMenu
+                }
+                #endif
             }
             .confirmationDialog(
                 selectedCategory == "All"
@@ -572,6 +506,82 @@ struct TodayView: View {
 
         // Save once after processing all
         try? modelContext.save()
+    }
+
+    private var filterMenu: some View {
+        Menu {
+            Section("Read Status") {
+                Button {
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 50_000_000)
+                        hideReadArticles = false
+                    }
+                } label: {
+                    Label("Show All", systemImage: hideReadArticles ? "circle" : "checkmark.circle")
+                }
+
+                Button {
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 50_000_000)
+                        hideReadArticles = true
+                    }
+                } label: {
+                    Label("Unread Only", systemImage: hideReadArticles ? "checkmark.circle" : "circle")
+                }
+            }
+
+            Section("Favorites") {
+                Button {
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 50_000_000)
+                        showFavoritesOnly = false
+                    }
+                } label: {
+                    Label("All Articles", systemImage: showFavoritesOnly ? "circle" : "checkmark.circle")
+                }
+
+                Button {
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 50_000_000)
+                        showFavoritesOnly = true
+                    }
+                } label: {
+                    Label("Favorites Only", systemImage: showFavoritesOnly ? "checkmark.circle" : "circle")
+                }
+            }
+
+            Divider()
+
+            Button(role: .destructive) {
+                showMarkAllReadConfirmation = true
+            } label: {
+                Label("Mark All as Read", systemImage: "checkmark.circle.fill")
+            }
+
+            Divider()
+
+            // Show filtered counts with total in parentheses
+            if daysToLoad > 1 || selectedCategory != "All" {
+                Text("\(unreadCount) unread (\(totalUnreadCount) total) • \(favoritesCount) favorites (\(totalFavoritesCount) total)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("\(unreadCount) unread • \(favoritesCount) favorites")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: (hideReadArticles || showFavoritesOnly) ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                if hideReadArticles || showFavoritesOnly {
+                    if activeFilterCount > 0 {
+                        Text("\(activeFilterCount)")
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                    }
+                }
+            }
+        }
     }
 
     private func markAllAsRead() {
@@ -641,6 +651,7 @@ struct TodayView: View {
 struct ArticleRowView: View {
     let article: Article
     let fontOption: FontOption
+    var isInFeedView: Bool = false // When true, show author for Reddit posts; when false, show subreddit
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -666,17 +677,32 @@ struct ArticleRowView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
 
-                    // For Reddit posts, show author instead of feed title (since feed title is in header)
+                    // For Reddit posts, show subreddit in Today view, author in feed view
                     if article.isRedditPost {
-                        if let author = article.author {
-                            Text("•")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, 4)
+                        if isInFeedView {
+                            // In feed view, show author since subreddit is already known
+                            if let author = article.author {
+                                Text("•")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 4)
 
-                            Text(author)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                Text(author)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            // In Today view, show subreddit for context
+                            if let subreddit = article.redditSubreddit {
+                                Text("•")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 4)
+
+                                Text("r/\(subreddit)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     } else {
                         // For non-Reddit posts, show feed title as before
@@ -793,6 +819,8 @@ struct ArticleDetailView: View {
             }
             .padding()
         }
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
     }
 }

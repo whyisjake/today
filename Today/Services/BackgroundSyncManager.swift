@@ -6,7 +6,9 @@
 //
 
 import Foundation
+#if os(iOS)
 import BackgroundTasks
+#endif
 import SwiftData
 import Combine
 
@@ -14,7 +16,12 @@ import Combine
 class BackgroundSyncManager: ObservableObject {
     static let shared = BackgroundSyncManager()
 
+    #if os(iOS)
     private let syncTaskIdentifier = "com.today.feedsync"
+    #elseif os(macOS)
+    private var syncTimer: Timer?
+    private let syncInterval: TimeInterval = 3600 // 1 hour
+    #endif
 
     /// Shared ModelContainer for background sync operations
     /// Set by TodayApp on launch
@@ -24,6 +31,9 @@ class BackgroundSyncManager: ObservableObject {
 
     private init() {}
 
+    // MARK: - iOS Background Tasks
+
+    #if os(iOS)
     /// Register background task on app launch
     nonisolated func registerBackgroundTasks() {
         BGTaskScheduler.shared.register(forTaskWithIdentifier: syncTaskIdentifier, using: nil) { task in
@@ -75,6 +85,29 @@ class BackgroundSyncManager: ObservableObject {
             print("✅ Background sync task completed successfully")
         }
     }
+    #endif
+
+    // MARK: - macOS Timer-based Sync
+
+    #if os(macOS)
+    /// Start timer-based background sync for macOS
+    func startBackgroundSync() {
+        stopBackgroundSync()
+
+        syncTimer = Timer.scheduledTimer(withTimeInterval: syncInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.triggerManualSync()
+            }
+        }
+        print("⏰ macOS background sync timer started (interval: \(Int(syncInterval / 60)) minutes)")
+    }
+
+    /// Stop the background sync timer
+    func stopBackgroundSync() {
+        syncTimer?.invalidate()
+        syncTimer = nil
+    }
+    #endif
 
     /// Perform the actual background sync
     /// Parsing runs in background, inserts run on main thread in chunks
@@ -106,7 +139,13 @@ class BackgroundSyncManager: ObservableObject {
 
 extension BackgroundSyncManager {
     /// Enable background fetch when user opens the app
+    #if os(iOS)
     nonisolated func enableBackgroundFetch() {
         scheduleBackgroundSync()
     }
+    #elseif os(macOS)
+    func enableBackgroundFetch() {
+        startBackgroundSync()
+    }
+    #endif
 }

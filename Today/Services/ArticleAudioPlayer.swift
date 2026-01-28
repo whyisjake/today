@@ -11,6 +11,12 @@ import MediaPlayer
 import SwiftUI
 import SwiftData
 
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
+
 @MainActor
 class ArticleAudioPlayer: NSObject, ObservableObject {
     // Access selected voice from UserDefaults
@@ -49,6 +55,7 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
     // MARK: - Audio Session Configuration
 
     private func configureAudioSessionForPlayback() {
+        #if os(iOS)
         do {
             // Use .playback category for text-to-speech (allows background playback)
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
@@ -56,9 +63,12 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
         } catch {
             print("Failed to configure audio session: \(error)")
         }
+        #endif
+        // macOS doesn't require explicit audio session configuration
     }
 
     private func restoreAmbientAudioSession() {
+        #if os(iOS)
         do {
             // Restore .ambient category (for videos/GIFs that mix with other audio)
             try AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default)
@@ -66,6 +76,8 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
         } catch {
             print("Failed to restore audio session: \(error)")
         }
+        #endif
+        // macOS doesn't require explicit audio session configuration
     }
 
     // MARK: - Helper Methods
@@ -308,7 +320,7 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
                 Task {
                     do {
                         let (data, _) = try await URLSession.shared.data(from: imageUrl)
-                        if let image = UIImage(data: data) {
+                        if let image = PlatformImage(data: data) {
                             await MainActor.run {
                                 // Only cache and update if still playing the same article
                                 guard self.currentArticle?.id == article.id else { return }
@@ -344,8 +356,10 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
     }
 
     /// Creates a fallback artwork image using SF Symbols
-    private func createFallbackArtwork() -> UIImage {
+    private func createFallbackArtwork() -> PlatformImage {
         let size = CGSize(width: 300, height: 300)
+
+        #if os(iOS)
         let renderer = UIGraphicsImageRenderer(size: size)
 
         return renderer.image { context in
@@ -363,6 +377,30 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
                     .draw(at: CGPoint(x: x, y: y))
             }
         }
+        #elseif os(macOS)
+        let image = NSImage(size: size)
+        image.lockFocus()
+
+        // Background
+        NSColor.orange.setFill()
+        NSRect(origin: .zero, size: size).fill()
+
+        // Speaker icon for TTS
+        if let symbol = NSImage(systemSymbolName: "speaker.wave.2.fill", accessibilityDescription: nil) {
+            let symbolSize = CGSize(width: 100, height: 100)
+            let x = (size.width - symbolSize.width) / 2
+            let y = (size.height - symbolSize.height) / 2
+            let tinted = symbol.copy() as! NSImage
+            tinted.lockFocus()
+            NSColor.white.set()
+            NSRect(origin: .zero, size: tinted.size).fill(using: .sourceAtop)
+            tinted.unlockFocus()
+            tinted.draw(in: NSRect(x: x, y: y, width: symbolSize.width, height: symbolSize.height))
+        }
+
+        image.unlockFocus()
+        return image
+        #endif
     }
 
     private func clearNowPlayingInfo() {

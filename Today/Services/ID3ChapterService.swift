@@ -7,7 +7,12 @@
 
 import Foundation
 import OutcastID3
+
+#if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 /// Service for extracting chapter information from MP3 files using ID3 tags
 class ID3ChapterService {
@@ -42,7 +47,7 @@ class ID3ChapterService {
         let startTime: TimeInterval  // in seconds
         let endTime: TimeInterval?   // in seconds
         let url: String?
-        let image: UIImage?
+        let image: PlatformImage?
     }
 
     /// Extract chapters from a remote MP3 URL
@@ -196,7 +201,7 @@ class ID3ChapterService {
 
         var title = "Chapter"
         var url: String? = nil
-        var image: UIImage? = nil
+        var image: PlatformImage? = nil
 
         print("   📖 Parsing chapter '\(chapterFrame.elementId)' with \(chapterFrame.subFrames.count) subframes")
 
@@ -262,8 +267,8 @@ class ID3ChapterService {
         }
     }
 
-    /// Get chapter artwork as UIImage
-    func getChapterArtwork(for chapter: ID3Chapter) -> UIImage? {
+    /// Get chapter artwork as PlatformImage
+    func getChapterArtwork(for chapter: ID3Chapter) -> PlatformImage? {
         return chapter.image
     }
 

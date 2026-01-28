@@ -8,6 +8,12 @@
 import SwiftUI
 import SwiftData
 
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
+
 // MARK: - Feed Category
 enum FeedCategory: String, CaseIterable {
     case general = "General"
@@ -260,48 +266,64 @@ struct FeedListView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        #if os(iOS)
         ToolbarItem(placement: .topBarTrailing) {
-            Button {
-                showingAddFeed = true
-            } label: {
-                Label("Add Feed", systemImage: "plus")
-            }
+            addFeedButton
         }
-
         ToolbarItem(placement: .topBarLeading) {
-            Menu {
-                Button {
-                    // Use BackgroundSyncManager for off-main-thread sync
-                    BackgroundSyncManager.shared.triggerManualSync()
-                } label: {
-                    Label("Sync All Feeds", systemImage: "arrow.clockwise")
-                }
-                .disabled(syncManager.isSyncInProgress)
+            feedMenu
+        }
+        #else
+        ToolbarItem(placement: .primaryAction) {
+            addFeedButton
+        }
+        ToolbarItem(placement: .automatic) {
+            feedMenu
+        }
+        #endif
+    }
 
-                Divider()
+    private var addFeedButton: some View {
+        Button {
+            showingAddFeed = true
+        } label: {
+            Label("Add Feed", systemImage: "plus")
+        }
+    }
 
-                Button {
-                    showingImportOPML = true
-                } label: {
-                    Label("Import OPML", systemImage: "square.and.arrow.down")
-                }
-
-                Button {
-                    exportOPML()
-                } label: {
-                    Label("Export OPML", systemImage: "square.and.arrow.up")
-                }
-
-                Divider()
-
-                Button(role: .destructive) {
-                    clearAllData()
-                } label: {
-                    Label("Clear All Data", systemImage: "trash")
-                }
+    private var feedMenu: some View {
+        Menu {
+            Button {
+                // Use BackgroundSyncManager for off-main-thread sync
+                BackgroundSyncManager.shared.triggerManualSync()
             } label: {
-                Label("Menu", systemImage: "ellipsis.circle")
+                Label("Sync All Feeds", systemImage: "arrow.clockwise")
             }
+            .disabled(syncManager.isSyncInProgress)
+
+            Divider()
+
+            Button {
+                showingImportOPML = true
+            } label: {
+                Label("Import OPML", systemImage: "square.and.arrow.down")
+            }
+
+            Button {
+                exportOPML()
+            } label: {
+                Label("Export OPML", systemImage: "square.and.arrow.up")
+            }
+
+            Divider()
+
+            Button(role: .destructive) {
+                clearAllData()
+            } label: {
+                Label("Clear All Data", systemImage: "trash")
+            }
+        } label: {
+            Label("Menu", systemImage: "ellipsis.circle")
         }
     }
 
@@ -342,15 +364,19 @@ struct FeedListView: View {
                 Section {
                     if feedType == .rss {
                         TextField("RSS Feed URL", text: $newFeedURL)
+                            #if os(iOS)
                             .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
                             .keyboardType(.URL)
+                            #endif
+                            .autocorrectionDisabled()
                     } else {
                         HStack {
                             Text("r/")
                                 .foregroundStyle(.secondary)
                             TextField("Subreddit Name", text: $subredditName)
+                                #if os(iOS)
                                 .textInputAutocapitalization(.never)
+                                #endif
                                 .autocorrectionDisabled()
                         }
                     }
@@ -368,7 +394,9 @@ struct FeedListView: View {
 
                     if useCustomCategory {
                         TextField("Custom Category Name", text: $customCategory)
+                            #if os(iOS)
                             .textInputAutocapitalization(.never)
+                            #endif
                     } else {
                         Picker("Category", selection: $newFeedCategory) {
                             ForEach(categoryManager.allCategories, id: \.self) { category in
@@ -395,7 +423,9 @@ struct FeedListView: View {
                 }
             }
             .navigationTitle(feedType == .rss ? "Add RSS Feed" : "Add Reddit Feed")
-            .navigationBarTitleDisplayMode(.inline)
+            #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -444,7 +474,12 @@ struct FeedListView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
 
                             Button {
+                                #if os(iOS)
                                 UIPasteboard.general.string = error
+                                #else
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(error, forType: .string)
+                                #endif
                             } label: {
                                 HStack {
                                     Image(systemName: "doc.on.doc")
@@ -467,7 +502,9 @@ struct FeedListView: View {
                 }
             }
             .navigationTitle("Import OPML")
-            .navigationBarTitleDisplayMode(.inline)
+            #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -611,7 +648,12 @@ struct FeedListView: View {
 
     private func exportOPML() {
         let opml = generateOPML(from: feeds)
+        #if os(iOS)
         UIPasteboard.general.string = opml
+        #else
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(opml, forType: .string)
+        #endif
         showingExportConfirmation = true
     }
 
@@ -1221,7 +1263,9 @@ struct EditFeedView: View {
                 TextField("Feed Title", text: $title)
 
                 TextField("RSS Feed URL", text: $url)
+                    #if os(iOS)
                     .textInputAutocapitalization(.never)
+                    #endif
                     .autocorrectionDisabled()
             } header: {
                 Text("Feed Details")
@@ -1232,7 +1276,9 @@ struct EditFeedView: View {
 
                 if useCustomCategory {
                     TextField("Custom Category Name", text: $category)
+                        #if os(iOS)
                         .textInputAutocapitalization(.never)
+                        #endif
                 } else {
                     Picker("Category", selection: $category) {
                         ForEach(categoryManager.allCategories, id: \.self) { category in
@@ -1251,7 +1297,9 @@ struct EditFeedView: View {
             }
         }
         .navigationTitle("Edit Feed")
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") {
@@ -1336,7 +1384,11 @@ struct FeedArticlesView: View {
                     .foregroundStyle(.orange)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 8)
+                    #if os(iOS)
                     .background(Color(.systemGroupedBackground))
+                    #else
+                    .background(Color(NSColor.controlBackgroundColor))
+                    #endif
             }
 
             Group {
@@ -1365,7 +1417,7 @@ struct FeedArticlesView: View {
                             )
                         } label: {
                             HStack {
-                                ArticleRowView(article: article, fontOption: fontOption)
+                                ArticleRowView(article: article, fontOption: fontOption, isInFeedView: true)
                                 Spacer()
                                 Image(systemName: "chevron.right")
                                     .font(.caption)
@@ -1392,30 +1444,20 @@ struct FeedArticlesView: View {
         }
         }
         .navigationTitle(feed.title)
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
         .searchable(text: $searchText, prompt: "Search in \(feed.title)")
         .toolbar {
+            #if os(iOS)
             ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button {
-                        showReadArticles.toggle()
-                    } label: {
-                        Label(showReadArticles ? "Hide Read" : "Show Read",
-                              systemImage: showReadArticles ? "eye.slash" : "eye")
-                    }
-
-                    if unreadCount > 0 {
-                        Divider()
-                        Button {
-                            markAllAsRead()
-                        } label: {
-                            Label("Mark All as Read", systemImage: "checkmark.circle")
-                        }
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                }
+                feedDetailMenu
             }
+            #else
+            ToolbarItem(placement: .primaryAction) {
+                feedDetailMenu
+            }
+            #endif
         }
         .navigationDestination(item: $navigationState) { state in
             if let article = modelContext.model(for: state.articleID) as? Article {
@@ -1491,6 +1533,28 @@ struct FeedArticlesView: View {
                     )
                 }
             }
+        }
+    }
+
+    private var feedDetailMenu: some View {
+        Menu {
+            Button {
+                showReadArticles.toggle()
+            } label: {
+                Label(showReadArticles ? "Hide Read" : "Show Read",
+                      systemImage: showReadArticles ? "eye.slash" : "eye")
+            }
+
+            if unreadCount > 0 {
+                Divider()
+                Button {
+                    markAllAsRead()
+                } label: {
+                    Label("Mark All as Read", systemImage: "checkmark.circle")
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
         }
     }
 
@@ -1697,7 +1761,9 @@ struct FeedNewsletterView: View {
             }
         }
         .navigationTitle(feed.title)
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Done") {

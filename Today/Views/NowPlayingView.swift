@@ -7,6 +7,38 @@
 
 import SwiftUI
 
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
+
+// Helper function to create Image from platform-specific image type
+private func platformImage(_ image: PlatformImage) -> Image {
+    #if os(iOS)
+    return Image(uiImage: image)
+    #elseif os(macOS)
+    return Image(nsImage: image)
+    #endif
+}
+
+// Platform-specific background colors
+private var platformBackgroundColor: Color {
+    #if os(iOS)
+    return Color(.systemBackground)
+    #elseif os(macOS)
+    return Color(NSColor.windowBackgroundColor)
+    #endif
+}
+
+private var platformSecondaryBackgroundColor: Color {
+    #if os(iOS)
+    return Color(.secondarySystemBackground)
+    #elseif os(macOS)
+    return Color(NSColor.controlBackgroundColor)
+    #endif
+}
+
 struct NowPlayingView: View {
     @StateObject private var podcastPlayer = PodcastAudioPlayer.shared
     @Environment(\.dismiss) private var dismiss
@@ -55,39 +87,56 @@ struct NowPlayingView: View {
                 LinearGradient(
                     colors: [
                         accentColor.color.opacity(0.15),
-                        Color(.systemBackground)
+                        platformBackgroundColor
                     ],
                     startPoint: .top,
                     endPoint: .center
                 )
                 .ignoresSafeArea()
             )
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
+                #if os(iOS)
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "chevron.down")
-                            .font(.title3.weight(.semibold))
-                    }
+                    dismissButton
                 }
-
                 ToolbarItem(placement: .principal) {
-                    VStack(spacing: 2) {
-                        Text("Now Playing")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        Text(podcastPlayer.currentArticle?.feed?.title ?? "Podcast")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                    nowPlayingTitle
                 }
+                #else
+                ToolbarItem(placement: .cancellationAction) {
+                    dismissButton
+                }
+                #endif
             }
             .sheet(isPresented: $showSpeedPicker) {
                 PodcastSpeedPickerView(podcastPlayer: podcastPlayer)
                     .presentationDetents([.height(300)])
             }
+        }
+    }
+
+    // MARK: - Toolbar Views
+
+    private var dismissButton: some View {
+        Button {
+            dismiss()
+        } label: {
+            Image(systemName: "chevron.down")
+                .font(.title3.weight(.semibold))
+        }
+    }
+
+    private var nowPlayingTitle: some View {
+        VStack(spacing: 2) {
+            Text("Now Playing")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(podcastPlayer.currentArticle?.feed?.title ?? "Podcast")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -98,7 +147,7 @@ struct NowPlayingView: View {
         // Priority: 1. Chapter artwork, 2. Article/podcast artwork, 3. Placeholder
         if let chapterImage = podcastPlayer.currentChapter?.image {
             // Use chapter-specific artwork
-            Image(uiImage: chapterImage)
+            platformImage(chapterImage)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
                 .frame(width: size, height: size)
@@ -204,7 +253,7 @@ struct NowPlayingView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-            .background(Color(.secondarySystemBackground))
+            .background(platformSecondaryBackgroundColor)
             .cornerRadius(10)
         }
         .buttonStyle(.plain)
@@ -396,7 +445,7 @@ struct ChapterRowView: View {
         HStack(spacing: 12) {
             // Chapter artwork (if available)
             if let chapterImage = chapter.image {
-                Image(uiImage: chapterImage)
+                platformImage(chapterImage)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
                     .frame(width: 44, height: 44)

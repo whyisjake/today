@@ -12,7 +12,40 @@ import AVFoundation
 import WebKit
 import OSLog
 
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
+
 private let logger = Logger(subsystem: "com.today.app", category: "RedditPostView")
+
+// Helper function to create Image from platform-specific image type
+private func platformImage(_ image: PlatformImage) -> Image {
+    #if os(iOS)
+    return Image(uiImage: image)
+    #elseif os(macOS)
+    return Image(nsImage: image)
+    #endif
+}
+
+// Platform-specific background colors
+private var platformBackgroundColor: Color {
+    #if os(iOS)
+    return Color(.systemBackground)
+    #else
+    // Use clear on macOS so it inherits from the parent view
+    return Color.clear
+    #endif
+}
+
+private var platformGray6Color: Color {
+    #if os(iOS)
+    return Color(.systemGray6)
+    #else
+    return Color(NSColor.controlBackgroundColor)
+    #endif
+}
 
 struct RedditPostView: View {
     let article: Article
@@ -25,6 +58,8 @@ struct RedditPostView: View {
     @State private var comments: [RedditComment] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
+    @State private var collapsedCommentIds: Set<String> = [] // Track collapsed comments for macOS flat view
+    @State private var commentsWithChildren: Set<String> = [] // Pre-computed set of comment IDs that have children
     @AppStorage("fontOption") private var fontOption: FontOption = .serif
     @Environment(\.openURL) private var openURL
     @Environment(\.modelContext) private var modelContext
@@ -68,7 +103,14 @@ struct RedditPostView: View {
                             .padding(.vertical, 16)
 
                         // Comments section
-                        if comments.isEmpty {
+                        // On macOS, flatten the comment tree to avoid recursive view issues
+                        #if os(macOS)
+                        let displayComments = flattenComments(comments, maxDepth: 4, collapsedIds: collapsedCommentIds)
+                        #else
+                        let displayComments = comments
+                        #endif
+
+                        if displayComments.isEmpty {
                             VStack(spacing: 12) {
                                 Image(systemName: "bubble.left")
                                     .font(.system(size: 36))
@@ -91,8 +133,24 @@ struct RedditPostView: View {
                                 .padding(.bottom, 8)
 
                                 LazyVStack(alignment: .leading, spacing: 0) {
-                                    ForEach(comments) { comment in
+                                    ForEach(displayComments) { comment in
+                                        #if os(macOS)
+                                        CommentRowView(
+                                            comment: comment,
+                                            fontOption: fontOption,
+                                            isCollapsed: collapsedCommentIds.contains(comment.id),
+                                            hasChildren: commentsWithChildren.contains(comment.id),
+                                            onToggleCollapse: {
+                                                if collapsedCommentIds.contains(comment.id) {
+                                                    collapsedCommentIds.remove(comment.id)
+                                                } else {
+                                                    collapsedCommentIds.insert(comment.id)
+                                                }
+                                            }
+                                        )
+                                        #else
                                         CommentRowView(comment: comment, fontOption: fontOption)
+                                        #endif
                                     }
                                 }
                             }
@@ -104,8 +162,11 @@ struct RedditPostView: View {
             }
         }
         .navigationTitle(article.feed?.title ?? "Reddit")
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
         .toolbar {
+            #if os(iOS)
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     // Share functionality handled in context menu
@@ -174,8 +235,41 @@ struct RedditPostView: View {
                     .disabled(nextArticleID == nil)
                 }
             }
+            #else
+            ToolbarItem(placement: .primaryAction) {
+                if let url = article.articleURL {
+                    ShareLink(item: url, subject: Text(article.title)) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                    }
+                }
+            }
+
+            ToolbarItem(placement: .navigation) {
+                HStack(spacing: 12) {
+                    Button {
+                        if let prevID = previousArticleID {
+                            onNavigateToPrevious(prevID)
+                        }
+                    } label: {
+                        Label("Previous", systemImage: "chevron.left")
+                    }
+                    .disabled(previousArticleID == nil)
+
+                    Button {
+                        if let nextID = nextArticleID {
+                            onNavigateToNext(nextID)
+                        }
+                    } label: {
+                        Label("Next", systemImage: "chevron.right")
+                    }
+                    .disabled(nextArticleID == nil)
+                }
+            }
+            #endif
         }
+        #if os(iOS)
         .toolbar(.hidden, for: .tabBar)
+        #endif
         .onAppear {
             markAsRead()
         }
@@ -227,6 +321,12 @@ struct RedditPostView: View {
 
             self.post = parsedPost
             self.comments = parsedComments
+
+            // Pre-compute which comments have children (for macOS collapse UI)
+            #if os(macOS)
+            self.commentsWithChildren = computeCommentsWithChildren(parsedComments)
+            #endif
+
             isLoading = false
         } catch {
             errorMessage = error.localizedDescription
@@ -241,6 +341,66 @@ struct RedditPostView: View {
             "Invalid Reddit URL"
         }
     }
+
+    /// Flatten a nested comment tree into a single array for non-recursive rendering
+    /// This avoids SwiftUI performance issues with deeply recursive views on macOS
+    private func flattenComments(_ comments: [RedditComment], maxDepth: Int, collapsedIds: Set<String>) -> [RedditComment] {
+        var result: [RedditComment] = []
+
+        func flatten(_ comment: RedditComment, depth: Int, parentCollapsed: Bool) {
+            // Skip this comment if parent is collapsed
+            if parentCollapsed {
+                return
+            }
+
+            // Create a copy with NO replies (flat structure for rendering)
+            let flatComment = RedditComment(
+                id: comment.id,
+                author: comment.author,
+                body: comment.body,
+                decodedBody: comment.decodedBody,
+                bodyHtml: comment.bodyHtml,
+                score: comment.score,
+                createdUtc: comment.createdUtc,
+                depth: depth,
+                replies: [] // No nested replies in flattened view
+            )
+            result.append(flatComment)
+
+            // Check if this comment is collapsed
+            let isCollapsed = collapsedIds.contains(comment.id)
+
+            // Recursively add replies up to max depth (unless collapsed)
+            if depth < maxDepth {
+                for reply in comment.replies {
+                    flatten(reply, depth: depth + 1, parentCollapsed: isCollapsed)
+                }
+            }
+        }
+
+        for comment in comments {
+            flatten(comment, depth: 0, parentCollapsed: false)
+        }
+
+        return result
+    }
+
+    /// Pre-compute which comments have children (called once when comments load)
+    private func computeCommentsWithChildren(_ comments: [RedditComment]) -> Set<String> {
+        var result: Set<String> = []
+
+        func traverse(_ comments: [RedditComment]) {
+            for comment in comments {
+                if !comment.replies.isEmpty {
+                    result.insert(comment.id)
+                    traverse(comment.replies)
+                }
+            }
+        }
+
+        traverse(comments)
+        return result
+    }
 }
 
 // MARK: - Post Content View
@@ -249,7 +409,7 @@ struct PostContentView: View {
     let post: ParsedRedditPost
     let fontOption: FontOption
     let openURL: OpenURLAction
-    var availableWidth: CGFloat = UIScreen.main.bounds.width
+    var availableWidth: CGFloat = ScreenUtilities.mainScreenWidth
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -319,6 +479,7 @@ struct PostContentView: View {
             }
 
             // Post body (for text posts)
+            #if os(iOS)
             if let selftextHtml = post.selftextHtml, !selftextHtml.isEmpty {
                 PostHTMLView(html: selftextHtml, fontOption: fontOption)
             } else if let selftext = post.selftext, !selftext.isEmpty {
@@ -328,6 +489,16 @@ struct PostContentView: View {
                         .system(.body, design: .default))
                     .textSelection(.enabled)
             }
+            #else
+            // On macOS, use plain text to avoid WebView scroll capture issues
+            if let selftext = post.selftext, !selftext.isEmpty {
+                Text(selftext.decodeHTMLEntities())
+                    .font(fontOption == .serif ?
+                        .system(.body, design: .serif) :
+                        .system(.body, design: .default))
+                    .textSelection(.enabled)
+            }
+            #endif
 
         }
         .padding(.horizontal, 16)
@@ -350,6 +521,7 @@ struct PostHTMLView: View {
     }
 }
 
+#if os(iOS)
 struct PostWebView: UIViewRepresentable {
     let html: String
     @Binding var height: CGFloat
@@ -495,22 +667,192 @@ struct PostWebView: UIViewRepresentable {
         """
     }
 }
+#elseif os(macOS)
+struct PostWebView: NSViewRepresentable {
+    let html: String
+    @Binding var height: CGFloat
+    let colorScheme: ColorScheme
+    let accentColor: Color
+    let fontOption: FontOption
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeNSView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.navigationDelegate = context.coordinator
+        // macOS-specific: disable drawing background for dark mode transparency
+        webView.setValue(false, forKey: "drawsBackground")
+        webView.underPageBackgroundColor = .clear
+        // Disable WebView scrolling so parent ScrollView handles it
+        disableWebViewScrolling(webView)
+        return webView
+    }
+
+    private func disableWebViewScrolling(_ webView: WKWebView) {
+        disableScrollingRecursively(in: webView)
+    }
+
+    private func disableScrollingRecursively(in view: NSView) {
+        for subview in view.subviews {
+            if let scrollView = subview as? NSScrollView {
+                scrollView.hasVerticalScroller = false
+                scrollView.hasHorizontalScroller = false
+                scrollView.verticalScrollElasticity = .none
+                scrollView.horizontalScrollElasticity = .none
+                scrollView.scrollerStyle = .overlay
+            }
+            disableScrollingRecursively(in: subview)
+        }
+    }
+
+    func updateNSView(_ webView: WKWebView, context: Context) {
+        // Decode HTML entities (Reddit double-encodes, so decode twice)
+        let decodedHTML = html.decodeHTMLEntities().decodeHTMLEntities()
+
+        let styledHTML = createStyledHTML(from: decodedHTML, colorScheme: colorScheme, accentColor: accentColor, fontOption: fontOption)
+        context.coordinator.parent = self
+        webView.loadHTMLString(styledHTML, baseURL: nil)
+        disableWebViewScrolling(webView)
+    }
+
+    class Coordinator: NSObject, WKNavigationDelegate {
+        var parent: PostWebView
+
+        init(_ parent: PostWebView) {
+            self.parent = parent
+        }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            // Disable scrolling after content loads
+            parent.disableWebViewScrolling(webView)
+
+            webView.evaluateJavaScript("Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)") { height, error in
+                if let height = height as? CGFloat {
+                    DispatchQueue.main.async {
+                        self.parent.height = height
+                        // Re-disable after height adjustment
+                        self.parent.disableWebViewScrolling(webView)
+                    }
+                }
+            }
+        }
+
+        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            if navigationAction.navigationType == .other {
+                decisionHandler(.allow)
+                return
+            }
+
+            // Handle link taps - open in browser
+            if navigationAction.navigationType == .linkActivated {
+                if let url = navigationAction.request.url {
+                    NSWorkspace.shared.open(url)
+                }
+                decisionHandler(.cancel)
+                return
+            }
+
+            decisionHandler(.allow)
+        }
+    }
+
+    func createStyledHTML(from html: String, colorScheme: ColorScheme, accentColor: Color, fontOption: FontOption) -> String {
+        let textColor = colorScheme == .dark ? "#FFFFFF" : "#000000"
+        let secondaryBg = colorScheme == .dark ? "#2C2C2E" : "#F2F2F7"
+        let accentColorHex = accentColor.toHex()
+
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+            <style>
+                body {
+                    font-family: \(fontOption.fontFamily);
+                    font-size: 16px;
+                    line-height: 1.6;
+                    color: \(textColor);
+                    background-color: transparent;
+                    margin: 0;
+                    padding: 0;
+                }
+                p {
+                    margin: 0 0 12px 0;
+                    padding: 0;
+                }
+                a {
+                    color: \(accentColorHex);
+                    text-decoration: none;
+                }
+                img {
+                    max-width: 100%;
+                    height: auto;
+                    margin: 12px 0;
+                    border-radius: 8px;
+                }
+                code {
+                    font-family: 'SF Mono', Menlo, Monaco, monospace;
+                    font-size: 14px;
+                    background-color: \(secondaryBg);
+                    padding: 2px 6px;
+                    border-radius: 3px;
+                }
+                pre {
+                    background-color: \(secondaryBg);
+                    padding: 12px;
+                    border-radius: 6px;
+                    overflow-x: auto;
+                    margin: 12px 0;
+                }
+                blockquote {
+                    margin: 12px 0;
+                    padding: 12px 16px;
+                    border-left: 4px solid \(accentColorHex);
+                    background-color: \(secondaryBg);
+                }
+                strong, b {
+                    font-weight: 600;
+                }
+                em, i {
+                    font-style: italic;
+                }
+                ul, ol {
+                    margin: 12px 0;
+                    padding-left: 24px;
+                }
+                li {
+                    margin: 4px 0;
+                }
+            </style>
+        </head>
+        <body>
+            \(html)
+        </body>
+        </html>
+        """
+    }
+}
+#endif
 
 
 // MARK: - Image Size Tracking Helper
 struct SizeTrackingAsyncImage: View {
     let imageUrl: String
     let onSizeCalculated: (CGFloat) -> Void
-    var availableWidth: CGFloat = UIScreen.main.bounds.width
+    var availableWidth: CGFloat = ScreenUtilities.mainScreenWidth
 
-    @State private var image: UIImage?
+    @State private var image: PlatformImage?
     @State private var isLoading = true
     @State private var hasFailed = false
 
     var body: some View {
         Group {
             if let image = image {
-                Image(uiImage: image)
+                platformImage(image)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .cornerRadius(8)
@@ -524,7 +866,11 @@ struct SizeTrackingAsyncImage: View {
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, minHeight: 200)
-                .background(Color(.systemGray6))
+                #if os(iOS)
+                .background(platformGray6Color)
+                #else
+                .background(Color(NSColor.controlBackgroundColor))
+                #endif
                 .cornerRadius(8)
             } else {
                 ProgressView()
@@ -544,20 +890,20 @@ struct SizeTrackingAsyncImage: View {
 
         do {
             let (data, _) = try await URLSession.shared.data(from: url)
-            if let uiImage = UIImage(data: data) {
+            if let loadedImage = PlatformImage(data: data) {
                 await MainActor.run {
-                    self.image = uiImage
+                    self.image = loadedImage
 
                     // Calculate height based on aspect ratio
-                    let aspectRatio = uiImage.size.height / uiImage.size.width
+                    let aspectRatio = loadedImage.size.height / loadedImage.size.width
                     let contentWidth = availableWidth - 32 // Account for padding
                     let calculatedHeight = contentWidth * aspectRatio
 
                     // Cap maximum height to 100% of screen height
-                    let maxHeight = UIScreen.main.bounds.height
+                    let maxHeight = ScreenUtilities.mainScreenHeight
                     let finalHeight = min(calculatedHeight, maxHeight)
 
-                    print("📸 Image sizing - Original: \(uiImage.size.width)x\(uiImage.size.height), AspectRatio: \(aspectRatio), ContentWidth: \(contentWidth), CalculatedHeight: \(calculatedHeight), FinalHeight: \(finalHeight)")
+                    print("📸 Image sizing - Original: \(loadedImage.size.width)x\(loadedImage.size.height), AspectRatio: \(aspectRatio), ContentWidth: \(contentWidth), CalculatedHeight: \(calculatedHeight), FinalHeight: \(finalHeight)")
 
                     onSizeCalculated(finalHeight)
                 }
@@ -578,7 +924,7 @@ struct SizeTrackingAsyncImage: View {
 
 struct ImageGalleryView: View {
     let images: [RedditGalleryImage]
-    var availableWidth: CGFloat = UIScreen.main.bounds.width
+    var availableWidth: CGFloat = ScreenUtilities.mainScreenWidth
     @State private var showFullScreen = false
     @State private var currentPage = 0
     @State private var galleryHeight: CGFloat = 300
@@ -616,7 +962,9 @@ struct ImageGalleryView: View {
                     }
                 }
             }
+            #if os(iOS)
             .tabViewStyle(.page(indexDisplayMode: images.count > 1 ? .always : .never))
+            #endif
             .frame(height: galleryHeight)
 
             // Image counter
@@ -636,9 +984,16 @@ struct ImageGalleryView: View {
                     .foregroundStyle(.secondary)
             }
         }
+        #if os(iOS)
         .fullScreenCover(isPresented: $showFullScreen) {
             FullScreenImageGallery(images: images, currentIndex: $currentPage)
         }
+        #else
+        .sheet(isPresented: $showFullScreen) {
+            FullScreenImageGallery(images: images, currentIndex: $currentPage)
+                .frame(minWidth: 800, minHeight: 600)
+        }
+        #endif
         .onChange(of: showFullScreen) { oldValue, newValue in
             print("🖼️ ImageGalleryView: showFullScreen changed \(oldValue) → \(newValue)")
         }
@@ -659,30 +1014,44 @@ struct FullScreenImageGallery: View {
                     if image.isAnimated, let videoUrl = image.videoUrl {
                         AnimatedMediaView(videoUrl: videoUrl, posterUrl: image.url)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .background(Color(.systemBackground))
+                            .background(platformBackgroundColor)
                             .tag(index)
                     } else {
                         ZoomableImageView(imageUrl: image.url)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .background(Color(.systemBackground))
+                            .background(platformBackgroundColor)
                             .tag(index)
                     }
                 }
             }
+            #if os(iOS)
             .tabViewStyle(.page(indexDisplayMode: .never))
-            .background(Color(.systemBackground))
+            #endif
+            .background(platformBackgroundColor)
             .ignoresSafeArea()
             .navigationTitle("\(currentIndex + 1) of \(images.count)")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.visible, for: .navigationBar)
+            #endif
             .toolbar {
+                #if os(iOS)
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Done") {
                         logger.info("🖼️ FullScreenImageGallery: Done button tapped")
                         dismiss()
                     }
                 }
+                #else
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") {
+                        logger.info("🖼️ FullScreenImageGallery: Done button tapped")
+                        dismiss()
+                    }
+                }
+                #endif
 
+                #if os(iOS)
                 ToolbarItem(placement: .topBarTrailing) {
                     if let imageUrl = URL(string: images[currentIndex].url) {
                         ShareLink(item: imageUrl) {
@@ -690,6 +1059,15 @@ struct FullScreenImageGallery: View {
                         }
                     }
                 }
+                #else
+                ToolbarItem(placement: .primaryAction) {
+                    if let imageUrl = URL(string: images[currentIndex].url) {
+                        ShareLink(item: imageUrl) {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                    }
+                }
+                #endif
             }
             .onAppear {
                 logger.info("🖼️ FullScreenImageGallery: appeared with \(self.images.count) images")
@@ -910,7 +1288,7 @@ struct ZoomableImageView: View {
 struct AnimatedMediaView: View {
     let videoUrl: String
     let posterUrl: String?
-    var availableWidth: CGFloat = UIScreen.main.bounds.width
+    var availableWidth: CGFloat = ScreenUtilities.mainScreenWidth
 
     @State private var player: AVPlayer?
     @State private var videoSize: CGSize?
@@ -985,7 +1363,7 @@ struct AnimatedMediaView: View {
         let calculatedHeight = width * aspectRatio
 
         // Cap maximum height to 100% of screen height
-        let maxHeight = UIScreen.main.bounds.height
+        let maxHeight = ScreenUtilities.mainScreenHeight
         let finalHeight = min(calculatedHeight, maxHeight)
 
         print("🎥 Video sizing - Original: \(videoSize.width)x\(videoSize.height), AspectRatio: \(aspectRatio), Width: \(width), CalculatedHeight: \(calculatedHeight), FinalHeight: \(finalHeight)")
@@ -994,8 +1372,9 @@ struct AnimatedMediaView: View {
     }
 }
 
-// MARK: - Video Player View (UIKit wrapper)
+// MARK: - Video Player View (Platform wrapper)
 
+#if os(iOS)
 struct VideoPlayerView: UIViewRepresentable {
     let player: AVPlayer
 
@@ -1027,6 +1406,40 @@ struct VideoPlayerView: UIViewRepresentable {
         var playerLayer: AVPlayerLayer?
     }
 }
+#elseif os(macOS)
+struct VideoPlayerView: NSViewRepresentable {
+    let player: AVPlayer
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor.clear.cgColor
+
+        let playerLayer = AVPlayerLayer(player: player)
+        playerLayer.videoGravity = .resizeAspect
+        playerLayer.frame = view.bounds
+        view.layer?.addSublayer(playerLayer)
+
+        context.coordinator.playerLayer = playerLayer
+
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        if let playerLayer = context.coordinator.playerLayer {
+            playerLayer.frame = nsView.bounds
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    class Coordinator {
+        var playerLayer: AVPlayerLayer?
+    }
+}
+#endif
 
 // MARK: - Embedded Media View
 
@@ -1041,6 +1454,7 @@ struct EmbeddedMediaView: View {
     }
 }
 
+#if os(iOS)
 struct EmbeddedMediaWebView: UIViewRepresentable {
     let html: String
     let colorScheme: ColorScheme
@@ -1066,6 +1480,10 @@ struct EmbeddedMediaWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
+        loadContent(in: webView)
+    }
+
+    private func loadContent(in webView: WKWebView) {
         let bgColor = colorScheme == .dark ? "#000000" : "#FFFFFF"
 
         let wrappedHTML = """
@@ -1103,6 +1521,64 @@ struct EmbeddedMediaWebView: UIViewRepresentable {
         webView.loadHTMLString(wrappedHTML, baseURL: nil)
     }
 }
+#elseif os(macOS)
+struct EmbeddedMediaWebView: NSViewRepresentable {
+    let html: String
+    let colorScheme: ColorScheme
+
+    func makeNSView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        // allowsInlineMediaPlayback is iOS-only; macOS always allows inline playback
+        configuration.mediaTypesRequiringUserActionForPlayback = []
+        configuration.preferences.isElementFullscreenEnabled = true
+
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        return webView
+    }
+
+    func updateNSView(_ webView: WKWebView, context: Context) {
+        loadContent(in: webView)
+    }
+
+    private func loadContent(in webView: WKWebView) {
+        let bgColor = colorScheme == .dark ? "#000000" : "#FFFFFF"
+
+        let wrappedHTML = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+            <style>
+                * {
+                    margin: 0;
+                    padding: 0;
+                    box-sizing: border-box;
+                }
+                body {
+                    background-color: \(bgColor);
+                    overflow: hidden;
+                }
+                iframe {
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    border: none;
+                }
+            </style>
+        </head>
+        <body>
+            \(html)
+        </body>
+        </html>
+        """
+
+        webView.loadHTMLString(wrappedHTML, baseURL: nil)
+    }
+}
+#endif
 
 // MARK: - View Extension for Conditional Modifiers
 
@@ -1121,7 +1597,16 @@ extension View {
 struct CommentRowView: View {
     let comment: RedditComment
     let fontOption: FontOption
+
+    // For iOS: local collapse state
+    // For macOS: externally managed collapse state
+    #if os(iOS)
     @State private var isCollapsed = false
+    #else
+    var isCollapsed: Bool = false
+    var hasChildren: Bool = false
+    var onToggleCollapse: (() -> Void)? = nil
+    #endif
 
     // Color for indent line based on depth
     private var indentColor: Color {
@@ -1137,21 +1622,25 @@ struct CommentRowView: View {
                     Rectangle()
                         .fill(indentColor.opacity(0.3))
                         .frame(width: 2)
-                        .padding(.leading, CGFloat(comment.depth - 1) * 12)
+                        .padding(.leading, CGFloat(min(comment.depth - 1, 4)) * 12)
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
                     // Header: author, score, time
                     HStack(spacing: 8) {
+                        #if os(iOS)
+                        // iOS: local collapse state with toggle
                         Button {
                             withAnimation {
                                 isCollapsed.toggle()
                             }
                         } label: {
                             HStack(spacing: 4) {
-                                Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
+                                if !comment.replies.isEmpty {
+                                    Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
 
                                 Text("u/\(comment.author)")
                                     .font(.caption)
@@ -1159,6 +1648,30 @@ struct CommentRowView: View {
                                     .foregroundStyle(.orange)
                             }
                         }
+                        .buttonStyle(.plain)
+                        #else
+                        // macOS: external collapse state with callback
+                        Button {
+                            withAnimation {
+                                onToggleCollapse?()
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                if hasChildren {
+                                    Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Text("u/\(comment.author)")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.orange)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!hasChildren)
+                        #endif
 
                         Text("•")
                             .font(.caption2)
@@ -1185,32 +1698,43 @@ struct CommentRowView: View {
 
                     // Comment body (hidden if collapsed)
                     if !isCollapsed {
+                        #if os(iOS)
                         // Use body_html if available (preserves markdown formatting, links, etc.)
                         if let bodyHtml = comment.bodyHtml, !bodyHtml.isEmpty {
                             CommentHTMLView(html: bodyHtml, fontOption: fontOption)
                         } else {
-                            // Fallback to plain text if body_html is not available
-                            Text(comment.body.decodeHTMLEntities().decodeHTMLEntities())
+                            Text(comment.decodedBody)
                                 .font(fontOption == .serif ?
                                     .system(.subheadline, design: .serif) :
                                     .system(.subheadline, design: .default))
                                 .textSelection(.enabled)
                         }
+                        #else
+                        // On macOS, use plain text to avoid WebView scroll capture issues
+                        Text(comment.decodedBody)
+                            .font(fontOption == .serif ?
+                                .system(.subheadline, design: .serif) :
+                                .system(.subheadline, design: .default))
+                            .textSelection(.enabled)
+                        #endif
                     }
                 }
                 .padding(.leading, comment.depth > 0 ? 12 : 0)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
-            .background(Color(.systemBackground))
+            .background(platformBackgroundColor)
 
             Divider()
-                .padding(.leading, CGFloat(comment.depth) * 12 + 16)
+                .padding(.leading, CGFloat(min(comment.depth, 5)) * 12 + 16)
 
             // Nested replies (hidden if collapsed)
+            // Use LazyVStack to prevent layout calculation of entire nested tree
             if !isCollapsed && !comment.replies.isEmpty {
-                ForEach(comment.replies) { reply in
-                    CommentRowView(comment: reply, fontOption: fontOption)
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(comment.replies) { reply in
+                        CommentRowView(comment: reply, fontOption: fontOption)
+                    }
                 }
             }
         }
@@ -1232,6 +1756,7 @@ struct CommentHTMLView: View {
     }
 }
 
+#if os(iOS)
 struct CommentWebView: UIViewRepresentable {
     let html: String
     @Binding var height: CGFloat
@@ -1401,4 +1926,198 @@ struct CommentWebView: UIViewRepresentable {
         """
     }
 }
+#elseif os(macOS)
+struct CommentWebView: NSViewRepresentable {
+    let html: String
+    @Binding var height: CGFloat
+    let colorScheme: ColorScheme
+    let accentColor: Color
+    let fontOption: FontOption
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeNSView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.navigationDelegate = context.coordinator
+        // macOS-specific: disable drawing background for dark mode transparency
+        webView.setValue(false, forKey: "drawsBackground")
+        webView.underPageBackgroundColor = .clear
+        // Disable WebView scrolling so parent ScrollView handles it
+        disableWebViewScrolling(webView)
+        return webView
+    }
+
+    private func disableWebViewScrolling(_ webView: WKWebView) {
+        disableScrollingRecursively(in: webView)
+    }
+
+    private func disableScrollingRecursively(in view: NSView) {
+        for subview in view.subviews {
+            if let scrollView = subview as? NSScrollView {
+                scrollView.hasVerticalScroller = false
+                scrollView.hasHorizontalScroller = false
+                scrollView.verticalScrollElasticity = .none
+                scrollView.horizontalScrollElasticity = .none
+                scrollView.scrollerStyle = .overlay
+            }
+            disableScrollingRecursively(in: subview)
+        }
+    }
+
+    func updateNSView(_ webView: WKWebView, context: Context) {
+        // Decode HTML entities (Reddit double-encodes, so decode twice)
+        let decodedHTML = html.decodeHTMLEntities().decodeHTMLEntities()
+
+        let styledHTML = createStyledHTML(from: decodedHTML, colorScheme: colorScheme, accentColor: accentColor, fontOption: fontOption)
+        context.coordinator.parent = self
+        webView.loadHTMLString(styledHTML, baseURL: nil)
+        disableWebViewScrolling(webView)
+    }
+
+    class Coordinator: NSObject, WKNavigationDelegate {
+        var parent: CommentWebView
+
+        init(_ parent: CommentWebView) {
+            self.parent = parent
+        }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            // Disable scrolling after content loads
+            parent.disableWebViewScrolling(webView)
+
+            // Better height calculation that measures actual content
+            let script = """
+            (function() {
+                // Force layout
+                document.body.style.height = 'auto';
+                // Get actual content height
+                var range = document.createRange();
+                range.selectNodeContents(document.body);
+                var rect = range.getBoundingClientRect();
+                return Math.ceil(rect.height);
+            })();
+            """
+            webView.evaluateJavaScript(script) { height, error in
+                if let height = height as? CGFloat {
+                    DispatchQueue.main.async {
+                        self.parent.height = height
+                        // Re-disable after height adjustment
+                        self.parent.disableWebViewScrolling(webView)
+                    }
+                }
+            }
+        }
+
+        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            if navigationAction.navigationType == .other {
+                decisionHandler(.allow)
+                return
+            }
+
+            // Handle link taps - open in browser
+            if navigationAction.navigationType == .linkActivated {
+                if let url = navigationAction.request.url {
+                    NSWorkspace.shared.open(url)
+                }
+                decisionHandler(.cancel)
+                return
+            }
+
+            decisionHandler(.allow)
+        }
+    }
+
+    func createStyledHTML(from html: String, colorScheme: ColorScheme, accentColor: Color, fontOption: FontOption) -> String {
+        let textColor = colorScheme == .dark ? "#FFFFFF" : "#000000"
+        let secondaryBg = colorScheme == .dark ? "#2C2C2E" : "#F2F2F7"
+        let accentColorHex = accentColor.toHex()
+
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+            <style>
+                html, body {
+                    font-family: \(fontOption.fontFamily);
+                    font-size: 15px;
+                    line-height: 1.6;
+                    color: \(textColor);
+                    background-color: transparent;
+                    margin: 0;
+                    padding: 0;
+                    height: auto;
+                    min-height: 0;
+                }
+                p {
+                    margin: 0 0 8px 0;
+                    padding: 0;
+                }
+                p:last-child {
+                    margin-bottom: 0;
+                }
+                a {
+                    color: \(accentColorHex);
+                    text-decoration: none;
+                }
+                img {
+                    max-width: 100%;
+                    height: auto;
+                    margin: 8px 0;
+                    border-radius: 6px;
+                }
+                code {
+                    font-family: 'SF Mono', Menlo, Monaco, monospace;
+                    font-size: 13px;
+                    background-color: \(secondaryBg);
+                    padding: 2px 4px;
+                    border-radius: 3px;
+                }
+                pre {
+                    background-color: \(secondaryBg);
+                    padding: 8px;
+                    border-radius: 6px;
+                    overflow-x: auto;
+                    margin: 8px 0;
+                }
+                blockquote {
+                    margin: 8px 0;
+                    padding: 8px 12px;
+                    border-left: 3px solid \(accentColorHex);
+                    background-color: \(secondaryBg);
+                }
+                strong, b {
+                    font-weight: 600;
+                }
+                em, i {
+                    font-style: italic;
+                }
+                table {
+                    border-collapse: collapse;
+                    margin: 8px 0;
+                    width: 100%;
+                }
+                th, td {
+                    border: 1px solid \(secondaryBg);
+                    padding: 8px;
+                    text-align: left;
+                }
+                th {
+                    background-color: \(secondaryBg);
+                    font-weight: 600;
+                }
+            </style>
+        </head>
+        <body>
+            \(html)
+        </body>
+        </html>
+        """
+    }
+}
+#endif
 

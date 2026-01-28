@@ -7,6 +7,10 @@
 
 import SwiftUI
 
+#if os(macOS)
+import AppKit
+#endif
+
 struct MarkdownWithImagesView: View {
     let text: String
     let fontOption: FontOption
@@ -44,7 +48,11 @@ struct MarkdownWithImagesView: View {
                                 }
                                 .padding(8)
                                 .frame(maxWidth: .infinity, alignment: .center)
+                                #if os(iOS)
                                 .background(Color(.systemGray6))
+                                #else
+                                .background(Color(NSColor.controlBackgroundColor))
+                                #endif
                                 .cornerRadius(8)
                             case .empty:
                                 ProgressView()

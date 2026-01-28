@@ -7,6 +7,37 @@
 
 import SwiftUI
 
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
+
+// Platform-specific background colors
+private var platformBackgroundColor: Color {
+    #if os(iOS)
+    return Color(.systemBackground)
+    #else
+    return Color(NSColor.windowBackgroundColor)
+    #endif
+}
+
+private var platformGray5Color: Color {
+    #if os(iOS)
+    return Color(.systemGray5)
+    #else
+    return Color(NSColor.controlBackgroundColor)
+    #endif
+}
+
+private var platformGray6Color: Color {
+    #if os(iOS)
+    return Color(.systemGray6)
+    #else
+    return Color(NSColor.controlBackgroundColor)
+    #endif
+}
+
 struct ArticleAudioControls: View {
     let article: Article
     @StateObject private var audioPlayer = ArticleAudioPlayer.shared
@@ -70,7 +101,7 @@ struct ArticleAudioControls: View {
                             .font(.title2)
                             .foregroundStyle(.secondary)
                             .frame(width: 44, height: 44)
-                            .background(Color(.systemGray6))
+                            .background(platformGray6Color)
                             .cornerRadius(12)
                     }
                 }
@@ -88,13 +119,13 @@ struct ArticleAudioControls: View {
                     .frame(minWidth: 60)
                     .padding(.vertical, 12)
                     .padding(.horizontal, 12)
-                    .background(Color(.systemGray6))
+                    .background(platformGray6Color)
                     .cornerRadius(12)
                 }
             }
         }
         .padding()
-        .background(Color(.systemBackground))
+        .background(platformBackgroundColor)
         .sheet(isPresented: $showSpeedPicker) {
             SpeedPickerView(audioPlayer: audioPlayer)
                 .presentationDetents([.height(300)])
@@ -138,7 +169,9 @@ struct SpeedPickerView: View {
                 }
             }
             .navigationTitle(String(localized: "Playback Speed"))
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
@@ -215,9 +248,16 @@ struct MiniAudioPlayer: View {
             PodcastSpeedPickerView(podcastPlayer: podcastPlayer)
                 .presentationDetents([.height(300)])
         }
+        #if os(iOS)
         .fullScreenCover(isPresented: $showNowPlaying) {
             NowPlayingView()
         }
+        #else
+        .sheet(isPresented: $showNowPlaying) {
+            NowPlayingView()
+                .frame(minWidth: 400, minHeight: 500)
+        }
+        #endif
     }
     
     @ViewBuilder
@@ -263,7 +303,7 @@ struct MiniAudioPlayer: View {
                                         .aspectRatio(contentMode: .fill)
                                 } placeholder: {
                                     Rectangle()
-                                        .fill(Color(.systemGray5))
+                                        .fill(platformGray5Color)
                                 }
                                 .frame(width: 48, height: 48)
                                 .cornerRadius(6)
@@ -333,7 +373,7 @@ struct MiniAudioPlayer: View {
             .padding()
             .background(
                 accentColor.color.opacity(0.05)
-                    .overlay(Color(.systemBackground).opacity(0.95))
+                    .overlay(platformBackgroundColor.opacity(0.95))
             )
         }
         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -422,7 +462,7 @@ struct PodcastAudioControls: View {
                             .font(.title2)
                             .foregroundStyle(.secondary)
                             .frame(width: 44, height: 44)
-                            .background(Color(.systemGray6))
+                            .background(platformGray6Color)
                             .cornerRadius(12)
                     }
                 }
@@ -440,13 +480,13 @@ struct PodcastAudioControls: View {
                     .frame(minWidth: 60)
                     .padding(.vertical, 12)
                     .padding(.horizontal, 12)
-                    .background(Color(.systemGray6))
+                    .background(platformGray6Color)
                     .cornerRadius(12)
                 }
             }
         }
         .padding()
-        .background(Color(.systemBackground))
+        .background(platformBackgroundColor)
         .sheet(isPresented: $showSpeedPicker) {
             PodcastSpeedPickerView(podcastPlayer: podcastPlayer)
                 .presentationDetents([.height(300)])
@@ -495,7 +535,9 @@ struct PodcastSpeedPickerView: View {
                 }
             }
             .navigationTitle(String(localized: "Playback Speed"))
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {

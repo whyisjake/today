@@ -13,16 +13,22 @@ struct RedditComment: Identifiable {
     let id: String
     let author: String
     let body: String
+    let decodedBody: String // Pre-computed decoded body for efficient view rendering
     let bodyHtml: String? // Reddit's pre-rendered HTML (includes images, links, formatting)
     let score: Int
     let createdUtc: Date
     let depth: Int
     var replies: [RedditComment]
 
-    var timeAgo: String {
+    // Use a shared formatter to avoid creating new ones constantly
+    private static let timeAgoFormatter: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: createdUtc, relativeTo: Date())
+        return formatter
+    }()
+
+    var timeAgo: String {
+        Self.timeAgoFormatter.localizedString(for: createdUtc, relativeTo: Date())
     }
 }
 
@@ -92,7 +98,18 @@ class RedditJSONParser {
             }
         }
 
-        print("📊 [Parser] Parsed \(totalParsed) comments, kept \(comments.count), filtered \(filteredCount)")
+        // Count total comments including all nested replies
+        func countAllComments(_ comments: [RedditComment]) -> Int {
+            var count = comments.count
+            for comment in comments {
+                count += countAllComments(comment.replies)
+            }
+            return count
+        }
+        let totalCommentCount = countAllComments(comments)
+
+        print("📊 [Parser] Parsed \(totalParsed) top-level, kept \(comments.count), filtered \(filteredCount)")
+        print("📊 [Parser] Total comments including nested: \(totalCommentCount)")
         return (post, comments)
     }
 
@@ -291,10 +308,14 @@ class RedditJSONParser {
             }
         }
 
+        // Pre-compute decoded body once (Reddit double-encodes HTML entities)
+        let decodedBody = body.decodeHTMLEntities().decodeHTMLEntities()
+
         return RedditComment(
             id: id,
             author: author,
             body: body,
+            decodedBody: decodedBody,
             bodyHtml: bodyHtml,
             score: score,
             createdUtc: createdDate,

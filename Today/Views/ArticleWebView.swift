@@ -8,6 +8,8 @@
 import SwiftUI
 import SwiftData
 import WebKit
+
+#if os(iOS)
 import SafariServices
 
 // Safari View Controller wrapper with full WebAuthn/passkey support
@@ -49,7 +51,7 @@ struct SafariView: UIViewControllerRepresentable {
     }
 }
 
-// Legacy WKWebView for basic viewing (does NOT support WebAuthn)
+// WKWebView for basic viewing (does NOT support WebAuthn)
 struct ArticleWebView: UIViewRepresentable {
     let url: URL
 
@@ -71,6 +73,46 @@ struct ArticleWebView: UIViewRepresentable {
         }
     }
 }
+#elseif os(macOS)
+// macOS Safari View using WKWebView (SFSafariViewController is iOS-only)
+struct SafariView: NSViewRepresentable {
+    let url: URL
+    @Environment(\.dismiss) private var dismiss
+
+    func makeNSView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.allowsBackForwardNavigationGestures = true
+        return webView
+    }
+
+    func updateNSView(_ webView: WKWebView, context: Context) {
+        if webView.url != url {
+            webView.load(URLRequest(url: url))
+        }
+    }
+}
+
+// WKWebView for basic viewing
+struct ArticleWebView: NSViewRepresentable {
+    let url: URL
+
+    func makeNSView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.allowsBackForwardNavigationGestures = true
+        return webView
+    }
+
+    func updateNSView(_ webView: WKWebView, context: Context) {
+        // Only load if not already loading this URL
+        if webView.url != url {
+            let request = URLRequest(url: url)
+            webView.load(request)
+        }
+    }
+}
+#endif
 
 // Enhanced article detail view with in-app browser option
 struct ArticleDetailViewEnhanced: View {
@@ -146,7 +188,9 @@ struct ArticleDetailViewEnhanced: View {
                     }
                     .padding()
                 }
+                #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
+                #endif
             }
         }
         .onAppear {
