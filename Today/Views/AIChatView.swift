@@ -332,6 +332,17 @@ struct AIChatView: View {
 
 struct MessageBubble: View {
     @ObservedObject var message: ChatMessage
+    @State private var isVisible: Bool
+    @State private var contentOpacity: Double
+
+    private let fadeInDuration: TimeInterval = 1.0
+
+    init(message: ChatMessage) {
+        self.message = message
+        // User messages appear immediately, AI messages start invisible
+        _isVisible = State(initialValue: message.isUser)
+        _contentOpacity = State(initialValue: message.isUser ? 1 : 0)
+    }
 
     private func parseMarkdown(_ text: String) -> AttributedString {
         do {
@@ -374,6 +385,7 @@ struct MessageBubble: View {
                             RoundedRectangle(cornerRadius: 16)
                                 .stroke(Color.accentColor.opacity(0.3), lineWidth: 1)
                         )
+                        .opacity(contentOpacity)
                     } else {
                         // Regular message
                         Text(parseMarkdown(message.content))
@@ -382,6 +394,7 @@ struct MessageBubble: View {
                             .foregroundStyle(message.isUser ? .white : .primary)
                             .cornerRadius(16)
                             .textSelection(.enabled)
+                            .opacity(contentOpacity)
                     }
                 }
 
@@ -456,6 +469,7 @@ struct MessageBubble: View {
                         }
                     }
                     .padding(.horizontal, 4)
+                    .opacity(contentOpacity)
                 }
 
                 // Show recommended articles if available (for non-newsletter responses)
@@ -504,15 +518,42 @@ struct MessageBubble: View {
                         }
                     }
                     .padding(.horizontal, 4)
+                    .opacity(contentOpacity)
                 }
 
                 Text(message.timestamp, style: .time)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                    .opacity(contentOpacity)
             }
 
             if !message.isUser {
                 Spacer()
+            }
+        }
+        .opacity(isVisible ? 1 : 0)
+        .task(id: message.id) {
+            // Only animate AI messages (non-user messages)
+            guard !message.isUser else { return }
+
+            // Animate bubble appearance
+            withAnimation(.easeIn(duration: fadeInDuration)) {
+                isVisible = true
+            }
+
+            // If message starts without typing indicator, animate content immediately
+            if !message.isTyping {
+                withAnimation(.easeIn(duration: fadeInDuration)) {
+                    contentOpacity = 1
+                }
+            }
+        }
+        .onChange(of: message.isTyping) { _, newValue in
+            // When typing stops and content appears, animate the content
+            if !message.isUser && !newValue {
+                withAnimation(.easeIn(duration: fadeInDuration)) {
+                    contentOpacity = 1
+                }
             }
         }
     }
