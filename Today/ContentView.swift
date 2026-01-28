@@ -250,6 +250,7 @@ struct SidebarContentView: View {
                     )
                 }
             }
+            .navigationSplitViewStyle(.balanced)
             .padding(.bottom, totalMiniPlayerHeight)
 
             // Global mini audio player
@@ -298,6 +299,7 @@ struct ArticleListColumn: View {
 // MARK: - Sidebar Article Row View
 struct SidebarArticleRow: View {
     let article: Article
+    @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -327,6 +329,45 @@ struct SidebarArticleRow: View {
             }
         }
         .padding(.vertical, 4)
+        .contextMenu {
+            // Mark Read/Unread
+            Button {
+                article.isRead.toggle()
+                try? modelContext.save()
+            } label: {
+                Label(
+                    article.isRead ? "Mark as Unread" : "Mark as Read",
+                    systemImage: article.isRead ? "envelope.badge" : "envelope.open"
+                )
+            }
+
+            // Favorite/Unfavorite
+            Button {
+                article.isFavorite.toggle()
+                try? modelContext.save()
+            } label: {
+                Label(
+                    article.isFavorite ? "Remove from Favorites" : "Add to Favorites",
+                    systemImage: article.isFavorite ? "star.slash" : "star"
+                )
+            }
+
+            Divider()
+
+            // Share
+            if let url = article.articleURL {
+                ShareLink(item: url) {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                }
+            }
+
+            // Open in Safari
+            if let url = article.articleURL {
+                Link(destination: url) {
+                    Label("Open in Safari", systemImage: "safari")
+                }
+            }
+        }
     }
 }
 
