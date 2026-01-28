@@ -252,6 +252,20 @@ struct SidebarContentView: View {
             }
             .navigationSplitViewStyle(.balanced)
             .padding(.bottom, totalMiniPlayerHeight)
+            // Keyboard shortcuts for sidebar navigation
+            .background {
+                Group {
+                    Button("") { selectedSidebarItem = .today }
+                        .keyboardShortcut("1", modifiers: .command)
+                    Button("") { selectedSidebarItem = .feeds }
+                        .keyboardShortcut("2", modifiers: .command)
+                    Button("") { selectedSidebarItem = .aiChat }
+                        .keyboardShortcut("3", modifiers: .command)
+                    Button("") { selectedSidebarItem = .settings }
+                        .keyboardShortcut("4", modifiers: .command)
+                }
+                .opacity(0)
+            }
 
             // Global mini audio player
             MiniAudioPlayer()
@@ -268,31 +282,116 @@ struct SidebarContentView: View {
     }
 }
 
+// MARK: - Article Filter Options
+enum ArticleFilter: String, CaseIterable {
+    case all = "All"
+    case unread = "Unread"
+    case favorites = "Favorites"
+
+    var systemImage: String {
+        switch self {
+        case .all: return "tray.full"
+        case .unread: return "envelope.badge"
+        case .favorites: return "star"
+        }
+    }
+}
+
+// MARK: - Article Sort Options
+enum ArticleSort: String, CaseIterable {
+    case newest = "Newest First"
+    case oldest = "Oldest First"
+    case title = "By Title"
+
+    var systemImage: String {
+        switch self {
+        case .newest: return "arrow.down"
+        case .oldest: return "arrow.up"
+        case .title: return "textformat"
+        }
+    }
+}
+
 // MARK: - Article List Column (Middle Column)
 struct ArticleListColumn: View {
     let articles: [Article]
     let title: String
     @Binding var selectedArticle: Article?
     @State private var searchText = ""
+    @State private var filter: ArticleFilter = .all
+    @State private var sort: ArticleSort = .newest
 
-    private var filteredArticles: [Article] {
-        guard !searchText.isEmpty else { return articles }
-        return articles.filter { article in
-            article.title.localizedCaseInsensitiveContains(searchText) ||
-            (article.articleDescription?.localizedCaseInsensitiveContains(searchText) ?? false) ||
-            (article.content?.localizedCaseInsensitiveContains(searchText) ?? false)
+    private var processedArticles: [Article] {
+        var result = articles
+
+        // Apply filter
+        switch filter {
+        case .all:
+            break
+        case .unread:
+            result = result.filter { !$0.isRead }
+        case .favorites:
+            result = result.filter { $0.isFavorite }
         }
+
+        // Apply search
+        if !searchText.isEmpty {
+            result = result.filter { article in
+                article.title.localizedCaseInsensitiveContains(searchText) ||
+                (article.articleDescription?.localizedCaseInsensitiveContains(searchText) ?? false) ||
+                (article.content?.localizedCaseInsensitiveContains(searchText) ?? false)
+            }
+        }
+
+        // Apply sort
+        switch sort {
+        case .newest:
+            result = result.sorted { $0.publishedDate > $1.publishedDate }
+        case .oldest:
+            result = result.sorted { $0.publishedDate < $1.publishedDate }
+        case .title:
+            result = result.sorted { $0.title.localizedCompare($1.title) == .orderedAscending }
+        }
+
+        return result
     }
 
     var body: some View {
         List(selection: $selectedArticle) {
-            ForEach(filteredArticles) { article in
+            ForEach(processedArticles) { article in
                 SidebarArticleRow(article: article)
                     .tag(article)
             }
         }
         .navigationTitle(title)
         .searchable(text: $searchText, prompt: "Search articles")
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                // Filter menu
+                Menu {
+                    Picker("Filter", selection: $filter) {
+                        ForEach(ArticleFilter.allCases, id: \.self) { filterOption in
+                            Label(filterOption.rawValue, systemImage: filterOption.systemImage)
+                                .tag(filterOption)
+                        }
+                    }
+                } label: {
+                    Label("Filter", systemImage: filter == .all ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+                }
+
+                // Sort menu
+                Menu {
+                    Picker("Sort", selection: $sort) {
+                        ForEach(ArticleSort.allCases, id: \.self) { sortOption in
+                            Label(sortOption.rawValue, systemImage: sortOption.systemImage)
+                                .tag(sortOption)
+                        }
+                    }
+                } label: {
+                    Label("Sort", systemImage: "arrow.up.arrow.down")
+                }
+            }
+        }
     }
 }
 
