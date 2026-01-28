@@ -86,6 +86,10 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
     private var prefetchedChapters: [String: [PodcastChapter]] = [:]
     private var prefetchingURLs: Set<String> = []
 
+    // Now Playing update throttling (reduce frequency to avoid sandbox issues on macOS)
+    private var lastNowPlayingUpdate: Date = .distantPast
+    private let nowPlayingUpdateInterval: TimeInterval = 1.0 // Update at most once per second
+
     override private init() {
         super.init()
 
@@ -186,7 +190,7 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
         // Restore saved playback position if available
         restorePlaybackPosition()
 
-        updateNowPlayingInfo()
+        updateNowPlayingInfo(force: true)
     }
 
     func pause() {
@@ -195,7 +199,7 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
         player?.pause()
         isPaused = true
         isPlaying = false
-        updateNowPlayingInfo()
+        updateNowPlayingInfo(force: true)
     }
 
     func resume() {
@@ -204,7 +208,7 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
         player?.rate = playbackRate
         isPaused = false
         isPlaying = true
-        updateNowPlayingInfo()
+        updateNowPlayingInfo(force: true)
     }
 
     func stop() {
@@ -254,7 +258,7 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
         player.seek(to: cmTime) { [weak self] _ in
             guard let strongSelf = self else { return }
             Task { @MainActor in
-                strongSelf.updateNowPlayingInfo()
+                strongSelf.updateNowPlayingInfo(force: true)
             }
         }
     }
@@ -300,7 +304,7 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
         // Apply rate immediately if playing or paused
         if isPlaying || isPaused {
             player?.rate = isPlaying ? playbackRate : 0.0
-            updateNowPlayingInfo()
+            updateNowPlayingInfo(force: true)
         }
     }
 
@@ -363,14 +367,21 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
             isPlaying = false
             isPaused = false
             progress = 1.0
-            updateNowPlayingInfo()
+            updateNowPlayingInfo(force: true)
         }
     }
 
     // MARK: - Now Playing Info (Lock Screen)
 
-    private func updateNowPlayingInfo() {
+    private func updateNowPlayingInfo(force: Bool = false) {
         guard let article = currentArticle else { return }
+
+        // Throttle updates to reduce system load (especially on macOS with sandbox)
+        let now = Date()
+        guard force || now.timeIntervalSince(lastNowPlayingUpdate) >= nowPlayingUpdateInterval else {
+            return
+        }
+        lastNowPlayingUpdate = now
 
         var nowPlayingInfo: [String: Any] = [
             MPMediaItemPropertyTitle: article.title,

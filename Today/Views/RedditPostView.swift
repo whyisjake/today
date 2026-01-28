@@ -236,16 +236,10 @@ struct RedditPostView: View {
                 }
             }
             #else
-            ToolbarItem(placement: .primaryAction) {
-                if let url = article.articleURL {
-                    ShareLink(item: url, subject: Text(article.title)) {
-                        Label("Share", systemImage: "square.and.arrow.up")
-                    }
-                }
-            }
-
-            ToolbarItem(placement: .navigation) {
-                HStack(spacing: 12) {
+            // Combined toolbar: navigation arrows first, then action buttons
+            ToolbarItem(placement: .automatic) {
+                HStack(spacing: 16) {
+                    // Navigation arrows first
                     Button {
                         if let prevID = previousArticleID {
                             onNavigateToPrevious(prevID)
@@ -263,6 +257,45 @@ struct RedditPostView: View {
                         Label("Next", systemImage: "chevron.right")
                     }
                     .disabled(nextArticleID == nil)
+
+                    Divider()
+                        .frame(height: 16)
+
+                    // Action buttons
+                    Button {
+                        if let url = article.articleURL {
+                            openURL(url)
+                        }
+                    } label: {
+                        Label("Safari", systemImage: "safari")
+                    }
+                    .contextMenu {
+                        if let url = article.articleURL {
+                            Button {
+                                openURL(url)
+                            } label: {
+                                Label("Open in Safari", systemImage: "safari")
+                            }
+
+                            ShareLink(item: url, subject: Text(article.title)) {
+                                Label("Share", systemImage: "square.and.arrow.up")
+                            }
+
+                            Divider()
+                        }
+
+                        Button {
+                            markAsUnreadAndGoBack()
+                        } label: {
+                            Label("Mark as Unread", systemImage: "envelope.badge")
+                        }
+                    }
+
+                    if let url = article.articleURL {
+                        ShareLink(item: url, subject: Text(article.title)) {
+                            Label("Share", systemImage: "square.and.arrow.up")
+                        }
+                    }
                 }
             }
             #endif

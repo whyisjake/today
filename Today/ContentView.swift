@@ -287,6 +287,41 @@ struct SidebarContentView: View {
         .onAppear {
             logger.info("🚀 SidebarContentView appeared with \(self.feeds.count) feeds, \(self.allArticles.count) articles")
         }
+        .task {
+            // Auto-select first article on launch (macOS)
+            if selectedArticle == nil, let firstArticle = recentArticles.first {
+                selectedArticle = firstArticle
+                logger.info("📄 Auto-selected first article: \(firstArticle.title)")
+            }
+        }
+        .onChange(of: allArticles.count) { oldCount, newCount in
+            // Auto-select first article when articles first load (macOS)
+            if oldCount == 0 && newCount > 0 && selectedArticle == nil {
+                if let firstArticle = recentArticles.first {
+                    selectedArticle = firstArticle
+                    logger.info("📄 Auto-selected first article after load: \(firstArticle.title)")
+                }
+            }
+        }
+        // Global keyboard navigation: j/k for next/previous article
+        .onKeyPress("j") {
+            guard let current = selectedArticle,
+                  let currentIndex = currentArticlesList.firstIndex(where: { $0.id == current.id }),
+                  currentIndex < currentArticlesList.count - 1 else {
+                return .ignored
+            }
+            selectedArticle = currentArticlesList[currentIndex + 1]
+            return .handled
+        }
+        .onKeyPress("k") {
+            guard let current = selectedArticle,
+                  let currentIndex = currentArticlesList.firstIndex(where: { $0.id == current.id }),
+                  currentIndex > 0 else {
+                return .ignored
+            }
+            selectedArticle = currentArticlesList[currentIndex - 1]
+            return .handled
+        }
     }
 
     // Articles from the last 7 days for the Today view
@@ -658,23 +693,20 @@ struct ArticleDetailColumn: View {
             }
         }
         // Keyboard navigation: j/k for next/previous article
-        .background {
-            Group {
-                Button("") {
-                    if let prev = previousArticle {
-                        selectedArticle = prev
-                    }
-                }
-                .keyboardShortcut("k", modifiers: [])
-
-                Button("") {
-                    if let next = nextArticle {
-                        selectedArticle = next
-                    }
-                }
-                .keyboardShortcut("j", modifiers: [])
+        .focusable()
+        .onKeyPress("j") {
+            if let next = nextArticle {
+                selectedArticle = next
+                return .handled
             }
-            .opacity(0)
+            return .ignored
+        }
+        .onKeyPress("k") {
+            if let prev = previousArticle {
+                selectedArticle = prev
+                return .handled
+            }
+            return .ignored
         }
     }
 }

@@ -348,6 +348,150 @@ struct FeedListView: View {
 
     @ViewBuilder
     private var addFeedSheet: some View {
+        #if os(macOS)
+        macOSAddFeedSheet
+        #else
+        iOSAddFeedSheet
+        #endif
+    }
+
+    #if os(macOS)
+    @ViewBuilder
+    private var macOSAddFeedSheet: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Text(feedType == .rss ? "Add RSS Feed" : "Add Reddit Feed")
+                    .font(.headline)
+                Spacer()
+            }
+            .padding()
+            .background(Color(NSColor.windowBackgroundColor))
+
+            Divider()
+
+            // Content
+            VStack(alignment: .leading, spacing: 20) {
+                // Feed Type Picker
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Feed Type")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    Picker("", selection: $feedType) {
+                        ForEach(FeedType.allCases, id: \.self) { type in
+                            Text(type.rawValue).tag(type)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                }
+
+                // Feed URL/Subreddit
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(feedType == .rss ? "Feed URL" : "Subreddit")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    if feedType == .rss {
+                        TextField("https://example.com/feed.xml", text: $newFeedURL)
+                            .textFieldStyle(.roundedBorder)
+                            .autocorrectionDisabled()
+                    } else {
+                        HStack(spacing: 4) {
+                            Text("r/")
+                                .foregroundStyle(.secondary)
+                                .font(.system(.body, design: .monospaced))
+                            TextField("subreddit", text: $subredditName)
+                                .textFieldStyle(.roundedBorder)
+                                .autocorrectionDisabled()
+                        }
+                    }
+
+                    if feedType == .reddit {
+                        Text("Enter the subreddit name (e.g., technology, news)")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+
+                // Category
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Category")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    Toggle("Custom category", isOn: $useCustomCategory)
+                        .toggleStyle(.checkbox)
+
+                    if useCustomCategory {
+                        TextField("Category name", text: $customCategory)
+                            .textFieldStyle(.roundedBorder)
+                    } else {
+                        Picker("", selection: $newFeedCategory) {
+                            ForEach(categoryManager.allCategories, id: \.self) { category in
+                                Text(category).tag(category)
+                            }
+                        }
+                        .labelsHidden()
+                    }
+                }
+
+                // Error message
+                if let error = addFeedError {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .padding(8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.red.opacity(0.1))
+                        .cornerRadius(6)
+                }
+
+                Spacer()
+            }
+            .padding(20)
+
+            Divider()
+
+            // Footer buttons
+            HStack {
+                Button("Cancel") {
+                    showingAddFeed = false
+                    resetAddFeedForm()
+                }
+                .keyboardShortcut(.escape, modifiers: [])
+
+                Spacer()
+
+                Button("Add Feed") {
+                    addFeed()
+                }
+                .keyboardShortcut(.return, modifiers: [])
+                .disabled(isFieldsInvalid() || isAddingFeed)
+                .buttonStyle(.borderedProminent)
+            }
+            .padding()
+            .background(Color(NSColor.windowBackgroundColor))
+        }
+        .frame(width: 400, height: 420)
+        .overlay {
+            if isAddingFeed {
+                ZStack {
+                    Color.black.opacity(0.3)
+                    ProgressView("Adding feed...")
+                        .padding(20)
+                        .background(.regularMaterial)
+                        .cornerRadius(10)
+                }
+            }
+        }
+    }
+    #endif
+
+    #if os(iOS)
+    @ViewBuilder
+    private var iOSAddFeedSheet: some View {
         NavigationStack {
             Form {
                 Section {
@@ -364,19 +508,15 @@ struct FeedListView: View {
                 Section {
                     if feedType == .rss {
                         TextField("RSS Feed URL", text: $newFeedURL)
-                            #if os(iOS)
                             .textInputAutocapitalization(.never)
                             .keyboardType(.URL)
-                            #endif
                             .autocorrectionDisabled()
                     } else {
                         HStack {
                             Text("r/")
                                 .foregroundStyle(.secondary)
                             TextField("Subreddit Name", text: $subredditName)
-                                #if os(iOS)
                                 .textInputAutocapitalization(.never)
-                                #endif
                                 .autocorrectionDisabled()
                         }
                     }
@@ -394,9 +534,7 @@ struct FeedListView: View {
 
                     if useCustomCategory {
                         TextField("Custom Category Name", text: $customCategory)
-                            #if os(iOS)
                             .textInputAutocapitalization(.never)
-                            #endif
                     } else {
                         Picker("Category", selection: $newFeedCategory) {
                             ForEach(categoryManager.allCategories, id: \.self) { category in
@@ -423,9 +561,7 @@ struct FeedListView: View {
                 }
             }
             .navigationTitle(feedType == .rss ? "Add RSS Feed" : "Add Reddit Feed")
-            #if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
-        #endif
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -451,6 +587,7 @@ struct FeedListView: View {
             }
         }
     }
+    #endif
 
     @ViewBuilder
     private var importOPMLSheet: some View {

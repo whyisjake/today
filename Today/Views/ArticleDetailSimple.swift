@@ -62,11 +62,9 @@ struct ArticleDetailSimple: View {
                     toolbarBottomContent
                 }
                 #else
-                ToolbarItem(placement: .primaryAction) {
-                    toolbarTrailingContent
-                }
+                // Combined toolbar: navigation arrows first, then action buttons
                 ToolbarItem(placement: .automatic) {
-                    toolbarBottomContent
+                    macOSToolbarContent
                 }
                 #endif
             }
@@ -303,6 +301,54 @@ struct ArticleDetailSimple: View {
             .disabled(nextArticleID == nil)
         }
     }
+
+    #if os(macOS)
+    @ViewBuilder
+    private var macOSToolbarContent: some View {
+        HStack(spacing: 16) {
+            // Navigation arrows first
+            Button {
+                if let prevID = previousArticleID {
+                    onNavigateToPrevious(prevID)
+                }
+            } label: {
+                Label("Previous", systemImage: "chevron.left")
+            }
+            .disabled(previousArticleID == nil)
+
+            Button {
+                if let nextID = nextArticleID {
+                    onNavigateToNext(nextID)
+                }
+            } label: {
+                Label("Next", systemImage: "chevron.right")
+            }
+            .disabled(nextArticleID == nil)
+
+            Divider()
+                .frame(height: 16)
+
+            // Action buttons
+            Button {
+                if audioPlayer.currentArticle?.id == article.id {
+                    audioPlayer.togglePlayPause()
+                } else {
+                    audioPlayer.play(article: article)
+                }
+            } label: {
+                Image(systemName: isPlayingThisArticle ? "waveform.circle.fill" : "play.circle")
+            }
+            .foregroundStyle(Color.accentColor)
+            .accessibilityLabel(isPlayingThisArticle ? "Pause article audio" : "Play article audio")
+
+            if let url = article.articleURL {
+                ShareLink(item: url, subject: Text(article.title)) {
+                    Image(systemName: "square.and.arrow.up")
+                }
+            }
+        }
+    }
+    #endif
 }
 
 struct ArticleWebViewSimple: View {
