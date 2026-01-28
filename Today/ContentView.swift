@@ -116,6 +116,7 @@ struct SidebarContentView: View {
     @Query(sort: \Feed.title) private var feeds: [Feed]
     @Query(sort: \Article.publishedDate, order: .reverse) private var allArticles: [Article]
     @AppStorage("showAltCategory") private var showAltFeeds = false
+    @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
     @State private var selectedSidebarItem: SidebarItem? = .today
     @State private var selectedArticle: Article?
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
@@ -167,42 +168,9 @@ struct SidebarContentView: View {
         ZStack(alignment: .bottom) {
             NavigationSplitView(columnVisibility: $columnVisibility) {
                 // Sidebar (Column 1): Feed list and navigation
-                List(selection: $selectedSidebarItem) {
-                    // Main sections
-                    Section {
-                        NavigationLink(value: SidebarItem.today) {
-                            Label("Today", systemImage: "newspaper")
-                        }
-
-                        NavigationLink(value: SidebarItem.feeds) {
-                            Label("Manage Feeds", systemImage: "list.bullet")
-                        }
-                    }
-
-                    // Feeds grouped by category
-                    ForEach(feedsByCategory, id: \.category) { categoryGroup in
-                        Section(header: Text(categoryGroup.category.capitalized)) {
-                            ForEach(categoryGroup.feeds, id: \.id) { feed in
-                                NavigationLink(value: SidebarItem.feed(feed.id)) {
-                                    Label(feed.title, systemImage: "doc.text")
-                                }
-                            }
-                        }
-                    }
-
-                    // AI and Settings
-                    Section {
-                        NavigationLink(value: SidebarItem.aiChat) {
-                            Label("AI Summary", systemImage: "sparkles")
-                        }
-
-                        NavigationLink(value: SidebarItem.settings) {
-                            Label("Settings", systemImage: "gear")
-                        }
-                    }
-                }
-                .navigationTitle("Today")
-                .listStyle(.sidebar)
+                sidebarList
+                    .navigationTitle("Today")
+                    .listStyle(.sidebar)
             } content: {
                 // Content (Column 2): Article list or management views
                 if let selected = selectedSidebarItem {
@@ -356,6 +324,97 @@ struct SidebarContentView: View {
             return recentArticles
         }
     }
+
+    // MARK: - Sidebar List
+
+    @ViewBuilder
+    private var sidebarList: some View {
+        #if os(macOS)
+        // On macOS, use manual selection to avoid system highlight overlay
+        List {
+            // Main sections
+            Section {
+                sidebarButton(item: .today, label: "Today", icon: "newspaper")
+                sidebarButton(item: .feeds, label: "Manage Feeds", icon: "list.bullet")
+            }
+
+            // Feeds grouped by category
+            ForEach(feedsByCategory, id: \.category) { categoryGroup in
+                Section(header: Text(categoryGroup.category.capitalized)) {
+                    ForEach(categoryGroup.feeds, id: \.id) { feed in
+                        sidebarButton(item: .feed(feed.id), label: feed.title, icon: "doc.text")
+                    }
+                }
+            }
+
+            // AI and Settings
+            Section {
+                sidebarButton(item: .aiChat, label: "AI Summary", icon: "sparkles")
+                sidebarButton(item: .settings, label: "Settings", icon: "gear")
+            }
+        }
+        #else
+        List(selection: $selectedSidebarItem) {
+            // Main sections
+            Section {
+                NavigationLink(value: SidebarItem.today) {
+                    Label("Today", systemImage: "newspaper")
+                }
+                NavigationLink(value: SidebarItem.feeds) {
+                    Label("Manage Feeds", systemImage: "list.bullet")
+                }
+            }
+
+            // Feeds grouped by category
+            ForEach(feedsByCategory, id: \.category) { categoryGroup in
+                Section(header: Text(categoryGroup.category.capitalized)) {
+                    ForEach(categoryGroup.feeds, id: \.id) { feed in
+                        NavigationLink(value: SidebarItem.feed(feed.id)) {
+                            Label(feed.title, systemImage: "doc.text")
+                        }
+                    }
+                }
+            }
+
+            // AI and Settings
+            Section {
+                NavigationLink(value: SidebarItem.aiChat) {
+                    Label("AI Summary", systemImage: "sparkles")
+                }
+                NavigationLink(value: SidebarItem.settings) {
+                    Label("Settings", systemImage: "gear")
+                }
+            }
+        }
+        #endif
+    }
+
+    #if os(macOS)
+    // Helper to create sidebar button with custom selection background
+    @ViewBuilder
+    private func sidebarButton(item: SidebarItem, label: String, icon: String) -> some View {
+        Button {
+            selectedSidebarItem = item
+        } label: {
+            Label(label, systemImage: icon)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(sidebarRowBackground(for: item))
+    }
+
+    // Custom sidebar row background that respects the app's accent color
+    @ViewBuilder
+    private func sidebarRowBackground(for item: SidebarItem) -> some View {
+        if selectedSidebarItem == item {
+            RoundedRectangle(cornerRadius: 6)
+                .fill(accentColor.color.opacity(0.25))
+        } else {
+            Color.clear
+        }
+    }
+    #endif
 }
 
 // MARK: - Article Filter Options
@@ -438,54 +497,74 @@ struct ArticleListColumn: View {
     }
 
     var body: some View {
+        articleList
+            .navigationTitle(title)
+            .searchable(text: $searchText, prompt: "Search articles")
+            .onAppear {
+                logger.info("📋 ArticleListColumn appeared: \(title) with \(articles.count) articles")
+            }
+            .onChange(of: selectedArticle) { oldValue, newValue in
+                logger.info("📋 ArticleListColumn selection changed: \(oldValue?.title ?? "nil") → \(newValue?.title ?? "nil")")
+            }
+            .toolbar {
+                ToolbarItemGroup(placement: .primaryAction) {
+                    // Filter menu
+                    Menu {
+                        Picker("Filter", selection: $filter) {
+                            ForEach(ArticleFilter.allCases, id: \.self) { filterOption in
+                                Label(filterOption.rawValue, systemImage: filterOption.systemImage)
+                                    .tag(filterOption)
+                            }
+                        }
+                    } label: {
+                        Label("Filter", systemImage: filter == .all ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+                    }
+
+                    // Sort menu
+                    Menu {
+                        Picker("Sort", selection: $sort) {
+                            ForEach(ArticleSort.allCases, id: \.self) { sortOption in
+                                Label(sortOption.rawValue, systemImage: sortOption.systemImage)
+                                    .tag(sortOption)
+                            }
+                        }
+                    } label: {
+                        Label("Sort", systemImage: "arrow.up.arrow.down")
+                    }
+                }
+            }
+    }
+
+    @ViewBuilder
+    private var articleList: some View {
+        #if os(macOS)
+        // On macOS, don't use List selection binding to avoid system highlight overlay
+        List {
+            ForEach(processedArticles) { article in
+                SidebarArticleRow(article: article, isSelected: selectedArticle?.id == article.id)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        selectedArticle = article
+                    }
+            }
+        }
+        #else
         List(selection: $selectedArticle) {
             ForEach(processedArticles) { article in
-                SidebarArticleRow(article: article)
+                SidebarArticleRow(article: article, isSelected: selectedArticle?.id == article.id)
                     .tag(article)
             }
         }
-        .navigationTitle(title)
-        .searchable(text: $searchText, prompt: "Search articles")
-        .onAppear {
-            logger.info("📋 ArticleListColumn appeared: \(title) with \(articles.count) articles")
-        }
-        .onChange(of: selectedArticle) { oldValue, newValue in
-            logger.info("📋 ArticleListColumn selection changed: \(oldValue?.title ?? "nil") → \(newValue?.title ?? "nil")")
-        }
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                // Filter menu
-                Menu {
-                    Picker("Filter", selection: $filter) {
-                        ForEach(ArticleFilter.allCases, id: \.self) { filterOption in
-                            Label(filterOption.rawValue, systemImage: filterOption.systemImage)
-                                .tag(filterOption)
-                        }
-                    }
-                } label: {
-                    Label("Filter", systemImage: filter == .all ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
-                }
-
-                // Sort menu
-                Menu {
-                    Picker("Sort", selection: $sort) {
-                        ForEach(ArticleSort.allCases, id: \.self) { sortOption in
-                            Label(sortOption.rawValue, systemImage: sortOption.systemImage)
-                                .tag(sortOption)
-                        }
-                    }
-                } label: {
-                    Label("Sort", systemImage: "arrow.up.arrow.down")
-                }
-            }
-        }
+        #endif
     }
 }
 
 // MARK: - Sidebar Article Row View
 struct SidebarArticleRow: View {
     let article: Article
+    var isSelected: Bool = false
     @Environment(\.modelContext) private var modelContext
+    @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -531,7 +610,7 @@ struct SidebarArticleRow: View {
                     if article.hasPodcastAudio {
                         Image(systemName: "waveform")
                             .font(.caption)
-                            .foregroundStyle(Color.accentColor)
+                            .foregroundStyle(accentColor.color)
                     } else if article.hasMinimalContent && !article.isRedditPost {
                         Image(systemName: "arrow.up.forward.square")
                             .font(.caption)
@@ -613,6 +692,14 @@ struct SidebarArticleRow: View {
                 }
             }
         }
+        #if os(macOS)
+        .listRowBackground(
+            isSelected
+                ? RoundedRectangle(cornerRadius: 6)
+                    .fill(accentColor.color.opacity(0.25))
+                : nil
+        )
+        #endif
     }
 }
 

@@ -45,6 +45,7 @@ struct ArticleDetailSimple: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("fontOption") private var fontOption: FontOption = .serif
     @AppStorage("shortArticleBehavior") private var shortArticleBehavior: ShortArticleBehavior = .openInAppBrowser
+    @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
     @StateObject private var audioPlayer = ArticleAudioPlayer.shared
 
     var body: some View {
@@ -222,7 +223,7 @@ struct ArticleDetailSimple: View {
             } label: {
                 Image(systemName: isPlayingThisArticle ? "waveform.circle.fill" : "play.circle")
             }
-            .foregroundStyle(Color.accentColor)
+            .foregroundStyle(accentColor.color)
             .accessibilityLabel(isPlayingThisArticle ? "Pause article audio" : "Play article audio")
 
             // Share button (only show if article has a valid link)
@@ -338,7 +339,7 @@ struct ArticleDetailSimple: View {
             } label: {
                 Image(systemName: isPlayingThisArticle ? "waveform.circle.fill" : "play.circle")
             }
-            .foregroundStyle(Color.accentColor)
+            .foregroundStyle(accentColor.color)
             .accessibilityLabel(isPlayingThisArticle ? "Pause article audio" : "Play article audio")
 
             if let url = article.articleURL {
@@ -492,14 +493,25 @@ struct ScrollableWebView: NSViewRepresentable {
 #endif
 
 // Shared HTML styling function for WebViewWithHeight
+// Uses Tailwind Typography-inspired styles embedded locally (no network request)
 private func createStyledHTML(from html: String, colorScheme: ColorScheme, accentColor: Color, fontOption: FontOption) -> String {
-    // Dynamic colors based on color scheme
-    let textColor = colorScheme == .dark ? "#FFFFFF" : "#000000"
-    let secondaryBg = colorScheme == .dark ? "#2C2C2E" : "#F2F2F7"
-    let borderColor = colorScheme == .dark ? "#3A3A3C" : "#E5E5EA"
-
     // Convert SwiftUI Color to hex string
     let accentColorHex = accentColor.toHex()
+    let isDark = colorScheme == .dark
+
+    // Colors based on color scheme (Tailwind Typography defaults)
+    let textColor = isDark ? "#f3f4f6" : "#1f2937"           // gray-100 / gray-800
+    let textColorMuted = isDark ? "#9ca3af" : "#6b7280"      // gray-400 / gray-500
+    let textColorFaint = isDark ? "#6b7280" : "#9ca3af"      // gray-500 / gray-400
+    let bgCode = isDark ? "#374151" : "#f3f4f6"              // gray-700 / gray-100
+    let borderColor = isDark ? "#4b5563" : "#e5e7eb"         // gray-600 / gray-200
+    let bgBlockquote = isDark ? "rgba(55, 65, 81, 0.5)" : "rgba(243, 244, 246, 0.5)"
+
+    // Font family based on user preference
+    let fontFamily = fontOption == .serif
+        ? "ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif"
+        : "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+
     // Clean up WordPress emoji images and CDATA
     let cleanedHTML = html
         .replacingOccurrences(of: "<img[^>]*class=\"wp-smiley\"[^>]*>", with: "", options: .regularExpression)
@@ -514,103 +526,265 @@ private func createStyledHTML(from html: String, colorScheme: ColorScheme, accen
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
         <style>
+            /* Tailwind Typography-inspired prose styles (embedded locally) */
+            *, *::before, *::after {
+                box-sizing: border-box;
+            }
+
             html, body {
-                font-family: \(fontOption.fontFamily);
-                font-size: 18px;
-                line-height: 1.7;
-                color: \(textColor);
                 background-color: transparent;
                 margin: 0;
-                padding: 16px;
+                padding: 0;
                 overflow: visible;
                 -webkit-overflow-scrolling: auto;
             }
 
-            p {
-                margin: 0 0 16px 0;
-                padding: 0;
+            .prose {
+                color: \(textColor);
+                font-family: \(fontFamily);
+                font-size: 1.125rem;
+                line-height: 1.778;
+                max-width: none;
+                padding: 1rem;
             }
 
-            h1, h2, h3, h4, h5, h6 {
-                font-weight: 600;
-                margin: 24px 0 12px 0;
-                line-height: 1.3;
+            /* Paragraphs */
+            .prose p {
+                margin-top: 1.25em;
+                margin-bottom: 1.25em;
             }
 
-            h1 { font-size: 28px; }
-            h2 { font-size: 24px; }
-            h3 { font-size: 20px; }
-            h4 { font-size: 18px; }
-
-            ul, ol {
-                margin: 16px 0;
-                padding-left: 28px;
+            .prose p:first-child {
+                margin-top: 0;
             }
 
-            li {
-                margin: 8px 0;
-                padding-left: 4px;
-                line-height: 1.6;
-            }
-
-            blockquote {
-                margin: 16px 0;
-                padding: 12px 16px;
-                border-left: 4px solid \(accentColorHex);
-                background-color: \(secondaryBg);
-                font-style: italic;
-            }
-
-            pre {
-                background-color: \(secondaryBg);
-                padding: 12px;
-                border-radius: 6px;
-                overflow-x: auto;
-                margin: 16px 0;
-            }
-
-            code {
-                font-family: 'SF Mono', Menlo, Monaco, monospace;
-                font-size: 14px;
-                background-color: \(secondaryBg);
-                padding: 2px 6px;
-                border-radius: 3px;
-            }
-
-            pre code {
-                background-color: transparent;
-                padding: 0;
-            }
-
-            a {
+            /* Links */
+            .prose a {
                 color: \(accentColorHex);
                 text-decoration: none;
+                font-weight: 500;
             }
 
-            img {
-                max-width: 100%;
-                height: auto;
-                margin: 16px 0;
-                border-radius: 8px;
+            .prose a:hover {
+                text-decoration: underline;
             }
 
-            hr {
-                border: none;
-                border-top: 1px solid \(borderColor);
-                margin: 24px 0;
-            }
-
-            strong, b {
+            /* Bold & Italic */
+            .prose strong {
+                color: \(textColor);
                 font-weight: 600;
             }
 
-            em, i {
+            .prose em {
                 font-style: italic;
+            }
+
+            /* Headings */
+            .prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
+                color: \(textColor);
+                font-weight: 700;
+                line-height: 1.3;
+                margin-top: 2em;
+                margin-bottom: 0.75em;
+            }
+
+            .prose h1 { font-size: 2.25em; margin-top: 0; }
+            .prose h2 { font-size: 1.5em; }
+            .prose h3 { font-size: 1.25em; }
+            .prose h4 { font-size: 1.125em; }
+            .prose h5 { font-size: 1em; }
+            .prose h6 { font-size: 0.875em; color: \(textColorMuted); }
+
+            /* Blockquotes */
+            .prose blockquote {
+                border-left: 4px solid \(accentColorHex);
+                background-color: \(bgBlockquote);
+                padding: 1em 1.25em;
+                margin: 1.5em 0;
+                font-style: italic;
+                color: \(textColorMuted);
+                border-radius: 0 0.5rem 0.5rem 0;
+            }
+
+            .prose blockquote p {
+                margin: 0;
+            }
+
+            /* Lists */
+            .prose ul, .prose ol {
+                margin-top: 1.25em;
+                margin-bottom: 1.25em;
+                padding-left: 1.625em;
+            }
+
+            .prose ul {
+                list-style-type: disc;
+            }
+
+            .prose ol {
+                list-style-type: decimal;
+            }
+
+            .prose li {
+                margin-top: 0.5em;
+                margin-bottom: 0.5em;
+                padding-left: 0.375em;
+            }
+
+            .prose li::marker {
+                color: \(textColorFaint);
+            }
+
+            .prose ol > li::marker {
+                font-weight: 400;
+            }
+
+            /* Nested lists */
+            .prose ul ul, .prose ol ol, .prose ul ol, .prose ol ul {
+                margin-top: 0.5em;
+                margin-bottom: 0.5em;
+            }
+
+            /* Code */
+            .prose code {
+                color: \(textColor);
+                background-color: \(bgCode);
+                padding: 0.25em 0.4em;
+                border-radius: 0.375rem;
+                font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+                font-size: 0.875em;
+                font-weight: 500;
+            }
+
+            .prose pre {
+                background-color: \(bgCode);
+                color: \(textColor);
+                overflow-x: auto;
+                padding: 1em 1.25em;
+                border-radius: 0.5rem;
+                margin: 1.5em 0;
+                font-size: 0.875em;
+                line-height: 1.714;
+            }
+
+            .prose pre code {
+                background-color: transparent;
+                padding: 0;
+                font-weight: inherit;
+                color: inherit;
+                font-size: inherit;
+                border-radius: 0;
+            }
+
+            /* Images */
+            .prose img {
+                max-width: 100%;
+                height: auto;
+                margin-top: 1.5em;
+                margin-bottom: 1.5em;
+                border-radius: 0.5rem;
+            }
+
+            .prose figure {
+                margin: 1.5em 0;
+            }
+
+            .prose figcaption {
+                color: \(textColorMuted);
+                font-size: 0.875em;
+                margin-top: 0.75em;
+                text-align: center;
+            }
+
+            /* Horizontal Rule */
+            .prose hr {
+                border: none;
+                border-top: 1px solid \(borderColor);
+                margin: 2.5em 0;
+            }
+
+            /* Tables */
+            .prose table {
+                width: 100%;
+                border-collapse: collapse;
+                margin: 1.5em 0;
+                font-size: 0.875em;
+            }
+
+            .prose thead {
+                border-bottom: 2px solid \(borderColor);
+            }
+
+            .prose th {
+                color: \(textColor);
+                font-weight: 600;
+                padding: 0.75em 1em;
+                text-align: left;
+            }
+
+            .prose td {
+                padding: 0.75em 1em;
+                border-bottom: 1px solid \(borderColor);
+            }
+
+            .prose tbody tr:last-child td {
+                border-bottom: none;
+            }
+
+            /* Video and embeds */
+            .prose video, .prose iframe {
+                max-width: 100%;
+                margin: 1.5em 0;
+                border-radius: 0.5rem;
+            }
+
+            /* Definition lists */
+            .prose dl {
+                margin: 1.25em 0;
+            }
+
+            .prose dt {
+                font-weight: 600;
+                margin-top: 1em;
+            }
+
+            .prose dd {
+                margin-left: 1.625em;
+                margin-top: 0.25em;
+            }
+
+            /* Abbreviations */
+            .prose abbr[title] {
+                text-decoration: underline dotted;
+                cursor: help;
+            }
+
+            /* Small text */
+            .prose small {
+                font-size: 0.875em;
+            }
+
+            /* Subscript and superscript */
+            .prose sub, .prose sup {
+                font-size: 0.75em;
+                line-height: 0;
+                position: relative;
+                vertical-align: baseline;
+            }
+
+            .prose sup {
+                top: -0.5em;
+            }
+
+            .prose sub {
+                bottom: -0.25em;
             }
         </style>
     </head>
     <body>
-        \(cleanedHTML)
+        <article class="prose">
+            \(cleanedHTML)
+        </article>
     </body>
     </html>
     """
