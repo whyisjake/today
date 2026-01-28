@@ -7,6 +7,9 @@
 
 import SwiftUI
 import SwiftData
+import OSLog
+
+private let logger = Logger(subsystem: "com.today.app", category: "ContentView")
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
@@ -241,7 +244,12 @@ struct SidebarContentView: View {
             } detail: {
                 // Detail (Column 3): Article content
                 if let article = selectedArticle {
-                    ArticleDetailColumn(article: article)
+                    ArticleDetailColumn(
+                        article: article,
+                        articles: currentArticlesList,
+                        selectedArticle: $selectedArticle
+                    )
+                    .id(article.id) // Force complete view recreation on article change
                 } else {
                     ContentUnavailableView(
                         "Select an Article",
@@ -270,14 +278,47 @@ struct SidebarContentView: View {
             // Global mini audio player
             MiniAudioPlayer()
         }
+        .onChange(of: selectedSidebarItem) { oldValue, newValue in
+            logger.info("📍 Sidebar selection changed: \(String(describing: oldValue)) → \(String(describing: newValue))")
+        }
+        .onChange(of: selectedArticle) { oldValue, newValue in
+            logger.info("📄 Article selection changed: \(oldValue?.title ?? "nil") → \(newValue?.title ?? "nil")")
+        }
+        .onAppear {
+            logger.info("🚀 SidebarContentView appeared with \(self.feeds.count) feeds, \(self.allArticles.count) articles")
+        }
     }
 
     // Articles from the last 7 days for the Today view
     private var recentArticles: [Article] {
+        let start = CFAbsoluteTimeGetCurrent()
         let sevenDaysAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
-        return allArticles.filter { article in
+        let result = allArticles.filter { article in
             article.publishedDate >= sevenDaysAgo &&
             (showAltFeeds ? article.feed?.category.lowercased() == "alt" : article.feed?.category.lowercased() != "alt")
+        }
+        let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000
+        if elapsed > 10 {
+            logger.warning("⚠️ recentArticles took \(elapsed, format: .fixed(precision: 1))ms for \(self.allArticles.count) articles → \(result.count) results")
+        }
+        return result
+    }
+
+    // Current articles list based on sidebar selection (for prev/next navigation)
+    private var currentArticlesList: [Article] {
+        guard let selected = selectedSidebarItem else {
+            return recentArticles
+        }
+        switch selected {
+        case .today:
+            return recentArticles
+        case .feed(let feedId):
+            if let feed = feeds.first(where: { $0.id == feedId }) {
+                return feed.articles?.sorted { $0.publishedDate > $1.publishedDate } ?? []
+            }
+            return []
+        case .feeds, .aiChat, .settings:
+            return recentArticles
         }
     }
 }
@@ -322,6 +363,7 @@ struct ArticleListColumn: View {
     @State private var sort: ArticleSort = .newest
 
     private var processedArticles: [Article] {
+        let start = CFAbsoluteTimeGetCurrent()
         var result = articles
 
         // Apply filter
@@ -353,6 +395,10 @@ struct ArticleListColumn: View {
             result = result.sorted { $0.title.localizedCompare($1.title) == .orderedAscending }
         }
 
+        let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000
+        if elapsed > 10 {
+            logger.warning("⚠️ processedArticles took \(elapsed, format: .fixed(precision: 1))ms for \(self.articles.count) articles")
+        }
         return result
     }
 
@@ -365,6 +411,12 @@ struct ArticleListColumn: View {
         }
         .navigationTitle(title)
         .searchable(text: $searchText, prompt: "Search articles")
+        .onAppear {
+            logger.info("📋 ArticleListColumn appeared: \(title) with \(articles.count) articles")
+        }
+        .onChange(of: selectedArticle) { oldValue, newValue in
+            logger.info("📋 ArticleListColumn selection changed: \(oldValue?.title ?? "nil") → \(newValue?.title ?? "nil")")
+        }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 // Filter menu
@@ -401,30 +453,89 @@ struct SidebarArticleRow: View {
     @Environment(\.modelContext) private var modelContext
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(article.title)
-                .font(.headline)
-                .foregroundStyle(article.isRead ? .secondary : .primary)
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(article.title.decodeHTMLEntities())
+                    .font(.headline)
+                    .fontWeight(article.isRead ? .regular : .semibold)
+                    .foregroundStyle(article.isRead ? .secondary : .primary)
 
-            if let description = article.articleDescription {
-                Text(description)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-
-            HStack {
-                if let feedTitle = article.feed?.title {
-                    Text(feedTitle)
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+                if let plainText = article.plainTextDescription ?? article.articleDescription?.htmlToPlainText {
+                    Text(plainText)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
                 }
 
-                Spacer()
+                HStack {
+                    Text(article.publishedDate, style: .relative)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
 
-                Text(article.publishedDate, style: .relative)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    if article.isRedditPost {
+                        if let author = article.author {
+                            Text("•")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                            Text(author)
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                    } else if let feedTitle = article.feed?.title {
+                        Text("•")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                        Text(feedTitle)
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+
+                    Spacer()
+
+                    // Status indicators
+                    if article.hasPodcastAudio {
+                        Image(systemName: "waveform")
+                            .font(.caption)
+                            .foregroundStyle(Color.accentColor)
+                    } else if article.hasMinimalContent && !article.isRedditPost {
+                        Image(systemName: "arrow.up.forward.square")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                    if article.isFavorite {
+                        Image(systemName: "star.fill")
+                            .font(.caption)
+                            .foregroundStyle(.yellow)
+                    }
+                }
+            }
+
+            // Thumbnail image
+            if let imageUrl = article.imageUrl {
+                let secureUrl = imageUrl.hasPrefix("http://")
+                    ? imageUrl.replacingOccurrences(of: "http://", with: "https://")
+                    : imageUrl
+                AsyncImage(url: URL(string: secureUrl)) { phase in
+                    switch phase {
+                    case .empty:
+                        ProgressView()
+                            .frame(width: 60, height: 60)
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 60, height: 60)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                    case .failure:
+                        Image(systemName: "photo")
+                            .foregroundStyle(.gray)
+                            .frame(width: 60, height: 60)
+                            .background(Color.gray.opacity(0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                    @unknown default:
+                        EmptyView()
+                    }
+                }
             }
         }
         .padding(.vertical, 4)
@@ -473,31 +584,97 @@ struct SidebarArticleRow: View {
 // MARK: - Article Detail Column (Right Column)
 struct ArticleDetailColumn: View {
     let article: Article
+    let articles: [Article]
+    @Binding var selectedArticle: Article?
     @Environment(\.modelContext) private var modelContext
 
     // Maximum width for comfortable reading (Apple HIG recommendation)
     private let maxReadingWidth: CGFloat = 700
 
+    // Find current article index and compute previous/next
+    private var currentIndex: Int? {
+        articles.firstIndex(where: { $0.id == article.id })
+    }
+
+    private var previousArticle: Article? {
+        guard let index = currentIndex, index > 0 else { return nil }
+        return articles[index - 1]
+    }
+
+    private var nextArticle: Article? {
+        guard let index = currentIndex, index < articles.count - 1 else { return nil }
+        return articles[index + 1]
+    }
+
     var body: some View {
-        HStack {
-            Spacer(minLength: 0)
-            ArticleDetailSimple(
-                article: article,
-                previousArticleID: nil,
-                nextArticleID: nil,
-                onNavigateToPrevious: { _ in },
-                onNavigateToNext: { _ in }
-            )
-            .frame(maxWidth: maxReadingWidth)
-            Spacer(minLength: 0)
+        Group {
+            // Show RedditPostView directly for Reddit posts (full width for visual content)
+            // Regular articles get constrained width for comfortable reading
+            if article.isRedditPost {
+                RedditPostView(
+                    article: article,
+                    previousArticleID: previousArticle?.persistentModelID,
+                    nextArticleID: nextArticle?.persistentModelID,
+                    onNavigateToPrevious: { _ in
+                        if let prev = previousArticle {
+                            selectedArticle = prev
+                        }
+                    },
+                    onNavigateToNext: { _ in
+                        if let next = nextArticle {
+                            selectedArticle = next
+                        }
+                    }
+                )
+            } else {
+                HStack {
+                    Spacer(minLength: 0)
+                    ArticleDetailSimple(
+                        article: article,
+                        previousArticleID: previousArticle?.persistentModelID,
+                        nextArticleID: nextArticle?.persistentModelID,
+                        onNavigateToPrevious: { _ in
+                            if let prev = previousArticle {
+                                selectedArticle = prev
+                            }
+                        },
+                        onNavigateToNext: { _ in
+                            if let next = nextArticle {
+                                selectedArticle = next
+                            }
+                        }
+                    )
+                    .frame(maxWidth: maxReadingWidth)
+                    Spacer(minLength: 0)
+                }
+            }
         }
-        .id(article.id) // Force view refresh when article changes
         .onAppear {
+            logger.info("📖 ArticleDetailColumn appeared: \(article.title) (Reddit: \(article.isRedditPost))")
             // Mark as read when displayed
             if !article.isRead {
                 article.isRead = true
                 try? modelContext.save()
             }
+        }
+        // Keyboard navigation: j/k for next/previous article
+        .background {
+            Group {
+                Button("") {
+                    if let prev = previousArticle {
+                        selectedArticle = prev
+                    }
+                }
+                .keyboardShortcut("k", modifiers: [])
+
+                Button("") {
+                    if let next = nextArticle {
+                        selectedArticle = next
+                    }
+                }
+                .keyboardShortcut("j", modifiers: [])
+            }
+            .opacity(0)
         }
     }
 }
