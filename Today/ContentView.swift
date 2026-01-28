@@ -107,15 +107,18 @@ struct CompactContentView: View {
     }
 }
 
-// MARK: - Sidebar Layout (iPad/Mac)
+// MARK: - Sidebar Layout (iPad/Mac) - Three Column
 struct SidebarContentView: View {
     let modelContext: ModelContext
     @Query(sort: \Feed.title) private var feeds: [Feed]
+    @Query(sort: \Article.publishedDate, order: .reverse) private var allArticles: [Article]
     @AppStorage("showAltCategory") private var showAltFeeds = false
     @State private var selectedSidebarItem: SidebarItem? = .today
+    @State private var selectedArticle: Article?
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @StateObject private var audioPlayer = ArticleAudioPlayer.shared
     @StateObject private var podcastPlayer = PodcastAudioPlayer.shared
-    
+
     enum SidebarItem: Hashable {
         case today
         case feeds
@@ -123,24 +126,24 @@ struct SidebarContentView: View {
         case aiChat
         case settings
     }
-    
+
     private static let miniPlayerHeight: CGFloat = 120
-    
+
     private var isTTSActive: Bool {
         audioPlayer.isPlaying || audioPlayer.isPaused
     }
-    
+
     private var isPodcastActive: Bool {
         podcastPlayer.isPlaying || podcastPlayer.isPaused
     }
-    
+
     private var totalMiniPlayerHeight: CGFloat {
         var height: CGFloat = 0
         if isTTSActive { height += Self.miniPlayerHeight }
         if isPodcastActive { height += Self.miniPlayerHeight }
         return height
     }
-    
+
     // Filter feeds based on Alt category visibility
     private var visibleFeeds: [Feed] {
         if showAltFeeds {
@@ -149,30 +152,30 @@ struct SidebarContentView: View {
             return feeds.filter { $0.category.lowercased() != "alt" }
         }
     }
-    
+
     // Group feeds by category (normalized to lowercase for consistent grouping)
     private var feedsByCategory: [(category: String, feeds: [Feed])] {
         let grouped = Dictionary(grouping: visibleFeeds) { $0.category.lowercased() }
         return grouped.sorted { $0.key < $1.key }
             .map { (category: $0.key, feeds: $0.value.sorted { $0.title < $1.title }) }
     }
-    
+
     var body: some View {
         ZStack(alignment: .bottom) {
-            NavigationSplitView {
-                // Sidebar
+            NavigationSplitView(columnVisibility: $columnVisibility) {
+                // Sidebar (Column 1): Feed list and navigation
                 List(selection: $selectedSidebarItem) {
                     // Main sections
                     Section {
                         NavigationLink(value: SidebarItem.today) {
                             Label("Today", systemImage: "newspaper")
                         }
-                        
+
                         NavigationLink(value: SidebarItem.feeds) {
                             Label("Manage Feeds", systemImage: "list.bullet")
                         }
                     }
-                    
+
                     // Feeds grouped by category
                     ForEach(feedsByCategory, id: \.category) { categoryGroup in
                         Section(header: Text(categoryGroup.category.capitalized)) {
@@ -183,13 +186,13 @@ struct SidebarContentView: View {
                             }
                         }
                     }
-                    
+
                     // AI and Settings
                     Section {
                         NavigationLink(value: SidebarItem.aiChat) {
                             Label("AI Summary", systemImage: "sparkles")
                         }
-                        
+
                         NavigationLink(value: SidebarItem.settings) {
                             Label("Settings", systemImage: "gear")
                         }
@@ -197,20 +200,26 @@ struct SidebarContentView: View {
                 }
                 .navigationTitle("Today")
                 .listStyle(.sidebar)
-            } detail: {
-                // Detail view based on selection
+            } content: {
+                // Content (Column 2): Article list or management views
                 if let selected = selectedSidebarItem {
                     switch selected {
                     case .today:
-                        TodayView()
+                        ArticleListColumn(
+                            articles: recentArticles,
+                            title: "Today",
+                            selectedArticle: $selectedArticle
+                        )
                     case .feeds:
                         FeedListView(modelContext: modelContext)
                     case .feed(let feedId):
-                        // Find the feed by ID
                         if let feed = feeds.first(where: { $0.id == feedId }) {
-                            FeedDetailView(feed: feed)
+                            ArticleListColumn(
+                                articles: feed.articles?.sorted { $0.publishedDate > $1.publishedDate } ?? [],
+                                title: feed.title,
+                                selectedArticle: $selectedArticle
+                            )
                         } else {
-                            // Feed was deleted - show helpful message
                             ContentUnavailableView(
                                 "Feed Not Found",
                                 systemImage: "doc.text.fill.badge.questionmark",
@@ -223,13 +232,132 @@ struct SidebarContentView: View {
                         SettingsView()
                     }
                 } else {
-                    TodayView()
+                    ArticleListColumn(
+                        articles: recentArticles,
+                        title: "Today",
+                        selectedArticle: $selectedArticle
+                    )
+                }
+            } detail: {
+                // Detail (Column 3): Article content
+                if let article = selectedArticle {
+                    ArticleDetailColumn(article: article)
+                } else {
+                    ContentUnavailableView(
+                        "Select an Article",
+                        systemImage: "doc.text",
+                        description: Text("Choose an article from the list to read it here.")
+                    )
                 }
             }
             .padding(.bottom, totalMiniPlayerHeight)
-            
+
             // Global mini audio player
             MiniAudioPlayer()
+        }
+    }
+
+    // Articles from the last 7 days for the Today view
+    private var recentArticles: [Article] {
+        let sevenDaysAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+        return allArticles.filter { article in
+            article.publishedDate >= sevenDaysAgo &&
+            (showAltFeeds ? article.feed?.category.lowercased() == "alt" : article.feed?.category.lowercased() != "alt")
+        }
+    }
+}
+
+// MARK: - Article List Column (Middle Column)
+struct ArticleListColumn: View {
+    let articles: [Article]
+    let title: String
+    @Binding var selectedArticle: Article?
+    @State private var searchText = ""
+
+    private var filteredArticles: [Article] {
+        guard !searchText.isEmpty else { return articles }
+        return articles.filter { article in
+            article.title.localizedCaseInsensitiveContains(searchText) ||
+            (article.articleDescription?.localizedCaseInsensitiveContains(searchText) ?? false) ||
+            (article.content?.localizedCaseInsensitiveContains(searchText) ?? false)
+        }
+    }
+
+    var body: some View {
+        List(selection: $selectedArticle) {
+            ForEach(filteredArticles) { article in
+                SidebarArticleRow(article: article)
+                    .tag(article)
+            }
+        }
+        .navigationTitle(title)
+        .searchable(text: $searchText, prompt: "Search articles")
+    }
+}
+
+// MARK: - Sidebar Article Row View
+struct SidebarArticleRow: View {
+    let article: Article
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(article.title)
+                .font(.headline)
+                .foregroundStyle(article.isRead ? .secondary : .primary)
+
+            if let description = article.articleDescription {
+                Text(description)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            HStack {
+                if let feedTitle = article.feed?.title {
+                    Text(feedTitle)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+
+                Spacer()
+
+                Text(article.publishedDate, style: .relative)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Article Detail Column (Right Column)
+struct ArticleDetailColumn: View {
+    let article: Article
+    @Environment(\.modelContext) private var modelContext
+
+    // Maximum width for comfortable reading (Apple HIG recommendation)
+    private let maxReadingWidth: CGFloat = 700
+
+    var body: some View {
+        HStack {
+            Spacer(minLength: 0)
+            ArticleDetailSimple(
+                article: article,
+                previousArticleID: nil,
+                nextArticleID: nil,
+                onNavigateToPrevious: { _ in },
+                onNavigateToNext: { _ in }
+            )
+            .frame(maxWidth: maxReadingWidth)
+            Spacer(minLength: 0)
+        }
+        .id(article.id) // Force view refresh when article changes
+        .onAppear {
+            // Mark as read when displayed
+            if !article.isRead {
+                article.isRead = true
+                try? modelContext.save()
+            }
         }
     }
 }
