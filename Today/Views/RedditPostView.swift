@@ -10,6 +10,9 @@ import SwiftData
 import AVKit
 import AVFoundation
 import WebKit
+import OSLog
+
+private let logger = Logger(subsystem: "com.today.app", category: "RedditPostView")
 
 struct RedditPostView: View {
     let article: Article
@@ -55,10 +58,11 @@ struct RedditPostView: View {
                 }
                 .padding()
             } else if let post = post {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        // Post content section
-                        PostContentView(post: post, fontOption: fontOption, openURL: openURL)
+                GeometryReader { geometry in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 0) {
+                            // Post content section
+                            PostContentView(post: post, fontOption: fontOption, openURL: openURL, availableWidth: geometry.size.width)
 
                         Divider()
                             .padding(.vertical, 16)
@@ -93,8 +97,9 @@ struct RedditPostView: View {
                                 }
                             }
                         }
+                        }
+                        .padding(.bottom, 32)
                     }
-                    .padding(.bottom, 32)
                 }
             }
         }
@@ -244,6 +249,7 @@ struct PostContentView: View {
     let post: ParsedRedditPost
     let fontOption: FontOption
     let openURL: OpenURLAction
+    var availableWidth: CGFloat = UIScreen.main.bounds.width
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -282,14 +288,14 @@ struct PostContentView: View {
 
             // Gallery images (if available)
             if !post.galleryImages.isEmpty {
-                ImageGalleryView(images: post.galleryImages)
+                ImageGalleryView(images: post.galleryImages, availableWidth: availableWidth)
             }
             // Embedded media from external video services
             else if let mediaEmbedHtml = post.mediaEmbedHtml,
                     let width = post.mediaEmbedWidth,
                     let height = post.mediaEmbedHeight {
                 EmbeddedMediaView(html: mediaEmbedHtml, width: width, height: height)
-                    .frame(height: CGFloat(height) * (UIScreen.main.bounds.width / CGFloat(width)))
+                    .frame(height: CGFloat(height) * (availableWidth / CGFloat(width)))
                     .cornerRadius(8)
             }
             // Single post image (if available and no gallery or embed)
@@ -495,6 +501,7 @@ struct PostWebView: UIViewRepresentable {
 struct SizeTrackingAsyncImage: View {
     let imageUrl: String
     let onSizeCalculated: (CGFloat) -> Void
+    var availableWidth: CGFloat = UIScreen.main.bounds.width
 
     @State private var image: UIImage?
     @State private var isLoading = true
@@ -543,14 +550,14 @@ struct SizeTrackingAsyncImage: View {
 
                     // Calculate height based on aspect ratio
                     let aspectRatio = uiImage.size.height / uiImage.size.width
-                    let screenWidth = UIScreen.main.bounds.width - 32 // Account for padding
-                    let calculatedHeight = screenWidth * aspectRatio
+                    let contentWidth = availableWidth - 32 // Account for padding
+                    let calculatedHeight = contentWidth * aspectRatio
 
                     // Cap maximum height to 100% of screen height
                     let maxHeight = UIScreen.main.bounds.height
                     let finalHeight = min(calculatedHeight, maxHeight)
 
-                    print("📸 Image sizing - Original: \(uiImage.size.width)x\(uiImage.size.height), AspectRatio: \(aspectRatio), ScreenWidth: \(screenWidth), CalculatedHeight: \(calculatedHeight), FinalHeight: \(finalHeight)")
+                    print("📸 Image sizing - Original: \(uiImage.size.width)x\(uiImage.size.height), AspectRatio: \(aspectRatio), ContentWidth: \(contentWidth), CalculatedHeight: \(calculatedHeight), FinalHeight: \(finalHeight)")
 
                     onSizeCalculated(finalHeight)
                 }
@@ -571,6 +578,7 @@ struct SizeTrackingAsyncImage: View {
 
 struct ImageGalleryView: View {
     let images: [RedditGalleryImage]
+    var availableWidth: CGFloat = UIScreen.main.bounds.width
     @State private var showFullScreen = false
     @State private var currentPage = 0
     @State private var galleryHeight: CGFloat = 300
@@ -582,7 +590,7 @@ struct ImageGalleryView: View {
                 ForEach(Array(images.enumerated()), id: \.element.id) { index, image in
                     if image.isAnimated, let videoUrl = image.videoUrl {
                         ZStack {
-                            AnimatedMediaView(videoUrl: videoUrl, posterUrl: image.url)
+                            AnimatedMediaView(videoUrl: videoUrl, posterUrl: image.url, availableWidth: availableWidth)
                                 .cornerRadius(8)
 
                             // Transparent overlay to capture taps (VideoPlayer intercepts gestures)
@@ -600,7 +608,7 @@ struct ImageGalleryView: View {
                                 print("📐 Gallery height updated from 300 to \(height)")
                                 galleryHeight = height
                             }
-                        })
+                        }, availableWidth: availableWidth)
                         .onTapGesture {
                             showFullScreen = true
                         }
@@ -628,8 +636,11 @@ struct ImageGalleryView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .sheet(isPresented: $showFullScreen) {
+        .fullScreenCover(isPresented: $showFullScreen) {
             FullScreenImageGallery(images: images, currentIndex: $currentPage)
+        }
+        .onChange(of: showFullScreen) { oldValue, newValue in
+            print("🖼️ ImageGalleryView: showFullScreen changed \(oldValue) → \(newValue)")
         }
     }
 }
@@ -667,6 +678,7 @@ struct FullScreenImageGallery: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Done") {
+                        logger.info("🖼️ FullScreenImageGallery: Done button tapped")
                         dismiss()
                     }
                 }
@@ -678,6 +690,34 @@ struct FullScreenImageGallery: View {
                         }
                     }
                 }
+            }
+            .onAppear {
+                logger.info("🖼️ FullScreenImageGallery: appeared with \(self.images.count) images")
+            }
+            .onDisappear {
+                logger.info("🖼️ FullScreenImageGallery: disappeared")
+            }
+            // Keyboard navigation for gallery
+            .background {
+                Group {
+                    Button("") {
+                        if currentIndex > 0 {
+                            withAnimation { currentIndex -= 1 }
+                        }
+                    }
+                    .keyboardShortcut(.leftArrow, modifiers: [])
+
+                    Button("") {
+                        if currentIndex < images.count - 1 {
+                            withAnimation { currentIndex += 1 }
+                        }
+                    }
+                    .keyboardShortcut(.rightArrow, modifiers: [])
+
+                    Button("") { dismiss() }
+                        .keyboardShortcut(.escape, modifiers: [])
+                }
+                .opacity(0)
             }
         }
     }
@@ -870,6 +910,7 @@ struct ZoomableImageView: View {
 struct AnimatedMediaView: View {
     let videoUrl: String
     let posterUrl: String?
+    var availableWidth: CGFloat = UIScreen.main.bounds.width
 
     @State private var player: AVPlayer?
     @State private var videoSize: CGSize?
@@ -882,7 +923,7 @@ struct AnimatedMediaView: View {
                     VideoPlayer(player: player)
                         .aspectRatio(videoSize.width / videoSize.height, contentMode: .fit)
                         .frame(maxWidth: .infinity)
-                        .frame(height: calculatedHeight(for: UIScreen.main.bounds.width))
+                        .frame(height: calculatedHeight(for: availableWidth))
                         .onAppear {
                             player.play()
                         }
