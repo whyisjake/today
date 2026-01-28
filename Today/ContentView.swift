@@ -293,11 +293,9 @@ struct FeedDetailView: View {
                                 .foregroundStyle(.secondary)
                                 .lineLimit(2)
                         }
-                        if let date = article.publishedDate {
-                            Text(date, style: .relative)
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                        }
+                        Text(article.publishedDate, style: .relative)
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
                     }
                 }
             }
