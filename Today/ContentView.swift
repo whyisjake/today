@@ -111,7 +111,6 @@ struct CompactContentView: View {
 struct SidebarContentView: View {
     let modelContext: ModelContext
     @Query(sort: \Feed.title) private var feeds: [Feed]
-    @ObservedObject private var categoryManager = CategoryManager.shared
     @AppStorage("showAltCategory") private var showAltFeeds = false
     @State private var selectedSidebarItem: SidebarItem? = .today
     @StateObject private var audioPlayer = ArticleAudioPlayer.shared
@@ -151,9 +150,9 @@ struct SidebarContentView: View {
         }
     }
     
-    // Group feeds by category
+    // Group feeds by category (normalized to lowercase for consistent grouping)
     private var feedsByCategory: [(category: String, feeds: [Feed])] {
-        let grouped = Dictionary(grouping: visibleFeeds) { $0.category }
+        let grouped = Dictionary(grouping: visibleFeeds) { $0.category.lowercased() }
         return grouped.sorted { $0.key < $1.key }
             .map { (category: $0.key, feeds: $0.value.sorted { $0.title < $1.title }) }
     }
@@ -211,7 +210,12 @@ struct SidebarContentView: View {
                         if let feed = feeds.first(where: { $0.id == feedId }) {
                             FeedDetailView(feed: feed)
                         } else {
-                            TodayView()
+                            // Feed was deleted - show helpful message
+                            ContentUnavailableView(
+                                "Feed Not Found",
+                                systemImage: "doc.text.fill.badge.questionmark",
+                                description: Text("This feed is no longer available.")
+                            )
                         }
                     case .aiChat:
                         AIChatView()
@@ -233,48 +237,67 @@ struct SidebarContentView: View {
 // MARK: - Feed Detail View
 struct FeedDetailView: View {
     let feed: Feed
-    @Query private var allArticles: [Article]
     @State private var searchText = ""
+    
+    // Query articles filtered by feed at the database level for better performance
+    @Query private var articles: [Article]
     
     init(feed: Feed) {
         self.feed = feed
-        // Query all articles - we'll filter in the computed property
-        _allArticles = Query(sort: \Article.publishedDate, order: .reverse)
+        // Use predicate to filter at database level
+        let feedId = feed.id
+        let predicate = #Predicate<Article> { article in
+            article.feed?.id == feedId
+        }
+        _articles = Query(
+            filter: predicate,
+            sort: \Article.publishedDate,
+            order: .reverse
+        )
     }
     
-    private var articles: [Article] {
-        allArticles.filter { article in
-            article.feed?.id == feed.id &&
-            (searchText.isEmpty || 
-             article.title.localizedCaseInsensitiveContains(searchText) ||
-             (article.articleDescription?.localizedCaseInsensitiveContains(searchText) ?? false))
+    private var filteredArticles: [Article] {
+        guard !searchText.isEmpty else { return articles }
+        return articles.filter { article in
+            article.title.localizedCaseInsensitiveContains(searchText) ||
+            (article.articleDescription?.localizedCaseInsensitiveContains(searchText) ?? false)
         }
     }
     
     var body: some View {
-        List(articles) { article in
-            NavigationLink {
-                ArticleDetailSimple(
-                    article: article,
-                    previousArticleID: nil,
-                    nextArticleID: nil,
-                    onNavigateToPrevious: { _ in },
-                    onNavigateToNext: { _ in }
-                )
-            } label: {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(article.title)
-                        .font(.headline)
-                    if let description = article.articleDescription {
-                        Text(description)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-                    if let date = article.publishedDate {
-                        Text(date, style: .relative)
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
+        List {
+            ForEach(Array(filteredArticles.enumerated()), id: \.element.id) { index, article in
+                NavigationLink {
+                    // Provide navigation context for previous/next article navigation
+                    let previousArticleID = index > 0 ? filteredArticles[index - 1].id : nil
+                    let nextArticleID = index < filteredArticles.count - 1 ? filteredArticles[index + 1].id : nil
+                    
+                    ArticleDetailSimple(
+                        article: article,
+                        previousArticleID: previousArticleID,
+                        nextArticleID: nextArticleID,
+                        onNavigateToPrevious: { _ in
+                            // Navigation handled by SwiftUI
+                        },
+                        onNavigateToNext: { _ in
+                            // Navigation handled by SwiftUI
+                        }
+                    )
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(article.title)
+                            .font(.headline)
+                        if let description = article.articleDescription {
+                            Text(description)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                        if let date = article.publishedDate {
+                            Text(date, style: .relative)
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
                     }
                 }
             }
