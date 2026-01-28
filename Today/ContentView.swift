@@ -114,13 +114,13 @@ struct SidebarContentView: View {
     @ObservedObject private var categoryManager = CategoryManager.shared
     @AppStorage("showAltCategory") private var showAltFeeds = false
     @State private var selectedSidebarItem: SidebarItem? = .today
-    @State private var selectedFeed: Feed?
     @StateObject private var audioPlayer = ArticleAudioPlayer.shared
     @StateObject private var podcastPlayer = PodcastAudioPlayer.shared
     
     enum SidebarItem: Hashable {
         case today
-        case category(String)
+        case feeds
+        case feed(PersistentIdentifier)
         case aiChat
         case settings
     }
@@ -168,21 +168,18 @@ struct SidebarContentView: View {
                         NavigationLink(value: SidebarItem.today) {
                             Label("Today", systemImage: "newspaper")
                         }
+                        
+                        NavigationLink(value: SidebarItem.feeds) {
+                            Label("Manage Feeds", systemImage: "list.bullet")
+                        }
                     }
                     
                     // Feeds grouped by category
                     ForEach(feedsByCategory, id: \.category) { categoryGroup in
                         Section(header: Text(categoryGroup.category.capitalized)) {
                             ForEach(categoryGroup.feeds, id: \.id) { feed in
-                                NavigationLink(value: SidebarItem.category(feed.id.hashValue.description)) {
+                                NavigationLink(value: SidebarItem.feed(feed.id)) {
                                     Label(feed.title, systemImage: "doc.text")
-                                }
-                                .contextMenu {
-                                    Button {
-                                        selectedFeed = feed
-                                    } label: {
-                                        Label("View Feed", systemImage: "eye")
-                                    }
                                 }
                             }
                         }
@@ -207,9 +204,11 @@ struct SidebarContentView: View {
                     switch selected {
                     case .today:
                         TodayView()
-                    case .category(let categoryId):
-                        // Find the feed by matching hash
-                        if let feed = visibleFeeds.first(where: { $0.id.hashValue.description == categoryId }) {
+                    case .feeds:
+                        FeedListView(modelContext: modelContext)
+                    case .feed(let feedId):
+                        // Find the feed by ID
+                        if let feed = feeds.first(where: { $0.id == feedId }) {
                             FeedDetailView(feed: feed)
                         } else {
                             TodayView()
@@ -227,13 +226,6 @@ struct SidebarContentView: View {
             
             // Global mini audio player
             MiniAudioPlayer()
-        }
-        .sheet(item: $selectedFeed) { feed in
-            NavigationStack {
-                FeedListView(modelContext: modelContext)
-                    .navigationTitle("Feeds")
-                    .navigationBarTitleDisplayMode(.inline)
-            }
         }
     }
 }
