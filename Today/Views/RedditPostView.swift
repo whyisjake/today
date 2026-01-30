@@ -1504,9 +1504,56 @@ struct EmbeddedMediaView: View {
     let width: Int
     let height: Int
     @Environment(\.colorScheme) var colorScheme
+    @Environment(\.openURL) var openURL
+    @State private var isHovering = false
+
+    // Extract URL from embed HTML (YouTube, etc.)
+    private var embedURL: URL? {
+        // Try to extract src from iframe
+        if let srcRange = html.range(of: "src=\""),
+           let endRange = html[srcRange.upperBound...].range(of: "\"") {
+            var urlString = String(html[srcRange.upperBound..<endRange.lowerBound])
+            // Convert embed URL to watch URL for YouTube
+            if urlString.contains("youtube.com/embed/") {
+                urlString = urlString.replacingOccurrences(of: "/embed/", with: "/watch?v=")
+            }
+            // Handle protocol-relative URLs
+            if urlString.hasPrefix("//") {
+                urlString = "https:" + urlString
+            }
+            return URL(string: urlString)
+        }
+        return nil
+    }
 
     var body: some View {
-        EmbeddedMediaWebView(html: html, colorScheme: colorScheme)
+        ZStack(alignment: .topTrailing) {
+            EmbeddedMediaWebView(html: html, colorScheme: colorScheme)
+
+            #if os(macOS)
+            // Show "Open in Safari" button on hover
+            if isHovering, let url = embedURL {
+                Button {
+                    openURL(url)
+                } label: {
+                    Label("Open in Safari", systemImage: "safari")
+                        .font(.caption)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.black.opacity(0.7))
+                        .foregroundStyle(.white)
+                        .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+                .padding(8)
+            }
+            #endif
+        }
+        #if os(macOS)
+        .onHover { hovering in
+            isHovering = hovering
+        }
+        #endif
     }
 }
 
@@ -1598,7 +1645,6 @@ struct EmbeddedMediaWebView: NSViewRepresentable {
         configuration.preferences.isElementFullscreenEnabled = true
 
         let webView = ScrollPassthroughWebView(frame: .zero, configuration: configuration)
-
         return webView
     }
 
@@ -1617,9 +1663,11 @@ struct EmbeddedMediaWebView: NSViewRepresentable {
                     padding: 0;
                     box-sizing: border-box;
                 }
-                body {
+                html, body {
                     background-color: \(bgColor);
                     overflow: hidden;
+                    width: 100%;
+                    height: 100%;
                 }
                 iframe {
                     position: absolute;
