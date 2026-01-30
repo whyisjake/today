@@ -103,36 +103,40 @@ struct ArticleDetailSimple: View {
     #if os(macOS)
     private var macOSArticleContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Fixed header area
-            VStack(alignment: .leading, spacing: 16) {
+            // Fixed header - full width container, content has horizontal padding
+            VStack(alignment: .leading, spacing: 12) {
                 articleHeader
+                    .padding(.horizontal, 16)
 
                 // Show podcast controls if this is a podcast episode
                 if article.hasPodcastAudio {
                     PodcastAudioControls(article: article)
+                        .padding(.horizontal, 16)
                 }
             }
-            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 16)
 
             Divider()
 
-            // Scrollable WebView area - let WebView handle its own scrolling
-            macOSWebViewContent
+            // WebView fills remaining space and handles its own scrolling
+            // WebView has its own internal padding via CSS
+            if article.hasMinimalContent && shortArticleBehavior == .openInAppBrowser && !article.isRedditPost,
+               let url = article.articleURL {
+                WebViewRepresentable(url: url)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let contentEncoded = article.contentEncoded {
+                ScrollableWebView(htmlContent: contentEncoded)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let content = article.content {
+                ScrollableWebView(htmlContent: content)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let description = article.articleDescription {
+                ScrollableWebView(htmlContent: description)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
-    }
-
-    @ViewBuilder
-    private var macOSWebViewContent: some View {
-        if article.hasMinimalContent && shortArticleBehavior == .openInAppBrowser && !article.isRedditPost,
-           let url = article.articleURL {
-            WebViewRepresentable(url: url)
-        } else if let contentEncoded = article.contentEncoded {
-            ScrollableWebView(htmlContent: contentEncoded)
-        } else if let content = article.content {
-            ScrollableWebView(htmlContent: content)
-        } else if let description = article.articleDescription {
-            ScrollableWebView(htmlContent: description)
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     #endif
 
@@ -544,8 +548,10 @@ private func createStyledHTML(from html: String, colorScheme: ColorScheme, accen
                 font-family: \(fontFamily);
                 font-size: 1.125rem;
                 line-height: 1.778;
-                max-width: none;
-                padding: 1rem;
+                max-width: 70ch;
+                margin-left: auto;
+                margin-right: auto;
+                padding: 1rem 1.5rem;
             }
 
             /* Paragraphs */

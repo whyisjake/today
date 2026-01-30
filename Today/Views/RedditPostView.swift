@@ -443,6 +443,7 @@ struct PostContentView: View {
     let fontOption: FontOption
     let openURL: OpenURLAction
     var availableWidth: CGFloat = ScreenUtilities.mainScreenWidth
+    @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -452,11 +453,19 @@ struct PostContentView: View {
                     .system(.title2, design: .serif, weight: .bold) :
                     .system(.title2, design: .default, weight: .bold))
 
-            // Meta info: author, score, time
+            // Meta info: subreddit, author, score, time
             HStack(spacing: 8) {
+                Text("r/\(post.subreddit)")
+                    .font(.subheadline)
+                    .foregroundStyle(accentColor.color)
+
+                Text("•")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
                 Text("u/\(post.author)")
                     .font(.subheadline)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(accentColor.color)
 
                 Text("•")
                     .font(.caption)
@@ -487,8 +496,11 @@ struct PostContentView: View {
             else if let mediaEmbedHtml = post.mediaEmbedHtml,
                     let width = post.mediaEmbedWidth,
                     let height = post.mediaEmbedHeight {
+                // Calculate height based on aspect ratio, capped at screen height minus header (~150px for title, meta, toolbar)
+                let calculatedHeight = CGFloat(height) * (availableWidth / CGFloat(width))
+                let maxHeight = ScreenUtilities.mainScreenHeight - 150
                 EmbeddedMediaView(html: mediaEmbedHtml, width: width, height: height)
-                    .frame(height: CGFloat(height) * (availableWidth / CGFloat(width)))
+                    .frame(height: min(calculatedHeight, maxHeight))
                     .cornerRadius(8)
             }
             // Single post image (if available and no gallery or embed)
@@ -871,88 +883,6 @@ struct PostWebView: NSViewRepresentable {
 }
 #endif
 
-
-// MARK: - Image Size Tracking Helper
-struct SizeTrackingAsyncImage: View {
-    let imageUrl: String
-    let onSizeCalculated: (CGFloat) -> Void
-    var availableWidth: CGFloat = ScreenUtilities.mainScreenWidth
-
-    @State private var image: PlatformImage?
-    @State private var isLoading = true
-    @State private var hasFailed = false
-
-    var body: some View {
-        Group {
-            if let image = image {
-                platformImage(image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .cornerRadius(8)
-            } else if hasFailed {
-                VStack {
-                    Image(systemName: "photo")
-                        .font(.largeTitle)
-                        .foregroundStyle(.secondary)
-                    Text("Failed to load")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, minHeight: 200)
-                #if os(iOS)
-                .background(platformGray6Color)
-                #else
-                .background(Color(NSColor.controlBackgroundColor))
-                #endif
-                .cornerRadius(8)
-            } else {
-                ProgressView()
-                    .frame(maxWidth: .infinity, minHeight: 200)
-            }
-        }
-        .task {
-            await loadImage()
-        }
-    }
-
-    private func loadImage() async {
-        guard let url = URL(string: imageUrl) else {
-            hasFailed = true
-            return
-        }
-
-        do {
-            let (data, _) = try await URLSession.shared.data(from: url)
-            if let loadedImage = PlatformImage(data: data) {
-                await MainActor.run {
-                    self.image = loadedImage
-
-                    // Calculate height based on aspect ratio
-                    let aspectRatio = loadedImage.size.height / loadedImage.size.width
-                    let contentWidth = availableWidth - 32 // Account for padding
-                    let calculatedHeight = contentWidth * aspectRatio
-
-                    // Cap maximum height to 100% of screen height
-                    let maxHeight = ScreenUtilities.mainScreenHeight
-                    let finalHeight = min(calculatedHeight, maxHeight)
-
-                    print("📸 Image sizing - Original: \(loadedImage.size.width)x\(loadedImage.size.height), AspectRatio: \(aspectRatio), ContentWidth: \(contentWidth), CalculatedHeight: \(calculatedHeight), FinalHeight: \(finalHeight)")
-
-                    onSizeCalculated(finalHeight)
-                }
-            } else {
-                await MainActor.run {
-                    hasFailed = true
-                }
-            }
-        } catch {
-            await MainActor.run {
-                hasFailed = true
-            }
-        }
-    }
-}
-
 // MARK: - Image Gallery View
 
 struct ImageGalleryView: View {
@@ -960,7 +890,19 @@ struct ImageGalleryView: View {
     var availableWidth: CGFloat = ScreenUtilities.mainScreenWidth
     @State private var showFullScreen = false
     @State private var currentPage = 0
-    @State private var galleryHeight: CGFloat = 300
+
+    // Calculate gallery height from known dimensions (capped to reasonable max)
+    private var galleryHeight: CGFloat {
+        guard let firstImage = images.first, firstImage.width > 0 else {
+            return 300 // Fallback default
+        }
+        let contentWidth = availableWidth - 32 // Account for horizontal padding
+        let aspectRatio = CGFloat(firstImage.height) / CGFloat(firstImage.width)
+        let calculatedHeight = contentWidth * aspectRatio
+        // Cap at 70% of screen height to prevent overly tall media
+        let maxHeight = ScreenUtilities.mainScreenHeight * 0.7
+        return min(calculatedHeight, maxHeight)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -969,8 +911,14 @@ struct ImageGalleryView: View {
                 ForEach(Array(images.enumerated()), id: \.element.id) { index, image in
                     if image.isAnimated, let videoUrl = image.videoUrl {
                         ZStack {
-                            AnimatedMediaView(videoUrl: videoUrl, posterUrl: image.url, availableWidth: availableWidth)
-                                .cornerRadius(8)
+                            AnimatedMediaView(
+                                videoUrl: videoUrl,
+                                posterUrl: image.url,
+                                knownWidth: image.width,
+                                knownHeight: image.height,
+                                availableWidth: availableWidth
+                            )
+                            .cornerRadius(8)
 
                             // Transparent overlay to capture taps (VideoPlayer intercepts gestures)
                             Color.clear
@@ -981,13 +929,30 @@ struct ImageGalleryView: View {
                         }
                         .tag(index)
                     } else {
-                        SizeTrackingAsyncImage(imageUrl: image.url, onSizeCalculated: { height in
-                            // Update gallery height based on first loaded image
-                            if galleryHeight == 300 {
-                                print("📐 Gallery height updated from 300 to \(height)")
-                                galleryHeight = height
+                        AsyncImage(url: URL(string: image.url)) { phase in
+                            switch phase {
+                            case .success(let loadedImage):
+                                loadedImage
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .cornerRadius(8)
+                            case .failure:
+                                VStack {
+                                    Image(systemName: "photo")
+                                        .font(.largeTitle)
+                                        .foregroundStyle(.secondary)
+                                    Text("Failed to load")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .frame(maxWidth: .infinity, minHeight: 200)
+                            case .empty:
+                                ProgressView()
+                                    .frame(maxWidth: .infinity, minHeight: 200)
+                            @unknown default:
+                                EmptyView()
                             }
-                        }, availableWidth: availableWidth)
+                        }
                         .onTapGesture {
                             showFullScreen = true
                         }
@@ -1023,8 +988,7 @@ struct ImageGalleryView: View {
         }
         #else
         .sheet(isPresented: $showFullScreen) {
-            FullScreenImageGallery(images: images, currentIndex: $currentPage)
-                .frame(minWidth: 800, minHeight: 600)
+            MacOSFullScreenGalleryWindow(images: images, currentIndex: $currentPage)
         }
         #endif
         .onChange(of: showFullScreen) { oldValue, newValue in
@@ -1045,7 +1009,7 @@ struct FullScreenImageGallery: View {
             TabView(selection: $currentIndex) {
                 ForEach(Array(images.enumerated()), id: \.element.id) { index, image in
                     if image.isAnimated, let videoUrl = image.videoUrl {
-                        AnimatedMediaView(videoUrl: videoUrl, posterUrl: image.url)
+                        AnimatedMediaView(videoUrl: videoUrl, posterUrl: image.url, knownWidth: image.width, knownHeight: image.height)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .background(platformBackgroundColor)
                             .tag(index)
@@ -1133,6 +1097,139 @@ struct FullScreenImageGallery: View {
         }
     }
 }
+
+// MARK: - macOS Full Screen Gallery Window
+
+#if os(macOS)
+struct MacOSFullScreenGalleryWindow: View {
+    let images: [RedditGalleryImage]
+    @Binding var currentIndex: Int
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ZStack {
+            // Dark background
+            Color.black
+                .ignoresSafeArea()
+
+            // Image content
+            if images.indices.contains(currentIndex) {
+                let image = images[currentIndex]
+                if image.isAnimated, let videoUrl = image.videoUrl {
+                    AnimatedMediaView(videoUrl: videoUrl, posterUrl: image.url, knownWidth: image.width, knownHeight: image.height)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ZoomableImageView(imageUrl: image.url)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+
+            // Navigation overlay
+            VStack {
+                // Top bar with title and close button
+                HStack {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(.white.opacity(0.8))
+                    }
+                    .buttonStyle(.plain)
+                    .keyboardShortcut(.escape, modifiers: [])
+
+                    Spacer()
+
+                    Text("\(currentIndex + 1) of \(images.count)")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+
+                    Spacer()
+
+                    if let imageUrl = URL(string: images[currentIndex].url) {
+                        ShareLink(item: imageUrl) {
+                            Image(systemName: "square.and.arrow.up.circle.fill")
+                                .font(.title2)
+                                .foregroundStyle(.white.opacity(0.8))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding()
+                .background(.black.opacity(0.5))
+
+                Spacer()
+
+                // Bottom navigation arrows (if multiple images)
+                if images.count > 1 {
+                    HStack {
+                        Button {
+                            if currentIndex > 0 {
+                                withAnimation { currentIndex -= 1 }
+                            }
+                        } label: {
+                            Image(systemName: "chevron.left.circle.fill")
+                                .font(.largeTitle)
+                                .foregroundStyle(.white.opacity(currentIndex > 0 ? 0.8 : 0.3))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(currentIndex == 0)
+                        .keyboardShortcut(.leftArrow, modifiers: [])
+
+                        Spacer()
+
+                        Button {
+                            if currentIndex < images.count - 1 {
+                                withAnimation { currentIndex += 1 }
+                            }
+                        } label: {
+                            Image(systemName: "chevron.right.circle.fill")
+                                .font(.largeTitle)
+                                .foregroundStyle(.white.opacity(currentIndex < images.count - 1 ? 0.8 : 0.3))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(currentIndex >= images.count - 1)
+                        .keyboardShortcut(.rightArrow, modifiers: [])
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 20)
+                }
+            }
+        }
+        .focusable()
+        .focusEffectDisabled()
+        .onKeyPress(.leftArrow) {
+            if currentIndex > 0 {
+                withAnimation { currentIndex -= 1 }
+            }
+            return .handled
+        }
+        .onKeyPress(.rightArrow) {
+            if currentIndex < images.count - 1 {
+                withAnimation { currentIndex += 1 }
+            }
+            return .handled
+        }
+        .onKeyPress(characters: .init(charactersIn: "jJ")) { _ in
+            // j for next (vim-style)
+            if currentIndex < images.count - 1 {
+                withAnimation { currentIndex += 1 }
+            }
+            return .handled
+        }
+        .onKeyPress(characters: .init(charactersIn: "kK")) { _ in
+            // k for previous (vim-style)
+            if currentIndex > 0 {
+                withAnimation { currentIndex -= 1 }
+            }
+            return .handled
+        }
+        .frame(minWidth: 800, minHeight: 600)
+        .frame(idealWidth: ScreenUtilities.mainScreenWidth * 0.9,
+               idealHeight: ScreenUtilities.mainScreenHeight * 0.9)
+    }
+}
+#endif
 
 // MARK: - Zoomable Image View
 
@@ -1321,20 +1418,32 @@ struct ZoomableImageView: View {
 struct AnimatedMediaView: View {
     let videoUrl: String
     let posterUrl: String?
+    var knownWidth: Int = 0  // Pre-known dimensions from metadata
+    var knownHeight: Int = 0
     var availableWidth: CGFloat = ScreenUtilities.mainScreenWidth
 
     @State private var player: AVPlayer?
     @State private var videoSize: CGSize?
     @State private var itemObserver: NSKeyValueObservation?
 
+    // Use known dimensions if available, otherwise fall back to detected size
+    private var effectiveSize: CGSize? {
+        if let videoSize = videoSize {
+            return videoSize
+        } else if knownWidth > 0 && knownHeight > 0 {
+            return CGSize(width: knownWidth, height: knownHeight)
+        }
+        return nil
+    }
+
     var body: some View {
         ZStack {
             if let player = player {
-                if let videoSize = videoSize {
+                if let size = effectiveSize {
                     VideoPlayer(player: player)
-                        .aspectRatio(videoSize.width / videoSize.height, contentMode: .fit)
+                        .aspectRatio(size.width / size.height, contentMode: .fit)
                         .frame(maxWidth: .infinity)
-                        .frame(height: calculatedHeight(for: availableWidth))
+                        .frame(height: calculatedHeight(for: availableWidth, size: size))
                         .onAppear {
                             player.play()
                         }
@@ -1348,7 +1457,7 @@ struct AnimatedMediaView: View {
                 }
             } else {
                 ProgressView()
-                    .frame(height: 300)
+                    .frame(height: knownWidth > 0 ? calculatedHeight(for: availableWidth, size: CGSize(width: knownWidth, height: knownHeight)) : 300)
             }
         }
         .onAppear {
@@ -1385,94 +1494,22 @@ struct AnimatedMediaView: View {
         }
     }
 
-    private func calculatedHeight(for width: CGFloat) -> CGFloat {
-        guard let videoSize = videoSize, videoSize.width > 0 else {
-            // Default height while loading or if dimensions unavailable
-            print("🎥 Video sizing - No video size yet, using default 300")
+    private func calculatedHeight(for width: CGFloat, size: CGSize) -> CGFloat {
+        guard size.width > 0 else {
             return 300
         }
 
-        let aspectRatio = videoSize.height / videoSize.width
-        let calculatedHeight = width * aspectRatio
+        let contentWidth = width - 32 // Account for horizontal padding
+        let aspectRatio = size.height / size.width
+        let calculatedHeight = contentWidth * aspectRatio
 
-        // Cap maximum height to 100% of screen height
-        let maxHeight = ScreenUtilities.mainScreenHeight
+        // Cap maximum height to 70% of screen height
+        let maxHeight = ScreenUtilities.mainScreenHeight * 0.7
         let finalHeight = min(calculatedHeight, maxHeight)
-
-        print("🎥 Video sizing - Original: \(videoSize.width)x\(videoSize.height), AspectRatio: \(aspectRatio), Width: \(width), CalculatedHeight: \(calculatedHeight), FinalHeight: \(finalHeight)")
 
         return finalHeight
     }
 }
-
-// MARK: - Video Player View (Platform wrapper)
-
-#if os(iOS)
-struct VideoPlayerView: UIViewRepresentable {
-    let player: AVPlayer
-
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView()
-        view.backgroundColor = .clear
-
-        let playerLayer = AVPlayerLayer(player: player)
-        playerLayer.videoGravity = .resizeAspect
-        playerLayer.frame = view.bounds
-        view.layer.addSublayer(playerLayer)
-
-        context.coordinator.playerLayer = playerLayer
-
-        return view
-    }
-
-    func updateUIView(_ uiView: UIView, context: Context) {
-        if let playerLayer = context.coordinator.playerLayer {
-            playerLayer.frame = uiView.bounds
-        }
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    class Coordinator {
-        var playerLayer: AVPlayerLayer?
-    }
-}
-#elseif os(macOS)
-struct VideoPlayerView: NSViewRepresentable {
-    let player: AVPlayer
-
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        view.wantsLayer = true
-        view.layer?.backgroundColor = NSColor.clear.cgColor
-
-        let playerLayer = AVPlayerLayer(player: player)
-        playerLayer.videoGravity = .resizeAspect
-        playerLayer.frame = view.bounds
-        view.layer?.addSublayer(playerLayer)
-
-        context.coordinator.playerLayer = playerLayer
-
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        if let playerLayer = context.coordinator.playerLayer {
-            playerLayer.frame = nsView.bounds
-        }
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    class Coordinator {
-        var playerLayer: AVPlayerLayer?
-    }
-}
-#endif
 
 // MARK: - Embedded Media View
 
@@ -1555,25 +1592,31 @@ struct EmbeddedMediaWebView: UIViewRepresentable {
     }
 }
 #elseif os(macOS)
+/// Custom WKWebView that forwards scroll wheel events to parent instead of handling them
+/// This allows the iframe to display but lets the parent ScrollView handle scrolling
+class ScrollPassthroughWebView: WKWebView {
+    override func scrollWheel(with event: NSEvent) {
+        // Forward scroll events to the next responder (parent ScrollView)
+        // instead of handling them internally
+        self.nextResponder?.scrollWheel(with: event)
+    }
+}
+
 struct EmbeddedMediaWebView: NSViewRepresentable {
     let html: String
     let colorScheme: ColorScheme
 
-    func makeNSView(context: Context) -> WKWebView {
+    func makeNSView(context: Context) -> ScrollPassthroughWebView {
         let configuration = WKWebViewConfiguration()
-        // allowsInlineMediaPlayback is iOS-only; macOS always allows inline playback
         configuration.mediaTypesRequiringUserActionForPlayback = []
         configuration.preferences.isElementFullscreenEnabled = true
 
-        let webView = WKWebView(frame: .zero, configuration: configuration)
+        let webView = ScrollPassthroughWebView(frame: .zero, configuration: configuration)
+
         return webView
     }
 
-    func updateNSView(_ webView: WKWebView, context: Context) {
-        loadContent(in: webView)
-    }
-
-    private func loadContent(in webView: WKWebView) {
+    func updateNSView(_ webView: ScrollPassthroughWebView, context: Context) {
         let bgColor = colorScheme == .dark ? "#000000" : "#FFFFFF"
 
         let wrappedHTML = """
@@ -1979,7 +2022,7 @@ struct CommentWebView: NSViewRepresentable {
         webView.setValue(false, forKey: "drawsBackground")
         webView.underPageBackgroundColor = .clear
         // Disable WebView scrolling so parent ScrollView handles it
-        disableWebViewScrolling(webView)
+        // disableWebViewScrolling(webView)
         return webView
     }
 
@@ -1996,7 +2039,7 @@ struct CommentWebView: NSViewRepresentable {
                 scrollView.horizontalScrollElasticity = .none
                 scrollView.scrollerStyle = .overlay
             }
-            disableScrollingRecursively(in: subview)
+            // disableScrollingRecursively(in: subview)
         }
     }
 
@@ -2007,7 +2050,7 @@ struct CommentWebView: NSViewRepresentable {
         let styledHTML = createStyledHTML(from: decodedHTML, colorScheme: colorScheme, accentColor: accentColor, fontOption: fontOption)
         context.coordinator.parent = self
         webView.loadHTMLString(styledHTML, baseURL: nil)
-        disableWebViewScrolling(webView)
+        // disableWebViewScrolling(webView)
     }
 
     class Coordinator: NSObject, WKNavigationDelegate {
@@ -2019,7 +2062,7 @@ struct CommentWebView: NSViewRepresentable {
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             // Disable scrolling after content loads
-            parent.disableWebViewScrolling(webView)
+            // parent.disableWebViewScrolling(webView)
 
             // Better height calculation that measures actual content
             let script = """
@@ -2038,7 +2081,7 @@ struct CommentWebView: NSViewRepresentable {
                     DispatchQueue.main.async {
                         self.parent.height = height
                         // Re-disable after height adjustment
-                        self.parent.disableWebViewScrolling(webView)
+                        // self.parent.disableWebViewScrolling(webView)
                     }
                 }
             }
@@ -2153,4 +2196,3 @@ struct CommentWebView: NSViewRepresentable {
     }
 }
 #endif
-

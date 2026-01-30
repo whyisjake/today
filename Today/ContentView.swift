@@ -120,6 +120,9 @@ struct SidebarContentView: View {
     @State private var selectedSidebarItem: SidebarItem? = .today
     @State private var selectedArticle: Article?
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var cachedRecentArticles: [Article] = []
+    @State private var lastArticleCount: Int = 0
+    @State private var lastShowAltFeeds: Bool = false
     @StateObject private var audioPlayer = ArticleAudioPlayer.shared
     @StateObject private var podcastPlayer = PodcastAudioPlayer.shared
 
@@ -254,22 +257,34 @@ struct SidebarContentView: View {
         }
         .onAppear {
             logger.info("🚀 SidebarContentView appeared with \(self.feeds.count) feeds, \(self.allArticles.count) articles")
+            // Initialize cached articles synchronously on first appear (need data immediately)
+            if cachedRecentArticles.isEmpty && !allArticles.isEmpty {
+                lastArticleCount = allArticles.count
+                lastShowAltFeeds = showAltFeeds
+                cachedRecentArticles = computeRecentArticles()
+            }
         }
         .task {
             // Auto-select first article on launch (macOS)
-            if selectedArticle == nil, let firstArticle = recentArticles.first {
+            if selectedArticle == nil, let firstArticle = cachedRecentArticles.first {
                 selectedArticle = firstArticle
                 logger.info("📄 Auto-selected first article: \(firstArticle.title)")
             }
         }
         .onChange(of: allArticles.count) { oldCount, newCount in
+            // Update cache when articles change
+            updateCachedArticlesIfNeeded()
             // Auto-select first article when articles first load (macOS)
             if oldCount == 0 && newCount > 0 && selectedArticle == nil {
-                if let firstArticle = recentArticles.first {
+                if let firstArticle = cachedRecentArticles.first {
                     selectedArticle = firstArticle
                     logger.info("📄 Auto-selected first article after load: \(firstArticle.title)")
                 }
             }
+        }
+        .onChange(of: showAltFeeds) { _, _ in
+            // Update cache when alt feeds toggle changes
+            updateCachedArticlesIfNeeded()
         }
         // Global keyboard navigation: j/k for next/previous article
         .onKeyPress("j") {
@@ -292,8 +307,13 @@ struct SidebarContentView: View {
         }
     }
 
-    // Articles from the last 7 days for the Today view
+    // Cached articles for the Today view (updated when data changes)
     private var recentArticles: [Article] {
+        cachedRecentArticles
+    }
+
+    // Compute filtered articles - only called when data actually changes
+    private func computeRecentArticles() -> [Article] {
         let start = CFAbsoluteTimeGetCurrent()
         let sevenDaysAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
         let result = allArticles.filter { article in
@@ -302,9 +322,36 @@ struct SidebarContentView: View {
         }
         let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000
         if elapsed > 10 {
-            logger.warning("⚠️ recentArticles took \(elapsed, format: .fixed(precision: 1))ms for \(self.allArticles.count) articles → \(result.count) results")
+            logger.info("📊 recentArticles computed in \(elapsed, format: .fixed(precision: 1))ms for \(self.allArticles.count) articles → \(result.count) results")
         }
         return result
+    }
+
+    // Update cached articles when underlying data changes
+    // Uses Task with sleep to fully break out of layout cycle
+    private func updateCachedArticlesIfNeeded() {
+        // Only recompute if data actually changed
+        guard allArticles.count != lastArticleCount || showAltFeeds != lastShowAltFeeds else {
+            return
+        }
+
+        // Capture current values before async
+        let currentCount = allArticles.count
+        let currentShowAlt = showAltFeeds
+
+        // Use Task with tiny sleep to fully break out of current layout cycle
+        Task { @MainActor in
+            // Tiny delay to escape the layout pass
+            try? await Task.sleep(for: .milliseconds(10))
+
+            // Double-check we still need to update
+            guard currentCount != lastArticleCount || currentShowAlt != lastShowAltFeeds else {
+                return
+            }
+            lastArticleCount = currentCount
+            lastShowAltFeeds = currentShowAlt
+            cachedRecentArticles = computeRecentArticles()
+        }
     }
 
     // Current articles list based on sidebar selection (for prev/next navigation)
@@ -710,9 +757,6 @@ struct ArticleDetailColumn: View {
     @Binding var selectedArticle: Article?
     @Environment(\.modelContext) private var modelContext
 
-    // Maximum width for comfortable reading (Apple HIG recommendation)
-    private let maxReadingWidth: CGFloat = 700
-
     // Find current article index and compute previous/next
     private var currentIndex: Int? {
         articles.firstIndex(where: { $0.id == article.id })
@@ -749,26 +793,21 @@ struct ArticleDetailColumn: View {
                     }
                 )
             } else {
-                HStack {
-                    Spacer(minLength: 0)
-                    ArticleDetailSimple(
-                        article: article,
-                        previousArticleID: previousArticle?.persistentModelID,
-                        nextArticleID: nextArticle?.persistentModelID,
-                        onNavigateToPrevious: { _ in
-                            if let prev = previousArticle {
-                                selectedArticle = prev
-                            }
-                        },
-                        onNavigateToNext: { _ in
-                            if let next = nextArticle {
-                                selectedArticle = next
-                            }
+                ArticleDetailSimple(
+                    article: article,
+                    previousArticleID: previousArticle?.persistentModelID,
+                    nextArticleID: nextArticle?.persistentModelID,
+                    onNavigateToPrevious: { _ in
+                        if let prev = previousArticle {
+                            selectedArticle = prev
                         }
-                    )
-                    .frame(maxWidth: maxReadingWidth)
-                    Spacer(minLength: 0)
-                }
+                    },
+                    onNavigateToNext: { _ in
+                        if let next = nextArticle {
+                            selectedArticle = next
+                        }
+                    }
+                )
             }
         }
         .onAppear {
