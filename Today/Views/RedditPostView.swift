@@ -988,12 +988,14 @@ struct ImageGalleryView: View {
         }
         #else
         .sheet(isPresented: $showFullScreen) {
-            MacOSFullScreenGalleryWindow(images: images, currentIndex: $currentPage)
+            MacOSGallerySheet(images: images, currentIndex: $currentPage)
+                .frame(
+                    width: ScreenUtilities.mainScreenWidth * 0.95,
+                    height: ScreenUtilities.mainScreenHeight * 0.90
+                )
+                .presentationSizing(.fitted)
         }
         #endif
-        .onChange(of: showFullScreen) { oldValue, newValue in
-            print("🖼️ ImageGalleryView: showFullScreen changed \(oldValue) → \(newValue)")
-        }
     }
 }
 
@@ -1098,135 +1100,119 @@ struct FullScreenImageGallery: View {
     }
 }
 
-// MARK: - macOS Full Screen Gallery Window
+// MARK: - macOS Gallery Sheet
 
 #if os(macOS)
-struct MacOSFullScreenGalleryWindow: View {
+/// Simple sheet-based gallery for macOS
+struct MacOSGallerySheet: View {
     let images: [RedditGalleryImage]
     @Binding var currentIndex: Int
     @Environment(\.dismiss) private var dismiss
+    @FocusState private var isFocused: Bool
 
     var body: some View {
         ZStack {
-            // Dark background
-            Color.black
-                .ignoresSafeArea()
+            Color.black.ignoresSafeArea()
 
-            // Image content
+            // Image/video content
             if images.indices.contains(currentIndex) {
                 let image = images[currentIndex]
                 if image.isAnimated, let videoUrl = image.videoUrl {
-                    AnimatedMediaView(videoUrl: videoUrl, posterUrl: image.url, knownWidth: image.width, knownHeight: image.height)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    AnimatedMediaView(
+                        videoUrl: videoUrl,
+                        posterUrl: image.url,
+                        knownWidth: image.width,
+                        knownHeight: image.height
+                    )
+                    .id("video-\(currentIndex)")
                 } else {
                     ZoomableImageView(imageUrl: image.url)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .id("image-\(currentIndex)")
                 }
             }
 
             // Navigation overlay
             VStack {
-                // Top bar with title and close button
+                // Top bar
                 HStack {
-                    Button {
-                        dismiss()
-                    } label: {
+                    Button { dismiss() } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .font(.title2)
+                            .font(.system(size: 28))
                             .foregroundStyle(.white.opacity(0.8))
                     }
                     .buttonStyle(.plain)
-                    .keyboardShortcut(.escape, modifiers: [])
 
                     Spacer()
 
                     Text("\(currentIndex + 1) of \(images.count)")
                         .font(.headline)
                         .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(.black.opacity(0.5), in: Capsule())
 
                     Spacer()
 
-                    if let imageUrl = URL(string: images[currentIndex].url) {
+                    if images.indices.contains(currentIndex),
+                       let imageUrl = URL(string: images[currentIndex].url) {
                         ShareLink(item: imageUrl) {
                             Image(systemName: "square.and.arrow.up.circle.fill")
-                                .font(.title2)
+                                .font(.system(size: 28))
                                 .foregroundStyle(.white.opacity(0.8))
                         }
                         .buttonStyle(.plain)
                     }
                 }
-                .padding()
-                .background(.black.opacity(0.5))
+                .padding(16)
 
                 Spacer()
 
-                // Bottom navigation arrows (if multiple images)
+                // Navigation arrows
                 if images.count > 1 {
                     HStack {
                         Button {
-                            if currentIndex > 0 {
-                                withAnimation { currentIndex -= 1 }
-                            }
+                            if currentIndex > 0 { currentIndex -= 1 }
                         } label: {
                             Image(systemName: "chevron.left.circle.fill")
-                                .font(.largeTitle)
+                                .font(.system(size: 40))
                                 .foregroundStyle(.white.opacity(currentIndex > 0 ? 0.8 : 0.3))
                         }
                         .buttonStyle(.plain)
                         .disabled(currentIndex == 0)
-                        .keyboardShortcut(.leftArrow, modifiers: [])
 
                         Spacer()
 
                         Button {
-                            if currentIndex < images.count - 1 {
-                                withAnimation { currentIndex += 1 }
-                            }
+                            if currentIndex < images.count - 1 { currentIndex += 1 }
                         } label: {
                             Image(systemName: "chevron.right.circle.fill")
-                                .font(.largeTitle)
+                                .font(.system(size: 40))
                                 .foregroundStyle(.white.opacity(currentIndex < images.count - 1 ? 0.8 : 0.3))
                         }
                         .buttonStyle(.plain)
                         .disabled(currentIndex >= images.count - 1)
-                        .keyboardShortcut(.rightArrow, modifiers: [])
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 20)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 24)
                 }
             }
         }
         .focusable()
+        .focused($isFocused)
         .focusEffectDisabled()
+        .onAppear { isFocused = true }
         .onKeyPress(.leftArrow) {
-            if currentIndex > 0 {
-                withAnimation { currentIndex -= 1 }
-            }
+            if currentIndex > 0 { currentIndex -= 1 }
             return .handled
         }
         .onKeyPress(.rightArrow) {
-            if currentIndex < images.count - 1 {
-                withAnimation { currentIndex += 1 }
-            }
+            if currentIndex < images.count - 1 { currentIndex += 1 }
             return .handled
         }
-        .onKeyPress(characters: .init(charactersIn: "jJ")) { _ in
-            // j for next (vim-style)
-            if currentIndex < images.count - 1 {
-                withAnimation { currentIndex += 1 }
-            }
+        .onKeyPress(.escape) {
+            dismiss()
             return .handled
         }
-        .onKeyPress(characters: .init(charactersIn: "kK")) { _ in
-            // k for previous (vim-style)
-            if currentIndex > 0 {
-                withAnimation { currentIndex -= 1 }
-            }
-            return .handled
-        }
-        .frame(minWidth: 800, minHeight: 600)
-        .frame(idealWidth: ScreenUtilities.mainScreenWidth * 0.9,
-               idealHeight: ScreenUtilities.mainScreenHeight * 0.9)
     }
 }
 #endif
