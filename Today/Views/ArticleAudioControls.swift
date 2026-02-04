@@ -42,6 +42,7 @@ struct ArticleAudioControls: View {
     let article: Article
     @StateObject private var audioPlayer = ArticleAudioPlayer.shared
     @State private var showSpeedPicker = false
+    @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
 
     var body: some View {
         VStack(spacing: 12) {
@@ -55,7 +56,7 @@ struct ArticleAudioControls: View {
                             audioPlayer.seek(to: newValue)
                         }
                     ), in: 0...1)
-                    .tint(.accentColor)
+                    .tint(accentColor.color)
 
                     HStack {
                         Text((audioPlayer.progress * audioPlayer.estimatedDuration).formatted())
@@ -87,7 +88,7 @@ struct ArticleAudioControls: View {
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
-                    .background(Color.accentColor)
+                    .background(accentColor.color)
                     .cornerRadius(12)
                 }
 
@@ -123,12 +124,18 @@ struct ArticleAudioControls: View {
                     .cornerRadius(12)
                 }
             }
+            .buttonStyle(.plain)
         }
         .padding()
-        .background(platformBackgroundColor)
+        .background(Color.clear)
         .sheet(isPresented: $showSpeedPicker) {
+            #if os(macOS)
+            SpeedPickerView(audioPlayer: audioPlayer)
+                .frame(minWidth: 320, minHeight: 420)
+            #else
             SpeedPickerView(audioPlayer: audioPlayer)
                 .presentationDetents([.height(300)])
+            #endif
         }
     }
 
@@ -143,6 +150,7 @@ struct ArticleAudioControls: View {
 
 struct SpeedPickerView: View {
     @ObservedObject var audioPlayer: ArticleAudioPlayer
+    @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
     @Environment(\.dismiss) private var dismiss
 
     // Actual AVSpeech rates (0.5 = "1x" normal speed)
@@ -162,7 +170,7 @@ struct SpeedPickerView: View {
                             Spacer()
                             if abs(audioPlayer.playbackRate - speed) < 0.01 {
                                 Image(systemName: "checkmark")
-                                    .foregroundStyle(Color.accentColor)
+                                    .foregroundStyle(accentColor.color)
                             }
                         }
                     }
@@ -241,12 +249,22 @@ struct MiniAudioPlayer: View {
             }
         }
         .sheet(isPresented: $showTTSSpeedPicker) {
+            #if os(macOS)
+            SpeedPickerView(audioPlayer: audioPlayer)
+                .frame(minWidth: 320, minHeight: 420)
+            #else
             SpeedPickerView(audioPlayer: audioPlayer)
                 .presentationDetents([.height(300)])
+            #endif
         }
         .sheet(isPresented: $showPodcastSpeedPicker) {
+            #if os(macOS)
+            PodcastSpeedPickerView(podcastPlayer: podcastPlayer)
+                .frame(minWidth: 320, minHeight: 420)
+            #else
             PodcastSpeedPickerView(podcastPlayer: podcastPlayer)
                 .presentationDetents([.height(300)])
+            #endif
         }
         #if os(iOS)
         .fullScreenCover(isPresented: $showNowPlaying) {
@@ -259,7 +277,7 @@ struct MiniAudioPlayer: View {
         }
         #endif
     }
-    
+
     @ViewBuilder
     private func miniPlayerView(
         article: Article,
@@ -378,7 +396,7 @@ struct MiniAudioPlayer: View {
         }
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
-    
+
     private func formatDuration(_ duration: TimeInterval) -> String {
         AudioFormatters.formatDuration(duration)
     }
@@ -390,6 +408,7 @@ struct PodcastAudioControls: View {
     let article: Article
     @StateObject private var podcastPlayer = PodcastAudioPlayer.shared
     @State private var showSpeedPicker = false
+    @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
 
     var body: some View {
         VStack(spacing: 12) {
@@ -405,7 +424,7 @@ struct PodcastAudioControls: View {
                     Spacer()
                 }
             }
-            
+
             // Scrubber slider (only show when audio is active)
             if podcastPlayer.isPlaying || podcastPlayer.isPaused,
                podcastPlayer.currentArticle?.id == article.id {
@@ -416,7 +435,7 @@ struct PodcastAudioControls: View {
                             podcastPlayer.seek(to: newValue)
                         }
                     ), in: 0...1)
-                    .tint(.accentColor)
+                    .tint(accentColor.color)
 
                     HStack {
                         Text(formatDuration(podcastPlayer.currentTime))
@@ -448,7 +467,7 @@ struct PodcastAudioControls: View {
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
-                    .background(Color.accentColor)
+                    .background(accentColor.color)
                     .cornerRadius(12)
                 }
 
@@ -462,7 +481,7 @@ struct PodcastAudioControls: View {
                             .font(.title2)
                             .foregroundStyle(.secondary)
                             .frame(width: 44, height: 44)
-                            .background(platformGray6Color)
+                            .background(.primary.opacity(0.08))
                             .cornerRadius(12)
                     }
                 }
@@ -480,16 +499,22 @@ struct PodcastAudioControls: View {
                     .frame(minWidth: 60)
                     .padding(.vertical, 12)
                     .padding(.horizontal, 12)
-                    .background(platformGray6Color)
+                    .background(.primary.opacity(0.08))
                     .cornerRadius(12)
                 }
             }
+            .buttonStyle(.plain)
         }
         .padding()
-        .background(platformBackgroundColor)
+        .background(Color.clear)
         .sheet(isPresented: $showSpeedPicker) {
+            #if os(macOS)
+            PodcastSpeedPickerView(podcastPlayer: podcastPlayer)
+                .frame(minWidth: 320, minHeight: 420)
+            #else
             PodcastSpeedPickerView(podcastPlayer: podcastPlayer)
                 .presentationDetents([.height(300)])
+            #endif
         }
         .onAppear {
             // Prefetch chapters in the background so they're ready when playback starts
@@ -510,6 +535,7 @@ struct PodcastAudioControls: View {
 
 struct PodcastSpeedPickerView: View {
     @ObservedObject var podcastPlayer: PodcastAudioPlayer
+    @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
     @Environment(\.dismiss) private var dismiss
 
     private let speeds: [Float] = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
@@ -528,7 +554,7 @@ struct PodcastSpeedPickerView: View {
                             Spacer()
                             if abs(podcastPlayer.playbackRate - speed) < 0.01 {
                                 Image(systemName: "checkmark")
-                                    .foregroundStyle(Color.accentColor)
+                                    .foregroundStyle(accentColor.color)
                             }
                         }
                     }
