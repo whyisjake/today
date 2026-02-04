@@ -366,7 +366,8 @@ struct FeedListView: View {
                     .font(.headline)
                 Spacer()
             }
-            .padding()
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
             .background(Color(NSColor.windowBackgroundColor))
 
             Divider()
@@ -437,6 +438,7 @@ struct FeedListView: View {
                         .labelsHidden()
                     }
                 }
+                .padding(.top, 6)
 
                 // Error message
                 if let error = addFeedError {
@@ -472,10 +474,11 @@ struct FeedListView: View {
                 .disabled(isFieldsInvalid() || isAddingFeed)
                 .buttonStyle(.borderedProminent)
             }
-            .padding()
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
             .background(Color(NSColor.windowBackgroundColor))
         }
-        .frame(width: 400, height: 420)
+        .frame(width: 440, height: 400)
         .overlay {
             if isAddingFeed {
                 ZStack {
@@ -1383,6 +1386,7 @@ struct EditFeedView: View {
     @State private var url: String
     @State private var category: String
     @State private var useCustomCategory: Bool
+    @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
 
     init(feed: Feed, modelContext: ModelContext) {
         self.feed = feed
@@ -1396,14 +1400,113 @@ struct EditFeedView: View {
     }
 
     var body: some View {
+        #if os(macOS)
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Edit Feed")
+                        .font(.headline)
+                    Text(feed.title)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(Color(NSColor.windowBackgroundColor))
+
+            Divider()
+
+            // Content
+            VStack(alignment: .leading, spacing: 16) {
+                // Details section
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Feed Details")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 14)
+                        .padding(.top, 4)
+                        .padding(.leading, 4) {
+                        GridRow {
+                            Text("Title")
+                                .frame(width: 90, alignment: .trailing)
+                                .foregroundStyle(.secondary)
+                            TextField("Feed Title", text: $title)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                        GridRow {
+                            Text("URL")
+                                .frame(width: 90, alignment: .trailing)
+                                .foregroundStyle(.secondary)
+                            TextField("RSS Feed URL", text: $url)
+                                .textFieldStyle(.roundedBorder)
+                                .autocorrectionDisabled()
+                        }
+                    }
+                }
+
+                // Category section
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Category")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    Toggle("Use Custom Category", isOn: $useCustomCategory)
+                        .toggleStyle(.checkbox)
+
+                    if useCustomCategory {
+                        TextField("Custom Category Name", text: $category)
+                            .textFieldStyle(.roundedBorder)
+                    } else {
+                        Picker("Category", selection: $category) {
+                            ForEach(categoryManager.allCategories, id: \.self) { category in
+                                Text(category).tag(category)
+                            }
+                        }
+                        .labelsHidden()
+                    }
+
+                    Text(useCustomCategory ? "Enter a custom category name for this feed" : "Select from predefined categories")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.top, 6)
+
+                Spacer(minLength: 0)
+            }
+            .padding(20)
+
+            Divider()
+
+            // Footer
+            HStack {
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.escape, modifiers: [])
+
+                Spacer()
+
+                Button("Save") { saveFeed() }
+                    .keyboardShortcut(.return, modifiers: [])
+                    .disabled(title.isEmpty || url.isEmpty || category.isEmpty)
+                    .buttonStyle(.borderedProminent)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(Color(NSColor.windowBackgroundColor))
+        }
+        .tint(accentColor.color)
+        .frame(width: 440, height: 400)
+        #else
+        // iOS: keep the existing Form-based layout
         Form {
             Section {
                 TextField("Feed Title", text: $title)
-
                 TextField("RSS Feed URL", text: $url)
-                    #if os(iOS)
                     .textInputAutocapitalization(.never)
-                    #endif
                     .autocorrectionDisabled()
             } header: {
                 Text("Feed Details")
@@ -1411,12 +1514,9 @@ struct EditFeedView: View {
 
             Section {
                 Toggle("Use Custom Category", isOn: $useCustomCategory)
-
                 if useCustomCategory {
                     TextField("Custom Category Name", text: $category)
-                        #if os(iOS)
                         .textInputAutocapitalization(.never)
-                        #endif
                 } else {
                     Picker("Category", selection: $category) {
                         ForEach(categoryManager.allCategories, id: \.self) { category in
@@ -1435,17 +1535,14 @@ struct EditFeedView: View {
             }
         }
         .navigationTitle("Edit Feed")
-        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
-        #endif
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("Save") {
-                    saveFeed()
-                }
-                .disabled(title.isEmpty || url.isEmpty || category.isEmpty)
+                Button("Save") { saveFeed() }
+                    .disabled(title.isEmpty || url.isEmpty || category.isEmpty)
             }
         }
+        #endif
     }
 
     private func saveFeed() {
@@ -1987,3 +2084,5 @@ struct FeedNewsletterView: View {
         }
     }
 }
+
+

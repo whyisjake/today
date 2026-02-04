@@ -111,6 +111,7 @@ struct TodayApp: App {
         }
         .modelContainer(sharedModelContainer)
         #if os(macOS)
+        .defaultSize(width: 1200, height: 800)
         .commands {
             // Standard text editing commands
             CommandGroup(replacing: .textEditing) {

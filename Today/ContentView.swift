@@ -803,8 +803,10 @@ struct ArticleDetailColumn: View {
             }
         } else {
             // Not at bottom, scroll page down
+            #if os(macOS)
             NotificationCenter.default.post(name: .scrollPageDown, object: nil)
             logger.info("⌨️ Space: scrolling page down")
+            #endif
         }
     }
 
