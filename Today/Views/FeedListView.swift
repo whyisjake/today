@@ -98,6 +98,11 @@ struct FeedListView: View {
     @State private var showingExportConfirmation = false
     @AppStorage("showAltCategory") private var showAltFeeds = false // Global setting for Alt category visibility
 
+    // For macOS: show feed articles in a sheet to avoid nested navigation issues
+    #if os(macOS)
+    @State private var selectedFeedForArticles: Feed?
+    #endif
+
     init(modelContext: ModelContext) {
         _feedManager = StateObject(wrappedValue: FeedManager(modelContext: modelContext))
     }
@@ -143,6 +148,14 @@ struct FeedListView: View {
                 .sheet(isPresented: showingNewsletterSheet) {
                     newsletterSheet
                 }
+                #if os(macOS)
+                .sheet(item: $selectedFeedForArticles) { feed in
+                    NavigationStack {
+                        FeedArticlesView(feed: feed)
+                            .frame(minWidth: 700, minHeight: 500)
+                    }
+                }
+                #endif
                 .alert("OPML Exported", isPresented: $showingExportConfirmation) {
                     Button("OK", role: .cancel) { }
                 } message: {
@@ -183,6 +196,25 @@ struct FeedListView: View {
 
     @ViewBuilder
     private func feedRow(for feed: Feed) -> some View {
+        #if os(macOS)
+        // macOS: Use button + sheet to avoid nested navigation issues
+        Button {
+            selectedFeedForArticles = feed
+        } label: {
+            HStack {
+                feedRowLabel(for: feed)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            feedContextMenu(for: feed)
+        }
+        #else
+        // iOS: Use NavigationLink for proper push navigation
         NavigationLink {
             FeedArticlesView(feed: feed)
         } label: {
@@ -202,6 +234,7 @@ struct FeedListView: View {
             }
             .tint(accentColor.color)
         }
+        #endif
     }
 
     @ViewBuilder

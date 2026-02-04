@@ -170,76 +170,7 @@ struct SidebarContentView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            NavigationSplitView(columnVisibility: $columnVisibility) {
-                // Sidebar (Column 1): Feed list and navigation
-                sidebarList
-                    .navigationTitle("Today")
-                    .listStyle(.sidebar)
-            } content: {
-                // Content (Column 2): Article list or management views
-                if let selected = selectedSidebarItem {
-                    switch selected {
-                    case .today:
-                        ArticleListColumn(
-                            articles: recentArticles,
-                            title: "Today",
-                            selectedArticle: $selectedArticle
-                        )
-                    case .feeds:
-                        FeedListView(modelContext: modelContext)
-                    case .feed(let feedId):
-                        if let feed = feeds.first(where: { $0.id == feedId }) {
-                            ArticleListColumn(
-                                articles: feed.articles?.sorted { $0.publishedDate > $1.publishedDate } ?? [],
-                                title: feed.title,
-                                selectedArticle: $selectedArticle
-                            )
-                        } else {
-                            ContentUnavailableView(
-                                "Feed Not Found",
-                                systemImage: "doc.text.fill.badge.questionmark",
-                                description: Text("This feed is no longer available.")
-                            )
-                        }
-                    case .aiChat:
-                        AIChatView()
-                    case .settings:
-                        SettingsView()
-                    }
-                } else {
-                    ArticleListColumn(
-                        articles: recentArticles,
-                        title: "Today",
-                        selectedArticle: $selectedArticle
-                    )
-                }
-            } detail: {
-                // Detail (Column 3): Article content
-                if let article = selectedArticle {
-                    ArticleDetailColumn(
-                        article: article,
-                        articles: currentArticlesList,
-                        selectedArticle: $selectedArticle
-                    )
-                    .id(article.id) // Force complete view recreation on article change
-                } else {
-                    ContentUnavailableView(
-                        "Select an Article",
-                        systemImage: "doc.text",
-                        description: Text("Choose an article from the list to read it here.")
-                    )
-                }
-            }
-            .navigationSplitViewStyle(.balanced)
-            .padding(.bottom, totalMiniPlayerHeight)
-            .focusedSceneValue(\.selectedArticle, $selectedArticle)
-            .modifier(KeyboardShortcutsModifier(
-                selectedSidebarItem: $selectedSidebarItem,
-                onNextArticle: navigateToNextArticle,
-                onPreviousArticle: navigateToPreviousArticle
-            ))
-
-            // Global mini audio player
+            mainSplitView
             MiniAudioPlayer()
         }
         .onChange(of: selectedSidebarItem) { oldValue, newValue in
@@ -347,6 +278,89 @@ struct SidebarContentView: View {
             lastArticleCount = currentCount
             lastShowAltFeeds = currentShowAlt
             cachedRecentArticles = computeRecentArticles()
+        }
+    }
+
+    // MARK: - Main Split View
+    private var mainSplitView: some View {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            sidebarList
+                .navigationTitle("Today")
+                .listStyle(.sidebar)
+        } content: {
+            contentColumnView
+        } detail: {
+            detailColumnView
+        }
+        .navigationSplitViewStyle(.balanced)
+        .padding(.bottom, totalMiniPlayerHeight)
+        #if os(macOS)
+        .focusedSceneValue(\.selectedArticle, $selectedArticle)
+        .modifier(KeyboardShortcutsModifier(
+            selectedSidebarItem: $selectedSidebarItem,
+            onNextArticle: navigateToNextArticle,
+            onPreviousArticle: navigateToPreviousArticle
+        ))
+        #endif
+    }
+
+    // MARK: - Detail Column View
+    @ViewBuilder
+    private var detailColumnView: some View {
+        if let article = selectedArticle {
+            ArticleDetailColumn(
+                article: article,
+                articles: currentArticlesList,
+                selectedArticle: $selectedArticle
+            )
+            .id(article.id)
+        } else {
+            ContentUnavailableView(
+                "Select an Article",
+                systemImage: "doc.text",
+                description: Text("Choose an article from the list to read it here.")
+            )
+        }
+    }
+
+    // MARK: - Content Column View
+    @ViewBuilder
+    private var contentColumnView: some View {
+        if let selected = selectedSidebarItem {
+            switch selected {
+            case .today:
+                ArticleListColumn(
+                    articles: recentArticles,
+                    title: "Today",
+                    selectedArticle: $selectedArticle
+                )
+            case .feeds:
+                FeedListView(modelContext: modelContext)
+            case .feed(let feedId):
+                if let feed = feeds.first(where: { $0.id == feedId }) {
+                    ArticleListColumn(
+                        articles: feed.articles?.sorted { $0.publishedDate > $1.publishedDate } ?? [],
+                        title: feed.title,
+                        selectedArticle: $selectedArticle
+                    )
+                } else {
+                    ContentUnavailableView(
+                        "Feed Not Found",
+                        systemImage: "doc.text.fill.badge.questionmark",
+                        description: Text("This feed is no longer available.")
+                    )
+                }
+            case .aiChat:
+                AIChatView()
+            case .settings:
+                SettingsView()
+            }
+        } else {
+            ArticleListColumn(
+                articles: recentArticles,
+                title: "Today",
+                selectedArticle: $selectedArticle
+            )
         }
     }
 
