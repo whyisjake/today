@@ -39,13 +39,18 @@ struct ContentView: View {
 
     var body: some View {
         Group {
+            #if os(macOS)
+            // Mac always uses sidebar layout
+            SidebarContentView(modelContext: modelContext)
+            #else
             if horizontalSizeClass == .regular {
-                // iPad/Mac layout with sidebar
+                // iPad layout with sidebar
                 SidebarContentView(modelContext: modelContext)
             } else {
                 // iPhone layout with tab bar
                 CompactContentView(modelContext: modelContext)
             }
+            #endif
         }
         .preferredColorScheme(appearanceMode.colorScheme)
         .tint(accentColor.color)
@@ -57,6 +62,7 @@ struct ContentView: View {
 }
 
 // MARK: - Compact Layout (iPhone)
+#if os(iOS)
 struct CompactContentView: View {
     let modelContext: ModelContext
     @StateObject private var audioPlayer = ArticleAudioPlayer.shared
@@ -109,6 +115,7 @@ struct CompactContentView: View {
         }
     }
 }
+#endif
 
 // MARK: - Sidebar Layout (iPad/Mac) - Three Column
 struct SidebarContentView: View {
@@ -335,7 +342,11 @@ struct SidebarContentView: View {
                     selectedArticle: $selectedArticle
                 )
             case .feeds:
+                #if os(macOS)
+                FeedListView(modelContext: modelContext, selectedArticle: $selectedArticle)
+                #else
                 FeedListView(modelContext: modelContext)
+                #endif
             case .feed(let feedId):
                 if let feed = feeds.first(where: { $0.id == feedId }) {
                     ArticleListColumn(

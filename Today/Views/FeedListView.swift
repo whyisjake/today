@@ -98,14 +98,22 @@ struct FeedListView: View {
     @State private var showingExportConfirmation = false
     @AppStorage("showAltCategory") private var showAltFeeds = false // Global setting for Alt category visibility
 
-    // For macOS: show feed articles in a sheet to avoid nested navigation issues
+    // For macOS: show feed articles in place and use parent's selectedArticle
     #if os(macOS)
     @State private var selectedFeedForArticles: Feed?
+    @Binding var selectedArticle: Article?
     #endif
 
+    #if os(macOS)
+    init(modelContext: ModelContext, selectedArticle: Binding<Article?>) {
+        _feedManager = StateObject(wrappedValue: FeedManager(modelContext: modelContext))
+        _selectedArticle = selectedArticle
+    }
+    #else
     init(modelContext: ModelContext) {
         _feedManager = StateObject(wrappedValue: FeedManager(modelContext: modelContext))
     }
+    #endif
 
     // Filter feeds based on Alt category visibility
     private var visibleFeeds: [Feed] {
@@ -128,6 +136,31 @@ struct FeedListView: View {
 
     var body: some View {
         NavigationStack {
+            #if os(macOS)
+            // macOS: swap views in place to avoid nested navigation
+            if let feed = selectedFeedForArticles {
+                FeedArticlesView(feed: feed, selectedArticle: $selectedArticle)
+                    .navigationTitle(feed.title)
+                    .toolbar {
+                        ToolbarItem(placement: .navigation) {
+                            Button {
+                                selectedFeedForArticles = nil
+                            } label: {
+                                Label("Back to Feeds", systemImage: "chevron.left")
+                            }
+                        }
+                    }
+            } else {
+                feedListContent
+                    .navigationTitle("RSS Feeds")
+                    .toolbar {
+                        toolbarContent
+                    }
+                    .overlay {
+                        syncingOverlay
+                    }
+            }
+            #else
             feedListContent
                 .navigationTitle("RSS Feeds")
                 .toolbar {
@@ -136,35 +169,28 @@ struct FeedListView: View {
                 .overlay {
                     syncingOverlay
                 }
-                .sheet(isPresented: $showingAddFeed) {
-                    addFeedSheet
-                }
-                .sheet(isPresented: $showingImportOPML) {
-                    importOPMLSheet
-                }
-                .sheet(isPresented: showingEditFeed) {
-                    editFeedSheet
-                }
-                .sheet(isPresented: showingNewsletterSheet) {
-                    newsletterSheet
-                }
-                #if os(macOS)
-                .sheet(item: $selectedFeedForArticles) { feed in
-                    NavigationStack {
-                        FeedArticlesView(feed: feed)
-                            .frame(minWidth: 700, minHeight: 500)
-                    }
-                }
-                #endif
-                .alert("OPML Exported", isPresented: $showingExportConfirmation) {
-                    Button("OK", role: .cancel) { }
-                } message: {
-                    Text("Your OPML feed list has been copied to the clipboard.")
-                }
-                .onAppear {
-                    // Sync custom categories from existing feeds
-                    categoryManager.syncCategories(from: feeds.map { $0.category })
-                }
+            #endif
+        }
+        .sheet(isPresented: $showingAddFeed) {
+            addFeedSheet
+        }
+        .sheet(isPresented: $showingImportOPML) {
+            importOPMLSheet
+        }
+        .sheet(isPresented: showingEditFeed) {
+            editFeedSheet
+        }
+        .sheet(isPresented: showingNewsletterSheet) {
+            newsletterSheet
+        }
+        .alert("OPML Exported", isPresented: $showingExportConfirmation) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Your OPML feed list has been copied to the clipboard.")
+        }
+        .onAppear {
+            // Sync custom categories from existing feeds
+            categoryManager.syncCategories(from: feeds.map { $0.category })
         }
     }
 
@@ -1461,9 +1487,7 @@ struct EditFeedView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
 
-                    Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 14)
-                        .padding(.top, 4)
-                        .padding(.leading, 4) {
+                    Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 14) {
                         GridRow {
                             Text("Title")
                                 .frame(width: 90, alignment: .trailing)
@@ -1480,6 +1504,8 @@ struct EditFeedView: View {
                                 .autocorrectionDisabled()
                         }
                     }
+                    .padding(.top, 4)
+                    .padding(.leading, 4)
                 }
 
                 // Category section
@@ -1614,6 +1640,20 @@ struct FeedArticlesView: View {
     @State private var navigationState: NavigationState?
     @AppStorage("fontOption") private var fontOption: FontOption = .serif
 
+    // For macOS: use parent's selectedArticle to show in detail column
+    #if os(macOS)
+    @Binding var selectedArticle: Article?
+
+    init(feed: Feed, selectedArticle: Binding<Article?>) {
+        self.feed = feed
+        _selectedArticle = selectedArticle
+    }
+    #else
+    init(feed: Feed) {
+        self.feed = feed
+    }
+    #endif
+
     // Navigation state that bundles article ID with context
     struct NavigationState: Hashable {
         let articleID: PersistentIdentifier
@@ -1678,19 +1718,26 @@ struct FeedArticlesView: View {
                     List {
                         ForEach(filteredArticles, id: \.persistentModelID) { article in
                         Button {
+                            #if os(macOS)
+                            // Set parent's selectedArticle to show in detail column
+                            selectedArticle = article
+                            #else
                             // Capture navigation context when article is selected
                             let context = filteredArticles.map { $0.persistentModelID }
                             navigationState = NavigationState(
                                 articleID: article.persistentModelID,
                                 context: context
                             )
+                            #endif
                         } label: {
                             HStack {
                                 ArticleRowView(article: article, fontOption: fontOption, isInFeedView: true)
                                 Spacer()
+                                #if os(iOS)
                                 Image(systemName: "chevron.right")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
+                                #endif
                             }
                         }
                         .buttonStyle(.plain)
@@ -1728,6 +1775,7 @@ struct FeedArticlesView: View {
             }
             #endif
         }
+        #if os(iOS)
         .navigationDestination(item: $navigationState) { state in
             if let article = modelContext.model(for: state.articleID) as? Article {
                 // For Reddit posts, show combined post + comments view
@@ -1803,6 +1851,7 @@ struct FeedArticlesView: View {
                 }
             }
         }
+        #endif
     }
 
     private var feedDetailMenu: some View {
