@@ -47,6 +47,7 @@ struct AIChatView: View {
     @State private var messages: [ChatMessage] = []
     @State private var inputText = ""
     @State private var isProcessing = false
+    @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
 
     // Computed property for available categories (from articles in last 7 days)
     private var categories: [String] {
@@ -70,7 +71,7 @@ struct AIChatView: View {
                     VStack(spacing: 20) {
                         Image(systemName: "sparkles")
                             .font(.system(size: 60))
-                            .foregroundStyle(Color.accentColor)
+                            .foregroundStyle(accentColor.color)
 
                         Text("AI Summary Assistant")
                             .font(.title2)
@@ -101,11 +102,12 @@ struct AIChatView: View {
                                 }
                                 .frame(maxWidth: .infinity)
                                 .padding()
-                                .background(Color.accentColor)
+                                .background(accentColor.color)
                                 .foregroundStyle(.white)
                                 .cornerRadius(12)
                             }
                             .disabled(articles.isEmpty || isProcessing)
+                            .buttonStyle(.plain)
 
                             // Category-specific newsletter buttons
                             if categories.count > 1 {
@@ -131,11 +133,12 @@ struct AIChatView: View {
                                                     }
                                                     .padding(.horizontal, 12)
                                                     .padding(.vertical, 8)
-                                                    .background(Color.accentColor.opacity(0.1))
-                                                    .foregroundStyle(Color.accentColor)
+                                                    .background(accentColor.color.opacity(0.1))
+                                                    .foregroundStyle(accentColor.color)
                                                     .cornerRadius(8)
                                                 }
                                                 .disabled(isProcessing)
+                                                .buttonStyle(.plain)
                                             }
                                         }
                                     }
@@ -198,7 +201,7 @@ struct AIChatView: View {
                     } label: {
                         Image(systemName: isProcessing ? "hourglass" : "arrow.up.circle.fill")
                             .font(.title2)
-                            .foregroundStyle(inputText.isEmpty ? .gray : Color.accentColor)
+                            .foregroundStyle(inputText.isEmpty ? .gray : accentColor.color)
                     }
                     .disabled(inputText.isEmpty || isProcessing)
                 }
@@ -220,6 +223,7 @@ struct AIChatView: View {
                 #endif
             }
         }
+        .tint(accentColor.color)
     }
 
     private var clearButton: some View {
@@ -344,6 +348,7 @@ struct AIChatView: View {
 
 struct MessageBubble: View {
     @ObservedObject var message: ChatMessage
+    @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
 
     private func parseMarkdown(_ text: String) -> AttributedString {
         do {
@@ -377,20 +382,20 @@ struct MessageBubble: View {
                                 .textSelection(.enabled)
 
                             Divider()
-                                .background(Color.accentColor)
+                                .background(accentColor.color)
                                 .frame(height: 2)
                         }
-                        .background(Color.accentColor.opacity(0.1))
+                        .background(accentColor.color.opacity(0.1))
                         .cornerRadius(16)
                         .overlay(
                             RoundedRectangle(cornerRadius: 16)
-                                .stroke(Color.accentColor.opacity(0.3), lineWidth: 1)
+                                .stroke(accentColor.color.opacity(0.3), lineWidth: 1)
                         )
                     } else {
                         // Regular message
                         Text(parseMarkdown(message.content))
                             .padding(12)
-                            .background(message.isUser ? Color.accentColor : Color.gray.opacity(0.2))
+                            .background(message.isUser ? accentColor.color : Color.gray.opacity(0.2))
                             .foregroundStyle(message.isUser ? .white : .primary)
                             .cornerRadius(16)
                             .textSelection(.enabled)
@@ -424,7 +429,7 @@ struct MessageBubble: View {
                                         HStack(spacing: 8) {
                                             Image(systemName: "arrow.right.circle.fill")
                                                 .font(.subheadline)
-                                                .foregroundStyle(Color.accentColor)
+                                                .foregroundStyle(accentColor.color)
 
                                             VStack(alignment: .leading, spacing: 2) {
                                                 Text("Read full article")
@@ -444,7 +449,7 @@ struct MessageBubble: View {
                                                 .font(.caption)
                                                 .foregroundStyle(.secondary)
                                         }
-                                        .foregroundStyle(Color.accentColor)
+                                        .foregroundStyle(accentColor.color)
                                     }
                                     .padding(12)
                                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -485,7 +490,7 @@ struct MessageBubble: View {
                                 HStack(spacing: 12) {
                                     Image(systemName: "doc.text.fill")
                                         .font(.caption)
-                                        .foregroundStyle(Color.accentColor)
+                                        .foregroundStyle(accentColor.color)
 
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(article.title)
@@ -510,9 +515,10 @@ struct MessageBubble: View {
                                         .foregroundStyle(.secondary)
                                 }
                                 .padding(10)
-                                .background(Color.accentColor.opacity(0.1))
+                                .background(accentColor.color.opacity(0.1))
                                 .cornerRadius(8)
                             }
+                            .buttonStyle(.plain)
                         }
                     }
                     .padding(.horizontal, 4)
@@ -533,6 +539,7 @@ struct MessageBubble: View {
 struct SuggestionButton: View {
     let text: String
     let action: (String) -> Void
+    @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
 
     var body: some View {
         Button {
@@ -549,10 +556,11 @@ struct SuggestionButton: View {
                     .font(.caption)
             }
             .padding()
-            .background(Color.accentColor.opacity(0.1))
-            .foregroundStyle(Color.accentColor)
+            .background(accentColor.color.opacity(0.1))
+            .foregroundStyle(accentColor.color)
             .cornerRadius(10)
         }
+        .buttonStyle(.plain)
     }
 }
 
