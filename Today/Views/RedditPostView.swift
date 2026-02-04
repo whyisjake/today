@@ -1707,6 +1707,7 @@ extension View {
 struct CommentRowView: View {
     let comment: RedditComment
     let fontOption: FontOption
+    @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
 
     // For iOS: local collapse state
     // For macOS: externally managed collapse state
@@ -1755,7 +1756,7 @@ struct CommentRowView: View {
                                 Text("u/\(comment.author)")
                                     .font(.caption)
                                     .fontWeight(.semibold)
-                                    .foregroundStyle(.orange)
+                                    .foregroundStyle(accentColor.color)
                             }
                         }
                         .buttonStyle(.plain)
@@ -1776,7 +1777,7 @@ struct CommentRowView: View {
                                 Text("u/\(comment.author)")
                                     .font(.caption)
                                     .fontWeight(.semibold)
-                                    .foregroundStyle(.orange)
+                                    .foregroundStyle(accentColor.color)
                             }
                         }
                         .buttonStyle(.plain)
