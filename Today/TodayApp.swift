@@ -9,8 +9,44 @@ import SwiftUI
 import SwiftData
 import AVFoundation
 
+#if os(macOS)
+import AppKit
+
+// Notification names for text size changes
+extension Notification.Name {
+    static let increaseTextSize = Notification.Name("increaseTextSize")
+    static let decreaseTextSize = Notification.Name("decreaseTextSize")
+    static let resetTextSize = Notification.Name("resetTextSize")
+    static let navigateToNextArticle = Notification.Name("navigateToNextArticle")
+    static let navigateToPreviousArticle = Notification.Name("navigateToPreviousArticle")
+    static let navigateToNextImage = Notification.Name("navigateToNextImage")
+    static let navigateToPreviousImage = Notification.Name("navigateToPreviousImage")
+    static let toggleArticleFavorite = Notification.Name("toggleArticleFavorite")
+    static let toggleArticleRead = Notification.Name("toggleArticleRead")
+    static let openArticleInBrowser = Notification.Name("openArticleInBrowser")
+    static let shareArticle = Notification.Name("shareArticle")
+    static let scrollPageDown = Notification.Name("scrollPageDown")
+    static let articleScrolledToBottom = Notification.Name("articleScrolledToBottom")
+    static let articleScrolledFromBottom = Notification.Name("articleScrolledFromBottom")
+}
+
+// Focused values for keyboard shortcuts
+extension FocusedValues {
+    struct SelectedArticleKey: FocusedValueKey {
+        typealias Value = Binding<Article?>
+    }
+    
+    var selectedArticle: Binding<Article?>? {
+        get { self[SelectedArticleKey.self] }
+        set { self[SelectedArticleKey.self] = newValue }
+    }
+}
+#endif
+
 @main
 struct TodayApp: App {
+    @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
+    
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Feed.self,
@@ -44,6 +80,7 @@ struct TodayApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .tint(accentColor.color)
                 .onAppear {
                     // Set the model container for background sync (must be on MainActor)
                     BackgroundSyncManager.shared.modelContainer = sharedModelContainer
@@ -62,15 +99,117 @@ struct TodayApp: App {
                     // Check if we need to sync on launch (content older than 2 hours)
                     checkAndSyncIfNeeded()
                 }
+                #if os(macOS)
+                .frame(minWidth: 900, minHeight: 600)
+                .onAppear {
+                    restoreWindowFrame()
+                }
+                .onDisappear {
+                    saveWindowFrame()
+                }
+                #endif
         }
         .modelContainer(sharedModelContainer)
         #if os(macOS)
         .commands {
+            // Standard text editing commands
+            CommandGroup(replacing: .textEditing) {
+                Button("Copy") {
+                    NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil)
+                }
+                .keyboardShortcut("c", modifiers: .command)
+                
+                Button("Select All") {
+                    NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
+                }
+                .keyboardShortcut("a", modifiers: .command)
+            }
+            
+            // Custom Feeds menu
             CommandMenu("Feeds") {
                 Button("Sync All Feeds") {
                     BackgroundSyncManager.shared.triggerManualSync()
                 }
                 .keyboardShortcut("r", modifiers: .command)
+                
+                Divider()
+                
+                Button("Mark All as Read") {
+                    Task { @MainActor in
+                        markAllArticlesAsRead()
+                    }
+                }
+                .keyboardShortcut("k", modifiers: [.command, .shift])
+            }
+            
+            // Navigation menu
+            CommandMenu("Navigate") {
+                Button("Next Article") {
+                    NotificationCenter.default.post(name: .navigateToNextArticle, object: nil)
+                }
+                .keyboardShortcut("j")
+                
+                Button("Previous Article") {
+                    NotificationCenter.default.post(name: .navigateToPreviousArticle, object: nil)
+                }
+                .keyboardShortcut("k")
+                
+                Divider()
+                
+                Button("Previous Image") {
+                    NotificationCenter.default.post(name: .navigateToPreviousImage, object: nil)
+                }
+                .keyboardShortcut(.leftArrow, modifiers: [])
+                
+                Button("Next Image") {
+                    NotificationCenter.default.post(name: .navigateToNextImage, object: nil)
+                }
+                .keyboardShortcut(.rightArrow, modifiers: [])
+            }
+            
+            // Article actions menu
+            CommandMenu("Article") {
+                Button("Toggle Favorite") {
+                    NotificationCenter.default.post(name: .toggleArticleFavorite, object: nil)
+                }
+                .keyboardShortcut("f", modifiers: .command)
+                
+                Button("Toggle Read/Unread") {
+                    NotificationCenter.default.post(name: .toggleArticleRead, object: nil)
+                }
+                .keyboardShortcut("u", modifiers: .command)
+                
+                Divider()
+                
+                Button("Open in Browser") {
+                    NotificationCenter.default.post(name: .openArticleInBrowser, object: nil)
+                }
+                .keyboardShortcut("o", modifiers: .command)
+                
+                Button("Share Article") {
+                    NotificationCenter.default.post(name: .shareArticle, object: nil)
+                }
+                .keyboardShortcut("s", modifiers: [.command, .shift])
+            }
+            
+            // View menu additions
+            CommandGroup(after: .sidebar) {
+                Divider()
+                
+                Button("Increase Text Size") {
+                    NotificationCenter.default.post(name: .increaseTextSize, object: nil)
+                }
+                .keyboardShortcut("+", modifiers: .command)
+                
+                Button("Decrease Text Size") {
+                    NotificationCenter.default.post(name: .decreaseTextSize, object: nil)
+                }
+                .keyboardShortcut("-", modifiers: .command)
+                
+                Button("Reset Text Size") {
+                    NotificationCenter.default.post(name: .resetTextSize, object: nil)
+                }
+                .keyboardShortcut("0", modifiers: .command)
             }
         }
         #endif
@@ -79,7 +218,9 @@ struct TodayApp: App {
         Settings {
             SettingsView()
                 .modelContainer(sharedModelContainer)
+                .tint(accentColor.color)
         }
+        .defaultSize(width: 550, height: 400)
         #endif
     }
 
@@ -140,4 +281,58 @@ struct TodayApp: App {
             await BackgroundSyncManager.shared.triggerManualSync()
         }
     }
+    
+    @MainActor
+    private func markAllArticlesAsRead() {
+        let context = sharedModelContainer.mainContext
+        let fetchDescriptor = FetchDescriptor<Article>(predicate: #Predicate { article in
+            !article.isRead
+        })
+        
+        guard let articles = try? context.fetch(fetchDescriptor) else { return }
+        
+        for article in articles {
+            article.isRead = true
+        }
+        
+        try? context.save()
+    }
+    
+    #if os(macOS)
+    // MARK: - Window State Persistence
+    
+    @MainActor
+    private func saveWindowFrame() {
+        guard let window = NSApplication.shared.windows.first else { return }
+        let frame = window.frame
+        
+        UserDefaults.standard.set(frame.origin.x, forKey: "windowX")
+        UserDefaults.standard.set(frame.origin.y, forKey: "windowY")
+        UserDefaults.standard.set(frame.size.width, forKey: "windowWidth")
+        UserDefaults.standard.set(frame.size.height, forKey: "windowHeight")
+    }
+    
+    @MainActor
+    private func restoreWindowFrame() {
+        guard let window = NSApplication.shared.windows.first else {
+            // If window isn't ready yet, try again after a short delay
+            Task {
+                try? await Task.sleep(for: .milliseconds(100))
+                restoreWindowFrame()
+            }
+            return
+        }
+        
+        let x = UserDefaults.standard.double(forKey: "windowX")
+        let y = UserDefaults.standard.double(forKey: "windowY")
+        let width = UserDefaults.standard.double(forKey: "windowWidth")
+        let height = UserDefaults.standard.double(forKey: "windowHeight")
+        
+        // Only restore if we have saved values (width > 0 indicates saved state exists)
+        guard width > 0 else { return }
+        
+        let frame = NSRect(x: x, y: y, width: width, height: height)
+        window.setFrame(frame, display: true)
+    }
+    #endif
 }

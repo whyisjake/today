@@ -37,6 +37,7 @@ struct ArticleDetailSimple: View {
     let article: Article
     let previousArticleID: PersistentIdentifier?
     let nextArticleID: PersistentIdentifier?
+    var isAtBottomBinding: Binding<Bool>? = nil // Optional binding for scroll position
     let onNavigateToPrevious: (PersistentIdentifier) -> Void
     let onNavigateToNext: (PersistentIdentifier) -> Void
 
@@ -126,14 +127,23 @@ struct ArticleDetailSimple: View {
                 WebViewRepresentable(url: url)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let contentEncoded = article.contentEncoded {
-                ScrollableWebView(htmlContent: contentEncoded)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ScrollableWebView(
+                    htmlContent: contentEncoded,
+                    articleID: article.persistentModelID
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let content = article.content {
-                ScrollableWebView(htmlContent: content)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ScrollableWebView(
+                    htmlContent: content,
+                    articleID: article.persistentModelID
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let description = article.articleDescription {
-                ScrollableWebView(htmlContent: description)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ScrollableWebView(
+                    htmlContent: description,
+                    articleID: article.persistentModelID
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -442,13 +452,13 @@ struct ArticleContentWebView: View {
 #if os(macOS)
 struct ScrollableWebView: NSViewRepresentable {
     let htmlContent: String
-    @State private var selectedURL: URL?
+    let articleID: PersistentIdentifier? // For tracking which article's scroll position
     @Environment(\.colorScheme) var colorScheme
     @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
     @AppStorage("fontOption") private var fontOption: FontOption = .serif
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(self)
+        Coordinator(self, articleID: articleID)
     }
 
     func makeNSView(context: Context) -> WKWebView {
@@ -459,6 +469,12 @@ struct ScrollableWebView: NSViewRepresentable {
         // Transparent background for dark mode
         webView.underPageBackgroundColor = .clear
         webView.setValue(false, forKey: "drawsBackground")
+        
+        // Set up scroll observation
+        context.coordinator.setupScrollObservation(webView: webView)
+        
+        // Listen for page down notification
+        context.coordinator.setupPageDownNotification(webView: webView)
 
         return webView
     }
@@ -471,9 +487,81 @@ struct ScrollableWebView: NSViewRepresentable {
 
     class Coordinator: NSObject, WKNavigationDelegate {
         var parent: ScrollableWebView
+        let articleID: PersistentIdentifier?
+        private var scrollObserver: NSKeyValueObservation?
+        private var pageDownObserver: NSObjectProtocol?
 
-        init(_ parent: ScrollableWebView) {
+        init(_ parent: ScrollableWebView, articleID: PersistentIdentifier?) {
             self.parent = parent
+            self.articleID = articleID
+        }
+        
+        deinit {
+            scrollObserver?.invalidate()
+            if let observer = pageDownObserver {
+                NotificationCenter.default.removeObserver(observer)
+            }
+        }
+        
+        func setupScrollObservation(webView: WKWebView) {
+            // Observe scroll position changes via contentView.bounds on macOS
+            guard let scrollView = webView.enclosingScrollView else { return }
+            
+            // Use a debounced approach to avoid too many notifications
+            scrollObserver = scrollView.contentView.observe(\.bounds, options: [.new]) { [weak self] contentView, _ in
+                guard let self = self, 
+                      let articleID = self.articleID,
+                      let scrollView = contentView.enclosingScrollView,
+                      let documentView = scrollView.documentView else { return }
+                
+                let scrollPosition = scrollView.documentVisibleRect.maxY
+                let contentHeight = documentView.frame.height
+                
+                // Only post if we have valid dimensions
+                guard contentHeight > 0 else { return }
+                
+                // Consider "at bottom" if within 100 points of the end
+                let isAtBottom = (contentHeight - scrollPosition) < 100
+                
+                // Post on main thread to be safe
+                DispatchQueue.main.async {
+                    if isAtBottom {
+                        NotificationCenter.default.post(
+                            name: .articleScrolledToBottom,
+                            object: articleID
+                        )
+                    } else {
+                        NotificationCenter.default.post(
+                            name: .articleScrolledFromBottom,
+                            object: articleID
+                        )
+                    }
+                }
+            }
+        }
+        
+        func setupPageDownNotification(webView: WKWebView) {
+            // Listen for space bar "page down" command
+            pageDownObserver = NotificationCenter.default.addObserver(
+                forName: .scrollPageDown,
+                object: nil,
+                queue: .main
+            ) { [weak webView] _ in
+                guard let webView = webView,
+                      let scrollView = webView.enclosingScrollView else { return }
+                
+                // Scroll down by viewport height
+                let currentY = scrollView.contentView.bounds.origin.y
+                let viewportHeight = scrollView.contentView.bounds.height
+                let newY = min(currentY + viewportHeight,
+                              (scrollView.documentView?.frame.height ?? 0) - viewportHeight)
+                
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.25
+                    context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                    scrollView.contentView.animator().setBoundsOrigin(NSPoint(x: 0, y: newY))
+                }
+            }
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {

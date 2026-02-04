@@ -55,6 +55,7 @@ struct FeedListView: View {
     @StateObject private var feedManager: FeedManager
     @ObservedObject private var categoryManager = CategoryManager.shared
     @ObservedObject private var syncManager = BackgroundSyncManager.shared
+    @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
 
     @State private var showingAddFeed = false
     @State private var feedType: FeedType = .rss
@@ -199,7 +200,7 @@ struct FeedListView: View {
             } label: {
                 Label("Newsletter", systemImage: "newspaper")
             }
-            .tint(.orange)
+            .tint(accentColor.color)
         }
     }
 
@@ -220,7 +221,7 @@ struct FeedListView: View {
                     .font(.caption)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 2)
-                    .background(Color.accentColor.opacity(0.2))
+                    .background(accentColor.color.opacity(0.2))
                     .cornerRadius(4)
 
                 if let lastFetched = feed.lastFetched {
@@ -704,7 +705,7 @@ struct FeedListView: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 2)
-                    .background(Color.accentColor)
+                    .background(accentColor.color)
                     .cornerRadius(10)
             }
         }
@@ -1476,6 +1477,7 @@ struct FeedArticlesView: View {
     let feed: Feed
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Article.publishedDate, order: .reverse) private var allArticles: [Article]
+    @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
 
     @State private var showReadArticles = false
     @State private var searchText = ""
@@ -1518,7 +1520,7 @@ struct FeedArticlesView: View {
                 Text("r/\(subreddit)")
                     .font(.subheadline)
                     .fontWeight(.medium)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(accentColor.color)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 8)
                     #if os(iOS)

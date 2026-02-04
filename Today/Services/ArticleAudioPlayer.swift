@@ -358,13 +358,17 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
     /// Creates a fallback artwork image using SF Symbols
     private func createFallbackArtwork() -> PlatformImage {
         let size = CGSize(width: 300, height: 300)
+        
+        // Get user's selected accent color from UserDefaults
+        let accentColorRawValue = UserDefaults.standard.string(forKey: "accentColor") ?? AccentColorOption.orange.rawValue
+        let accentColorOption = AccentColorOption(rawValue: accentColorRawValue) ?? .orange
 
         #if os(iOS)
         let renderer = UIGraphicsImageRenderer(size: size)
 
         return renderer.image { context in
-            // Background
-            UIColor.systemOrange.setFill()
+            // Background - use user's accent color
+            UIColor(accentColorOption.color).setFill()
             context.fill(CGRect(origin: .zero, size: size))
 
             // Speaker icon for TTS
@@ -381,8 +385,8 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
         let image = NSImage(size: size)
         image.lockFocus()
 
-        // Background
-        NSColor.orange.setFill()
+        // Background - use user's accent color
+        NSColor(accentColorOption.color).setFill()
         NSRect(origin: .zero, size: size).fill()
 
         // Speaker icon for TTS

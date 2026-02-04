@@ -125,6 +125,7 @@ struct SidebarContentView: View {
     @State private var lastShowAltFeeds: Bool = false
     @StateObject private var audioPlayer = ArticleAudioPlayer.shared
     @StateObject private var podcastPlayer = PodcastAudioPlayer.shared
+    @FocusState private var detailColumnFocused: Bool
 
     enum SidebarItem: Hashable {
         case today
@@ -231,20 +232,12 @@ struct SidebarContentView: View {
             }
             .navigationSplitViewStyle(.balanced)
             .padding(.bottom, totalMiniPlayerHeight)
-            // Keyboard shortcuts for sidebar navigation
-            .background {
-                Group {
-                    Button("") { selectedSidebarItem = .today }
-                        .keyboardShortcut("1", modifiers: .command)
-                    Button("") { selectedSidebarItem = .feeds }
-                        .keyboardShortcut("2", modifiers: .command)
-                    Button("") { selectedSidebarItem = .aiChat }
-                        .keyboardShortcut("3", modifiers: .command)
-                    Button("") { selectedSidebarItem = .settings }
-                        .keyboardShortcut("4", modifiers: .command)
-                }
-                .opacity(0)
-            }
+            .focusedSceneValue(\.selectedArticle, $selectedArticle)
+            .modifier(KeyboardShortcutsModifier(
+                selectedSidebarItem: $selectedSidebarItem,
+                onNextArticle: navigateToNextArticle,
+                onPreviousArticle: navigateToPreviousArticle
+            ))
 
             // Global mini audio player
             MiniAudioPlayer()
@@ -286,25 +279,28 @@ struct SidebarContentView: View {
             // Update cache when alt feeds toggle changes
             updateCachedArticlesIfNeeded()
         }
-        // Global keyboard navigation: j/k for next/previous article
-        .onKeyPress("j") {
-            guard let current = selectedArticle,
-                  let currentIndex = currentArticlesList.firstIndex(where: { $0.id == current.id }),
-                  currentIndex < currentArticlesList.count - 1 else {
-                return .ignored
-            }
-            selectedArticle = currentArticlesList[currentIndex + 1]
-            return .handled
+    }
+
+    // MARK: - Navigation Helpers
+
+    private func navigateToNextArticle() {
+        guard let current = selectedArticle,
+              let currentIndex = currentArticlesList.firstIndex(where: { $0.id == current.id }),
+              currentIndex < currentArticlesList.count - 1 else {
+            return
         }
-        .onKeyPress("k") {
-            guard let current = selectedArticle,
-                  let currentIndex = currentArticlesList.firstIndex(where: { $0.id == current.id }),
-                  currentIndex > 0 else {
-                return .ignored
-            }
-            selectedArticle = currentArticlesList[currentIndex - 1]
-            return .handled
+        selectedArticle = currentArticlesList[currentIndex + 1]
+        logger.info("⌨️ Navigated to next article via keyboard: \(self.currentArticlesList[currentIndex + 1].title)")
+    }
+
+    private func navigateToPreviousArticle() {
+        guard let current = selectedArticle,
+              let currentIndex = currentArticlesList.firstIndex(where: { $0.id == current.id }),
+              currentIndex > 0 else {
+            return
         }
+        selectedArticle = currentArticlesList[currentIndex - 1]
+        logger.info("⌨️ Navigated to previous article via keyboard: \(self.currentArticlesList[currentIndex - 1].title)")
     }
 
     // Cached articles for the Today view (updated when data changes)
@@ -455,8 +451,8 @@ struct SidebarContentView: View {
     @ViewBuilder
     private func sidebarRowBackground(for item: SidebarItem) -> some View {
         if selectedSidebarItem == item {
-            RoundedRectangle(cornerRadius: 6)
-                .fill(accentColor.color.opacity(0.25))
+            RoundedRectangle(cornerRadius: 4)
+                .fill(accentColor.color.opacity(0.15))
         } else {
             Color.clear
         }
@@ -508,39 +504,52 @@ struct ArticleListColumn: View {
         var result = articles
 
         // Apply filter
-        switch filter {
-        case .all:
-            break
-        case .unread:
-            result = result.filter { !$0.isRead }
-        case .favorites:
-            result = result.filter { $0.isFavorite }
-        }
-
+        result = applyFilter(to: result)
+        
         // Apply search
-        if !searchText.isEmpty {
-            result = result.filter { article in
-                article.title.localizedCaseInsensitiveContains(searchText) ||
-                (article.articleDescription?.localizedCaseInsensitiveContains(searchText) ?? false) ||
-                (article.content?.localizedCaseInsensitiveContains(searchText) ?? false)
-            }
-        }
-
+        result = applySearch(to: result)
+        
         // Apply sort
-        switch sort {
-        case .newest:
-            result = result.sorted { $0.publishedDate > $1.publishedDate }
-        case .oldest:
-            result = result.sorted { $0.publishedDate < $1.publishedDate }
-        case .title:
-            result = result.sorted { $0.title.localizedCompare($1.title) == .orderedAscending }
-        }
+        result = applySort(to: result)
 
         let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000
         if elapsed > 10 {
             logger.warning("⚠️ processedArticles took \(elapsed, format: .fixed(precision: 1))ms for \(self.articles.count) articles")
         }
         return result
+    }
+    
+    private func applyFilter(to articles: [Article]) -> [Article] {
+        switch filter {
+        case .all:
+            return articles
+        case .unread:
+            return articles.filter { !$0.isRead }
+        case .favorites:
+            return articles.filter { $0.isFavorite }
+        }
+    }
+    
+    private func applySearch(to articles: [Article]) -> [Article] {
+        guard !searchText.isEmpty else { return articles }
+        
+        return articles.filter { article in
+            let titleMatches = article.title.localizedCaseInsensitiveContains(searchText)
+            let descriptionMatches = article.articleDescription?.localizedCaseInsensitiveContains(searchText) ?? false
+            let contentMatches = article.content?.localizedCaseInsensitiveContains(searchText) ?? false
+            return titleMatches || descriptionMatches || contentMatches
+        }
+    }
+    
+    private func applySort(to articles: [Article]) -> [Article] {
+        switch sort {
+        case .newest:
+            return articles.sorted { $0.publishedDate > $1.publishedDate }
+        case .oldest:
+            return articles.sorted { $0.publishedDate < $1.publishedDate }
+        case .title:
+            return articles.sorted { $0.title.localizedCompare($1.title) == .orderedAscending }
+        }
     }
 
     var body: some View {
@@ -619,36 +628,36 @@ struct SidebarArticleRow: View {
                 Text(article.title.decodeHTMLEntities())
                     .font(.headline)
                     .fontWeight(article.isRead ? .regular : .semibold)
-                    .foregroundStyle(article.isRead ? .secondary : .primary)
+                    .foregroundStyle(isSelected ? Color.white : (article.isRead ? .secondary : .primary))
 
                 if let plainText = article.plainTextDescription ?? article.articleDescription?.htmlToPlainText {
                     Text(plainText)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(isSelected ? Color.white.opacity(0.9) : .secondary)
                         .lineLimit(2)
                 }
 
                 HStack {
                     Text(article.publishedDate, style: .relative)
                         .font(.caption)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(isSelected ? Color.white.opacity(0.8) : Color.primary.opacity(0.6))
 
                     if article.isRedditPost {
                         if let author = article.author {
                             Text("•")
                                 .font(.caption)
-                                .foregroundStyle(.tertiary)
+                                .foregroundStyle(isSelected ? Color.white.opacity(0.8) : Color.primary.opacity(0.6))
                             Text(author)
                                 .font(.caption)
-                                .foregroundStyle(.tertiary)
+                                .foregroundStyle(isSelected ? Color.white.opacity(0.8) : Color.primary.opacity(0.6))
                         }
                     } else if let feedTitle = article.feed?.title {
                         Text("•")
                             .font(.caption)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(isSelected ? Color.white.opacity(0.8) : Color.primary.opacity(0.6))
                         Text(feedTitle)
                             .font(.caption)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(isSelected ? Color.white.opacity(0.8) : Color.primary.opacity(0.6))
                     }
 
                     Spacer()
@@ -657,16 +666,16 @@ struct SidebarArticleRow: View {
                     if article.hasPodcastAudio {
                         Image(systemName: "waveform")
                             .font(.caption)
-                            .foregroundStyle(accentColor.color)
+                            .foregroundStyle(isSelected ? Color.white : accentColor.color)
                     } else if article.hasMinimalContent && !article.isRedditPost {
                         Image(systemName: "arrow.up.forward.square")
                             .font(.caption)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(isSelected ? Color.white.opacity(0.8) : Color.primary.opacity(0.6))
                     }
                     if article.isFavorite {
                         Image(systemName: "star.fill")
                             .font(.caption)
-                            .foregroundStyle(.yellow)
+                            .foregroundStyle(isSelected ? Color.white : .yellow)
                     }
                 }
             }
@@ -700,6 +709,15 @@ struct SidebarArticleRow: View {
             }
         }
         .padding(.vertical, 4)
+        #if os(macOS)
+        .padding(.horizontal, 8)
+        .background(
+            isSelected
+                ? RoundedRectangle(cornerRadius: 8)
+                    .fill(accentColor.color)
+                : nil
+        )
+        #endif
         .contextMenu {
             // Mark Read/Unread
             Button {
@@ -739,14 +757,6 @@ struct SidebarArticleRow: View {
                 }
             }
         }
-        #if os(macOS)
-        .listRowBackground(
-            isSelected
-                ? RoundedRectangle(cornerRadius: 6)
-                    .fill(accentColor.color.opacity(0.25))
-                : nil
-        )
-        #endif
     }
 }
 
@@ -756,6 +766,7 @@ struct ArticleDetailColumn: View {
     let articles: [Article]
     @Binding var selectedArticle: Article?
     @Environment(\.modelContext) private var modelContext
+    @State private var isAtBottom = false
 
     // Find current article index and compute previous/next
     private var currentIndex: Int? {
@@ -770,6 +781,31 @@ struct ArticleDetailColumn: View {
     private var nextArticle: Article? {
         guard let index = currentIndex, index < articles.count - 1 else { return nil }
         return articles[index + 1]
+    }
+    
+    private func handleSpaceBarPress() {
+        // For Reddit posts: space bar advances to next article
+        // (Users can scroll comments with trackpad/mouse; space provides quick navigation)
+        if article.isRedditPost {
+            if let next = nextArticle {
+                selectedArticle = next
+                logger.info("⌨️ Space on Reddit: advanced to next article: \(next.title)")
+            }
+            return
+        }
+        
+        // For regular articles with WebView scrolling
+        if isAtBottom {
+            // At bottom, advance to next article
+            if let next = nextArticle {
+                selectedArticle = next
+                logger.info("⌨️ Space at bottom: advanced to next article: \(next.title)")
+            }
+        } else {
+            // Not at bottom, scroll page down
+            NotificationCenter.default.post(name: .scrollPageDown, object: nil)
+            logger.info("⌨️ Space: scrolling page down")
+        }
     }
 
     var body: some View {
@@ -810,6 +846,28 @@ struct ArticleDetailColumn: View {
                 )
             }
         }
+        .modifier(ArticleActionShortcutsModifier(article: article))
+        #if os(macOS)
+        // Space bar handler works for all article types
+        .background {
+            Button("") { handleSpaceBarPress() }
+                .keyboardShortcut(.space, modifiers: [])
+                .opacity(0)
+        }
+        // Scroll position tracking (only fires for WebView-based articles)
+        .onReceive(NotificationCenter.default.publisher(for: .articleScrolledToBottom)) { notification in
+            if let scrolledArticleID = notification.object as? PersistentIdentifier,
+               scrolledArticleID == article.persistentModelID {
+                isAtBottom = true
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .articleScrolledFromBottom)) { notification in
+            if let scrolledArticleID = notification.object as? PersistentIdentifier,
+               scrolledArticleID == article.persistentModelID {
+                isAtBottom = false
+            }
+        }
+        #endif
         .onAppear {
             logger.info("📖 ArticleDetailColumn appeared: \(article.title) (Reddit: \(article.isRedditPost))")
             // Mark as read when displayed
@@ -818,21 +876,9 @@ struct ArticleDetailColumn: View {
                 try? modelContext.save()
             }
         }
-        // Keyboard navigation: j/k for next/previous article
-        .focusable()
-        .onKeyPress("j") {
-            if let next = nextArticle {
-                selectedArticle = next
-                return .handled
-            }
-            return .ignored
-        }
-        .onKeyPress("k") {
-            if let prev = previousArticle {
-                selectedArticle = prev
-                return .handled
-            }
-            return .ignored
+        .onChange(of: article.id) { _, _ in
+            // Reset bottom state when article changes
+            isAtBottom = false
         }
     }
 }
@@ -907,6 +953,134 @@ struct FeedDetailView: View {
         .searchable(text: $searchText, prompt: "Search articles")
     }
 }
+
+// MARK: - Keyboard Shortcuts Modifier
+#if os(macOS)
+struct KeyboardShortcutsModifier: ViewModifier {
+    @Binding var selectedSidebarItem: SidebarContentView.SidebarItem?
+    let onNextArticle: () -> Void
+    let onPreviousArticle: () -> Void
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.openURL) private var openURL
+    
+    func body(content: Content) -> some View {
+        content
+            .background {
+                // All keyboard shortcuts (hidden buttons that respond to key presses)
+                Group {
+                    // Sidebar navigation shortcuts
+                    Button("") { selectedSidebarItem = .today }
+                        .keyboardShortcut("1", modifiers: .command)
+                    Button("") { selectedSidebarItem = .feeds }
+                        .keyboardShortcut("2", modifiers: .command)
+                    Button("") { selectedSidebarItem = .aiChat }
+                        .keyboardShortcut("3", modifiers: .command)
+                    Button("") { selectedSidebarItem = .settings }
+                        .keyboardShortcut("4", modifiers: .command)
+                    
+                    // Article navigation shortcuts (J/K keys)
+                    Button("") { onNextArticle() }
+                        .keyboardShortcut("j", modifiers: [])
+                    Button("") { onPreviousArticle() }
+                        .keyboardShortcut("k", modifiers: [])
+                }
+                .opacity(0)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .navigateToNextArticle)) { _ in
+                onNextArticle()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .navigateToPreviousArticle)) { _ in
+                onPreviousArticle()
+            }
+    }
+}
+
+// MARK: - Article Action Shortcuts Modifier
+struct ArticleActionShortcutsModifier: ViewModifier {
+    let article: Article
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.openURL) private var openURL
+    
+    func body(content: Content) -> some View {
+        content
+            .background {
+                // Direct keyboard shortcuts for article actions
+                Group {
+                    Button("") { toggleFavorite() }
+                        .keyboardShortcut("f", modifiers: .command)
+                    Button("") { toggleRead() }
+                        .keyboardShortcut("u", modifiers: .command)
+                    Button("") { openInBrowser() }
+                        .keyboardShortcut("o", modifiers: .command)
+                    Button("") { shareArticle() }
+                        .keyboardShortcut("s", modifiers: [.command, .shift])
+                }
+                .opacity(0)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .toggleArticleFavorite)) { _ in
+                toggleFavorite()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .toggleArticleRead)) { _ in
+                toggleRead()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .openArticleInBrowser)) { _ in
+                openInBrowser()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .shareArticle)) { _ in
+                shareArticle()
+            }
+    }
+    
+    private func toggleFavorite() {
+        article.isFavorite.toggle()
+        try? modelContext.save()
+        logger.info("⌨️ Toggled favorite via keyboard: \(article.title) → \(article.isFavorite)")
+    }
+    
+    private func toggleRead() {
+        article.isRead.toggle()
+        try? modelContext.save()
+        logger.info("⌨️ Toggled read via keyboard: \(article.title) → \(article.isRead)")
+    }
+    
+    private func openInBrowser() {
+        guard let url = article.articleURL else { return }
+        openURL(url)
+        logger.info("⌨️ Opened in browser via keyboard: \(article.title)")
+    }
+    
+    private func shareArticle() {
+        guard let url = article.articleURL else { return }
+        // Create a sharing service picker
+        let sharingPicker = NSSharingServicePicker(items: [url])
+        
+        // Get the key window and present from its content view
+        if let window = NSApp.keyWindow,
+           let contentView = window.contentView {
+            sharingPicker.show(relativeTo: .zero, of: contentView, preferredEdge: .minY)
+            logger.info("⌨️ Shared article via keyboard: \(article.title)")
+        }
+    }
+}
+#else
+struct KeyboardShortcutsModifier: ViewModifier {
+    @Binding var selectedSidebarItem: SidebarContentView.SidebarItem?
+    let onNextArticle: () -> Void
+    let onPreviousArticle: () -> Void
+    
+    func body(content: Content) -> some View {
+        content // No keyboard shortcuts on iOS
+    }
+}
+
+struct ArticleActionShortcutsModifier: ViewModifier {
+    let article: Article
+    
+    func body(content: Content) -> some View {
+        content // No keyboard shortcuts on iOS
+    }
+}
+#endif
 
 #Preview {
     ContentView()

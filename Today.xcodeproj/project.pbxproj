@@ -12,6 +12,8 @@
 		C29AB72AB8D4FBBB6DB2D8A3 /* TodayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22D7D03FBA667C69848C3AAC /* TodayTests.swift */; };
 		F52BB6272EAC23870054AEC5 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F52BB6262EAC23870054AEC5 /* XCTest.framework */; platformFilter = ios; };
 		F540A5ED2ECD930F00CCF1B9 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = F540A5EC2ECD930F00CCF1B9 /* Localizable.xcstrings */; };
+		F54E52FD2F33139100996859 /* MACOS_RELEASE_NOTES.md in Resources */ = {isa = PBXBuildFile; fileRef = F54E52FC2F33139100996859 /* MACOS_RELEASE_NOTES.md */; };
+		F54E52FE2F33139100996859 /* MACOS_RELEASE_NOTES.md in Resources */ = {isa = PBXBuildFile; fileRef = F54E52FC2F33139100996859 /* MACOS_RELEASE_NOTES.md */; };
 		F5854AE52EE765DA008F77B8 /* HTMLHelperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5854AE02EE765DA008F77B8 /* HTMLHelperTests.swift */; };
 		F5854AE62EE765DA008F77B8 /* RedditRSSTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5854AE12EE765DA008F77B8 /* RedditRSSTests.swift */; };
 		F5854AE72EE765DA008F77B8 /* TexturizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5854AE32EE765DA008F77B8 /* TexturizerTests.swift */; };
@@ -52,13 +54,14 @@
 		F52BB6262EAC23870054AEC5 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Platforms/iPhoneOS.platform/Developer/Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
 		F540A5EC2ECD930F00CCF1B9 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		F54DF4022EA9AB9F00FBDC60 /* Today.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Today.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F54E52FC2F33139100996859 /* MACOS_RELEASE_NOTES.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = MACOS_RELEASE_NOTES.md; sourceTree = "<group>"; };
 		F5854ADE2EE765DA008F77B8 /* AtomFeedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AtomFeedTests.swift; sourceTree = "<group>"; };
 		F5854ADF2EE765DA008F77B8 /* CategoryManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoryManagerTests.swift; sourceTree = "<group>"; };
 		F5854AE02EE765DA008F77B8 /* HTMLHelperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLHelperTests.swift; sourceTree = "<group>"; };
 		F5854AE12EE765DA008F77B8 /* RedditRSSTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RedditRSSTests.swift; sourceTree = "<group>"; };
 		F5854AE22EE765DA008F77B8 /* RSSParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RSSParserTests.swift; sourceTree = "<group>"; };
 		F5854AE32EE765DA008F77B8 /* TexturizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TexturizerTests.swift; sourceTree = "<group>"; };
-		F5BF9FE22F2A5EB30038316D /* Today MacOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Today MacOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		F5BF9FE22F2A5EB30038316D /* Today.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Today.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F5BF9FF02F2A5EB60038316D /* Today MacOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Today MacOSTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		F5BF9FFA2F2A5EB60038316D /* Today MacOSUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Today MacOSUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -175,6 +178,7 @@
 				F5BF9FFD2F2A5EB60038316D /* Today MacOSUITests */,
 				F52BB6252EAC23860054AEC5 /* Frameworks */,
 				F54DF4032EA9AB9F00FBDC60 /* Products */,
+				F54E52FC2F33139100996859 /* MACOS_RELEASE_NOTES.md */,
 			);
 			sourceTree = "<group>";
 		};
@@ -183,7 +187,7 @@
 			children = (
 				F54DF4022EA9AB9F00FBDC60 /* Today.app */,
 				F52BB61A2EAC22F60054AEC5 /* TodayTests.xctest */,
-				F5BF9FE22F2A5EB30038316D /* Today MacOS.app */,
+				F5BF9FE22F2A5EB30038316D /* Today.app */,
 				F5BF9FF02F2A5EB60038316D /* Today MacOSTests.xctest */,
 				F5BF9FFA2F2A5EB60038316D /* Today MacOSUITests.xctest */,
 			);
@@ -257,7 +261,7 @@
 				F5BFA05A2F2A614A0038316D /* OutcastID3 */,
 			);
 			productName = "Today MacOS";
-			productReference = F5BF9FE22F2A5EB30038316D /* Today MacOS.app */;
+			productReference = F5BF9FE22F2A5EB30038316D /* Today.app */;
 			productType = "com.apple.product-type.application";
 		};
 		F5BF9FEF2F2A5EB60038316D /* Today MacOSTests */ = {
@@ -384,6 +388,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F54E52FE2F33139100996859 /* MACOS_RELEASE_NOTES.md in Resources */,
 				F540A5ED2ECD930F00CCF1B9 /* Localizable.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -392,6 +397,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F54E52FD2F33139100996859 /* MACOS_RELEASE_NOTES.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

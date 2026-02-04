@@ -339,41 +339,37 @@ struct SettingsView: View {
                     Label("About", systemImage: "info.circle")
                 }
         }
-        .frame(width: 450, height: 280)
+        .frame(minWidth: 500, minHeight: 350)
+        .padding()
     }
 
     private var macOSGeneralTab: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            // Theme
-            HStack(alignment: .firstTextBaseline) {
-                Text("Appearance:")
-                    .frame(width: 100, alignment: .trailing)
+        Form {
+            // Appearance
+            LabeledContent("Appearance:") {
                 Picker("", selection: $appearanceMode) {
                     ForEach(AppearanceMode.allCases, id: \.self) { mode in
                         Text(mode.localizedName).tag(mode)
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 200)
+                .labelsHidden()
             }
 
             // Font
-            HStack(alignment: .firstTextBaseline) {
-                Text("Article Font:")
-                    .frame(width: 100, alignment: .trailing)
+            LabeledContent("Article Font:") {
                 Picker("", selection: $fontOption) {
                     ForEach(FontOption.allCases) { option in
                         Text(option.localizedName).tag(option)
                     }
                 }
                 .pickerStyle(.radioGroup)
+                .labelsHidden()
             }
 
             // Accent Color
-            HStack(alignment: .center) {
-                Text("Accent Color:")
-                    .frame(width: 100, alignment: .trailing)
-                HStack(spacing: 8) {
+            LabeledContent("Accent Color:") {
+                HStack(spacing: 10) {
                     ForEach(AccentColorOption.allCases) { option in
                         Button {
                             accentColor = option
@@ -381,11 +377,14 @@ struct SettingsView: View {
                             ZStack {
                                 Circle()
                                     .fill(option.color)
-                                    .frame(width: 24, height: 24)
+                                    .frame(width: 28, height: 28)
                                 if accentColor == option {
                                     Circle()
                                         .strokeBorder(.white, lineWidth: 2)
-                                        .frame(width: 24, height: 24)
+                                        .frame(width: 28, height: 28)
+                                    Circle()
+                                        .strokeBorder(.primary.opacity(0.3), lineWidth: 1)
+                                        .frame(width: 30, height: 30)
                                 }
                             }
                         }
@@ -394,41 +393,38 @@ struct SettingsView: View {
                     }
                 }
             }
-
-            Spacer()
         }
-        .padding(20)
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
     }
 
     private var macOSReadingTab: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack(alignment: .top) {
-                Text("Short Articles:")
-                    .frame(width: 100, alignment: .trailing)
-                VStack(alignment: .leading, spacing: 8) {
-                    Picker("", selection: $shortArticleBehavior) {
-                        ForEach(ShortArticleBehavior.allCases) { behavior in
-                            Text(behavior.localizedName).tag(behavior)
-                        }
+        Form {
+            LabeledContent {
+                Picker("", selection: $shortArticleBehavior) {
+                    ForEach(ShortArticleBehavior.allCases) { behavior in
+                        Text(behavior.localizedName).tag(behavior)
                     }
-                    .pickerStyle(.radioGroup)
-
-                    Text("Short articles have minimal content (less than 300 characters).")
+                }
+                .pickerStyle(.radioGroup)
+                .labelsHidden()
+            } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Short Articles")
+                        .font(.headline)
+                    Text("Articles with minimal content (less than 300 characters)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
-
-            Spacer()
         }
-        .padding(20)
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
     }
 
     private var macOSAudioTab: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Voice:")
-                    .frame(width: 100, alignment: .trailing)
+        Form {
+            LabeledContent("Text-to-Speech Voice:") {
                 Picker("", selection: $selectedVoiceIdentifier) {
                     Text("Default (System Voice)").tag("")
                     Divider()
@@ -436,12 +432,12 @@ struct SettingsView: View {
                         Text(voice.name).tag(voice.identifier)
                     }
                 }
-                .frame(width: 200)
+                .labelsHidden()
+                .frame(minWidth: 250)
             }
-
-            Spacer()
         }
-        .padding(20)
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
     }
 
     private var availableVoices: [AVSpeechSynthesisVoice] {
@@ -462,45 +458,70 @@ struct SettingsView: View {
     }
 
     private var macOSAboutTab: some View {
-        VStack(spacing: 16) {
-            // App Icon and Name
-            VStack(spacing: 8) {
-                Image(systemName: "newspaper.fill")
-                    .font(.system(size: 48))
-                    .foregroundStyle(accentColor.color)
+        ScrollView {
+            VStack(spacing: 20) {
+                Spacer()
+                    .frame(height: 20)
+                
+                // App Icon and Name
+                VStack(spacing: 12) {
+                    Image(systemName: "newspaper.fill")
+                        .font(.system(size: 64))
+                        .foregroundStyle(accentColor.color)
 
-                Text("Today")
-                    .font(.title2.bold())
-                Text(appVersion)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text("A modern RSS reader")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
+                    Text("Today")
+                        .font(.title.bold())
+                    Text(appVersion)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Text("A modern RSS reader")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                }
 
-            Divider()
-                .padding(.horizontal, 40)
+                Divider()
+                    .padding(.horizontal, 60)
 
-            // Developer Info
-            VStack(spacing: 4) {
-                Text("Developed by Jake Spurlock")
-                    .font(.subheadline)
+                HStack(spacing: 4) {
+                    Text("Made with")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    Image(systemName: "heart.fill")
+                        .font(.caption2)
+                        .foregroundColor(.red)
+                    Text("in California by Jake Spurlock")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
 
                 HStack(spacing: 16) {
-                    Link("Website", destination: URL(string: "https://jakespurlock.com")!)
-                    Link("GitHub", destination: URL(string: "https://github.com/whyisjake")!)
+                    Link(destination: URL(string: "https://twitter.com/whyisjake")!) {
+                        Image(systemName: "at")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    Link(destination: URL(string: "https://github.com/whyisjake")!) {
+                        Image(systemName: "chevron.left.forwardslash.chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    Link(destination: URL(string: "https://www.linkedin.com/in/jakespurlock")!) {
+                        Image(systemName: "person.crop.square")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    Link(destination: URL(string: "https://jakespurlock.com")!) {
+                        Image(systemName: "globe")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
-                .font(.caption)
+
+                Spacer()
             }
-
-            Text("Made with ♥️ in California")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Spacer()
+            .frame(maxWidth: .infinity)
         }
-        .padding(20)
+        .scrollContentBackground(.hidden)
     }
     #endif
 }
