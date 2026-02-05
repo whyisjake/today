@@ -419,39 +419,41 @@ struct FeedListView: View {
     @ViewBuilder
     private var macOSAddFeedSheet: some View {
         VStack(spacing: 0) {
-            // Header
-            HStack {
-                Text(feedType == .rss ? "Add RSS Feed" : "Add Reddit Feed")
-                    .font(.headline)
-                Spacer()
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(Color(NSColor.windowBackgroundColor))
+            // Header with icon
+            VStack(spacing: 8) {
+                Image(systemName: feedType == .rss ? "dot.radiowaves.up.forward" : "globe")
+                    .font(.system(size: 36))
+                    .foregroundStyle(accentColor.color)
+                    .frame(width: 56, height: 56)
+                    .background(accentColor.color.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
 
-            Divider()
+                Text(feedType == .rss ? "Add RSS Feed" : "Add Reddit Feed")
+                    .font(.title2.weight(.semibold))
+
+                Text(feedType == .rss ? "Subscribe to your favorite websites" : "Follow your favorite communities")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.top, 24)
+            .padding(.bottom, 20)
 
             // Content
             VStack(alignment: .leading, spacing: 20) {
                 // Feed Type Picker
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Feed Type")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-
-                    Picker("", selection: $feedType) {
-                        ForEach(FeedType.allCases, id: \.self) { type in
-                            Text(type.rawValue).tag(type)
-                        }
+                Picker("", selection: $feedType) {
+                    ForEach(FeedType.allCases, id: \.self) { type in
+                        Label(type.rawValue, systemImage: type == .rss ? "dot.radiowaves.up.forward" : "globe")
+                            .tag(type)
                     }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
                 }
+                .pickerStyle(.segmented)
+                .labelsHidden()
 
                 // Feed URL/Subreddit
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(feedType == .rss ? "Feed URL" : "Subreddit")
-                        .font(.subheadline)
+                VStack(alignment: .leading, spacing: 6) {
+                    Label(feedType == .rss ? "Feed URL" : "Subreddit", systemImage: feedType == .rss ? "link" : "number")
+                        .font(.subheadline.weight(.medium))
                         .foregroundStyle(.secondary)
 
                     if feedType == .rss {
@@ -477,12 +479,12 @@ struct FeedListView: View {
                 }
 
                 // Category
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Category")
-                        .font(.subheadline)
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Category", systemImage: "folder")
+                        .font(.subheadline.weight(.medium))
                         .foregroundStyle(.secondary)
 
-                    Toggle("Custom category", isOn: $useCustomCategory)
+                    Toggle("Use custom category", isOn: $useCustomCategory)
                         .toggleStyle(.checkbox)
 
                     if useCustomCategory {
@@ -497,24 +499,24 @@ struct FeedListView: View {
                         .labelsHidden()
                     }
                 }
-                .padding(.top, 6)
 
                 // Error message
                 if let error = addFeedError {
-                    Text(error)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .padding(8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.red.opacity(0.1))
-                        .cornerRadius(6)
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.red)
+                        Text(error)
+                            .font(.caption)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.red.opacity(0.1))
+                    .cornerRadius(8)
                 }
-
-                Spacer()
             }
-            .padding(20)
+            .padding(.horizontal, 24)
 
-            Divider()
+            Spacer()
 
             // Footer buttons
             HStack {
@@ -526,26 +528,35 @@ struct FeedListView: View {
 
                 Spacer()
 
-                Button("Add Feed") {
+                Button {
                     addFeed()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus.circle.fill")
+                        Text("Add Feed")
+                    }
                 }
                 .keyboardShortcut(.return, modifiers: [])
                 .disabled(isFieldsInvalid() || isAddingFeed)
                 .buttonStyle(.borderedProminent)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(Color(NSColor.windowBackgroundColor))
+            .padding(.horizontal, 24)
+            .padding(.vertical, 16)
         }
-        .frame(width: 440, height: 400)
+        .frame(width: 420, height: 440)
         .overlay {
             if isAddingFeed {
                 ZStack {
                     Color.black.opacity(0.3)
-                    ProgressView("Adding feed...")
-                        .padding(20)
-                        .background(.regularMaterial)
-                        .cornerRadius(10)
+                    VStack(spacing: 12) {
+                        ProgressView()
+                            .scaleEffect(1.2)
+                        Text("Adding feed...")
+                            .font(.subheadline)
+                    }
+                    .padding(24)
+                    .background(.regularMaterial)
+                    .cornerRadius(12)
                 }
             }
         }
@@ -654,6 +665,147 @@ struct FeedListView: View {
 
     @ViewBuilder
     private var importOPMLSheet: some View {
+        #if os(macOS)
+        macOSImportOPMLSheet
+        #else
+        iOSImportOPMLSheet
+        #endif
+    }
+
+    #if os(macOS)
+    @ViewBuilder
+    private var macOSImportOPMLSheet: some View {
+        VStack(spacing: 0) {
+            // Header with icon
+            VStack(spacing: 8) {
+                Image(systemName: "square.and.arrow.down")
+                    .font(.system(size: 36))
+                    .foregroundStyle(accentColor.color)
+                    .frame(width: 56, height: 56)
+                    .background(accentColor.color.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                Text("Import OPML")
+                    .font(.title2.weight(.semibold))
+
+                Text("Import feeds from another RSS reader")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.top, 24)
+            .padding(.bottom, 20)
+
+            // Content
+            VStack(alignment: .leading, spacing: 16) {
+                // Instructions
+                HStack(spacing: 12) {
+                    Image(systemName: "info.circle.fill")
+                        .foregroundStyle(accentColor.color)
+                    Text("Export an OPML file from your previous reader, then paste its contents below.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(12)
+                .background(accentColor.color.opacity(0.05))
+                .cornerRadius(8)
+
+                // Text editor
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("OPML Content", systemImage: "doc.text")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+
+                    TextEditor(text: $opmlText)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(minHeight: 180)
+                        .padding(8)
+                        .background(Color(NSColor.textBackgroundColor))
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color(NSColor.separatorColor), lineWidth: 1)
+                        )
+                }
+
+                // Import result
+                if let error = importError {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: error.contains("✅") ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                            .foregroundStyle(error.contains("✅") ? .green : .red)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(error)
+                                .font(.caption)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Button {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(error, forType: .string)
+                            } label: {
+                                Label("Copy Summary", systemImage: "doc.on.doc")
+                                    .font(.caption)
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                    .padding(10)
+                    .background(error.contains("✅") ? Color.green.opacity(0.1) : Color.red.opacity(0.1))
+                    .cornerRadius(8)
+                }
+            }
+            .padding(.horizontal, 24)
+
+            Spacer()
+
+            // Footer buttons
+            HStack {
+                Button("Cancel") {
+                    showingImportOPML = false
+                    opmlText = ""
+                    importError = nil
+                }
+                .keyboardShortcut(.escape, modifiers: [])
+
+                Spacer()
+
+                Button {
+                    importOPML()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "square.and.arrow.down")
+                        Text("Import")
+                    }
+                }
+                .keyboardShortcut(.return, modifiers: [])
+                .disabled(opmlText.isEmpty || isImporting)
+                .buttonStyle(.borderedProminent)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 16)
+        }
+        .frame(width: 480, height: 520)
+        .overlay {
+            if isImporting {
+                ZStack {
+                    Color.black.opacity(0.3)
+                    VStack(spacing: 12) {
+                        ProgressView()
+                            .scaleEffect(1.2)
+                        Text(importProgress ?? "Importing feeds...")
+                            .font(.subheadline)
+                    }
+                    .padding(24)
+                    .background(.regularMaterial)
+                    .cornerRadius(12)
+                }
+            }
+        }
+    }
+    #endif
+
+    #if os(iOS)
+    @ViewBuilder
+    private var iOSImportOPMLSheet: some View {
         NavigationStack {
             Form {
                 Section {
@@ -662,6 +814,8 @@ struct FeedListView: View {
                         .frame(minHeight: 200)
                 } header: {
                     Text("Paste OPML Content")
+                } footer: {
+                    Text("Export an OPML file from your previous reader, then paste its contents above.")
                 }
 
                 if let error = importError {
@@ -674,12 +828,7 @@ struct FeedListView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
 
                             Button {
-                                #if os(iOS)
                                 UIPasteboard.general.string = error
-                                #else
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(error, forType: .string)
-                                #endif
                             } label: {
                                 HStack {
                                     Image(systemName: "doc.on.doc")
@@ -694,17 +843,9 @@ struct FeedListView: View {
                         Text("Import Summary")
                     }
                 }
-
-                Section {
-                    Text("Paste your OPML file content above to import feeds.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
             }
             .navigationTitle("Import OPML")
-            #if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
-        #endif
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -735,6 +876,7 @@ struct FeedListView: View {
             }
         }
     }
+    #endif
 
     @ViewBuilder
     private var editFeedSheet: some View {

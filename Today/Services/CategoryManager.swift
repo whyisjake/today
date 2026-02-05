@@ -80,9 +80,9 @@ class CategoryManager: ObservableObject {
         print("🗑️ CategoryManager: Removed custom category '\(category)'")
     }
 
-    /// Get all categories (standard + custom) for display in pickers
+    /// Get all categories (standard + custom) for display in pickers, sorted alphabetically
     var allCategories: [String] {
-        Self.pickerCategories + customCategories
+        (Self.pickerCategories + customCategories).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     /// Sync custom categories from existing feed categories
