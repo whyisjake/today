@@ -111,6 +111,20 @@ struct NowPlayingView: View {
                 }
                 #endif
             }
+            #if os(macOS)
+            .onKeyPress(.leftArrow) {
+                skipBackward()
+                return .handled
+            }
+            .onKeyPress(.rightArrow) {
+                skipForward()
+                return .handled
+            }
+            .onKeyPress(.space) {
+                podcastPlayer.togglePlayPause()
+                return .handled
+            }
+            #endif
             .sheet(isPresented: $showSpeedPicker) {
                 PodcastSpeedPickerView(podcastPlayer: podcastPlayer)
                     .presentationDetents([.height(300)])
@@ -128,6 +142,18 @@ struct NowPlayingView: View {
                 .font(.title3.weight(.semibold))
         }
     }
+
+    #if os(macOS)
+    private func skipBackward() {
+        let newProgress = (podcastPlayer.currentTime - 15) / podcastPlayer.duration
+        podcastPlayer.seek(to: max(0, newProgress))
+    }
+
+    private func skipForward() {
+        let newProgress = (podcastPlayer.currentTime + 30) / podcastPlayer.duration
+        podcastPlayer.seek(to: min(1, newProgress))
+    }
+    #endif
 
     private var nowPlayingTitle: some View {
         VStack(spacing: 2) {

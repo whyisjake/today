@@ -201,6 +201,10 @@ struct MiniAudioPlayer: View {
     @State private var showPodcastSpeedPicker = false
     @State private var showNowPlaying = false
     @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
+    #if os(macOS)
+    @Environment(\.openWindow) private var openWindow
+    @State private var lastOpenedPodcastId: String?
+    #endif
 
     private var isTTSActive: Bool {
         audioPlayer.currentArticle != nil && (audioPlayer.isPlaying || audioPlayer.isPaused)
@@ -243,7 +247,13 @@ struct MiniAudioPlayer: View {
                     onTogglePlayPause: { podcastPlayer.togglePlayPause() },
                     onStop: { podcastPlayer.stop() },
                     onShowSpeedPicker: { showPodcastSpeedPicker = true },
-                    onTapContent: { showNowPlaying = true },
+                    onTapContent: {
+                        #if os(macOS)
+                        openWindow(id: "now-playing")
+                        #else
+                        showNowPlaying = true
+                        #endif
+                    },
                     isPodcast: true
                 )
             }
@@ -270,10 +280,14 @@ struct MiniAudioPlayer: View {
         .fullScreenCover(isPresented: $showNowPlaying) {
             NowPlayingView()
         }
-        #else
-        .sheet(isPresented: $showNowPlaying) {
-            NowPlayingView()
-                .frame(minWidth: 400, minHeight: 500)
+        #endif
+        #if os(macOS)
+        .onChange(of: podcastPlayer.currentArticle?.guid) { oldValue, newValue in
+            // Automatically open Now Playing window when a new podcast starts
+            if let newGuid = newValue, newGuid != lastOpenedPodcastId {
+                lastOpenedPodcastId = newGuid
+                openWindow(id: "now-playing")
+            }
         }
         #endif
     }

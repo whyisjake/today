@@ -222,6 +222,14 @@ struct TodayApp: App {
                 .tint(accentColor.color)
         }
         .defaultSize(width: 550, height: 400)
+
+        // Now Playing window
+        WindowGroup("Now Playing", id: "now-playing") {
+            NowPlayingView()
+                .tint(accentColor.color)
+        }
+        .defaultSize(width: 420, height: 650)
+        .windowResizability(.contentSize)
         #endif
     }
 
