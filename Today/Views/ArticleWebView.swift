@@ -193,7 +193,7 @@ struct ArticleDetailViewEnhanced: View {
                 #endif
             }
         }
-        .onAppear {
+        .onDisappear {
             markAsRead()
         }
         .animation(.default, value: showSafariView)
