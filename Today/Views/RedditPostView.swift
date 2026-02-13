@@ -987,6 +987,16 @@ struct ImageGalleryView: View {
             FullScreenImageGallery(images: images, currentIndex: $currentPage)
         }
         #else
+        .onReceive(NotificationCenter.default.publisher(for: .navigateToPreviousImage)) { _ in
+            if !showFullScreen && currentPage > 0 {
+                withAnimation { currentPage -= 1 }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .navigateToNextImage)) { _ in
+            if !showFullScreen && currentPage < images.count - 1 {
+                withAnimation { currentPage += 1 }
+            }
+        }
         .sheet(isPresented: $showFullScreen) {
             MacOSGallerySheet(images: images, currentIndex: $currentPage)
                 .frame(
@@ -1108,7 +1118,6 @@ struct MacOSGallerySheet: View {
     let images: [RedditGalleryImage]
     @Binding var currentIndex: Int
     @Environment(\.dismiss) private var dismiss
-    @FocusState private var isFocused: Bool
 
     var body: some View {
         ZStack {
@@ -1153,14 +1162,23 @@ struct MacOSGallerySheet: View {
 
                     Spacer()
 
-                    if images.indices.contains(currentIndex),
-                       let imageUrl = URL(string: images[currentIndex].url) {
-                        ShareLink(item: imageUrl) {
-                            Image(systemName: "square.and.arrow.up.circle.fill")
-                                .font(.system(size: 28))
+                    HStack(spacing: 12) {
+                        Button { toggleFullScreen() } label: {
+                            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                .font(.system(size: 22))
                                 .foregroundStyle(.white.opacity(0.8))
                         }
                         .buttonStyle(.plain)
+
+                        if images.indices.contains(currentIndex),
+                           let imageUrl = URL(string: images[currentIndex].url) {
+                            ShareLink(item: imageUrl) {
+                                Image(systemName: "square.and.arrow.up.circle.fill")
+                                    .font(.system(size: 28))
+                                    .foregroundStyle(.white.opacity(0.8))
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                 }
                 .padding(16)
@@ -1197,21 +1215,17 @@ struct MacOSGallerySheet: View {
                 }
             }
         }
-        .focusable()
-        .focused($isFocused)
-        .focusEffectDisabled()
-        .onAppear { isFocused = true }
-        .onKeyPress(.leftArrow) {
+        .onReceive(NotificationCenter.default.publisher(for: .navigateToPreviousImage)) { _ in
             if currentIndex > 0 { currentIndex -= 1 }
-            return .handled
         }
-        .onKeyPress(.rightArrow) {
+        .onReceive(NotificationCenter.default.publisher(for: .navigateToNextImage)) { _ in
             if currentIndex < images.count - 1 { currentIndex += 1 }
-            return .handled
         }
-        .onKeyPress(.escape) {
-            dismiss()
-            return .handled
+    }
+
+    private func toggleFullScreen() {
+        if let window = NSApplication.shared.keyWindow {
+            window.toggleFullScreen(nil)
         }
     }
 }

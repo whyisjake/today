@@ -620,13 +620,23 @@ struct ArticleListColumn: View {
     private var articleList: some View {
         #if os(macOS)
         // On macOS, don't use List selection binding to avoid system highlight overlay
-        List {
-            ForEach(processedArticles) { article in
-                SidebarArticleRow(article: article, isSelected: selectedArticle?.id == article.id)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        selectedArticle = article
+        ScrollViewReader { proxy in
+            List {
+                ForEach(processedArticles) { article in
+                    SidebarArticleRow(article: article, isSelected: selectedArticle?.id == article.id)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            selectedArticle = article
+                        }
+                        .id(article.id)
+                }
+            }
+            .onChange(of: selectedArticle) { _, newValue in
+                if let article = newValue {
+                    withAnimation {
+                        proxy.scrollTo(article.id, anchor: UnitPoint(x: 0, y: 0.15))
                     }
+                }
             }
         }
         #else
