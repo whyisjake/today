@@ -1771,6 +1771,18 @@ struct CommentRowView: View {
                                     .font(.caption)
                                     .fontWeight(.semibold)
                                     .foregroundStyle(accentColor.color)
+
+                                // OP badge for original poster comments
+                                if comment.isOP {
+                                    Text("OP")
+                                        .font(.caption2)
+                                        .fontWeight(.bold)
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 4)
+                                        .padding(.vertical, 2)
+                                        .background(accentColor.color)
+                                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                                }
                             }
                         }
                         .buttonStyle(.plain)
@@ -1792,6 +1804,18 @@ struct CommentRowView: View {
                                     .font(.caption)
                                     .fontWeight(.semibold)
                                     .foregroundStyle(accentColor.color)
+
+                                // OP badge for original poster comments
+                                if comment.isOP {
+                                    Text("OP")
+                                        .font(.caption2)
+                                        .fontWeight(.bold)
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 4)
+                                        .padding(.vertical, 2)
+                                        .background(accentColor.color)
+                                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                                }
                             }
                         }
                         .buttonStyle(.plain)
