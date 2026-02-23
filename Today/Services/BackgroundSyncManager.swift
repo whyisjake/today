@@ -124,6 +124,11 @@ class BackgroundSyncManager: ObservableObject {
         // and inserts on main thread in small chunks with yields
         let context = container.mainContext
         await BackgroundFeedSync.syncAllFeeds(modelContext: context)
+
+        // Sync OPML subscriptions after feed sync
+        let feedManager = FeedManager(modelContext: context)
+        let opmlManager = OPMLSubscriptionManager(modelContext: context, feedManager: feedManager)
+        await opmlManager.syncAllSubscriptions()
     }
 
     /// Manually trigger a sync (useful for testing and launch sync)
