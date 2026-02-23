@@ -14,6 +14,7 @@ class DatabaseMigration {
     private let userDefaults = UserDefaults.standard
     private let texturizerMigrationKey = "hasRunTexturizerMigration_v1"
     private let categoryMigrationKey = "hasRunCategoryMigration_v1"
+    private let deduplicateFeedsMigrationKey = "hasRunDeduplicateFeedsMigration_v2"
 
     private init() {}
 
@@ -21,6 +22,7 @@ class DatabaseMigration {
     func runMigrations(modelContext: ModelContext) async {
         await texturizExistingArticles(modelContext: modelContext)
         await titleCaseFeedCategories(modelContext: modelContext)
+        await deduplicateFeeds(modelContext: modelContext)
     }
 
     /// Migrate existing articles to apply texturization
@@ -129,6 +131,55 @@ class DatabaseMigration {
             userDefaults.set(true, forKey: categoryMigrationKey)
 
             print("Category migration completed: \(migratedCount) feeds updated")
+        }
+    }
+
+    /// Remove duplicate feeds created by OPML sync bug.
+    /// Keeps the oldest feed (most articles/history) and deletes newer duplicates.
+    private func deduplicateFeeds(modelContext: ModelContext) async {
+        guard !userDefaults.bool(forKey: deduplicateFeedsMigrationKey) else {
+            print("Deduplicate feeds migration already completed, skipping")
+            return
+        }
+
+        print("Starting feed deduplication migration...")
+
+        await MainActor.run {
+            let fetchDescriptor = FetchDescriptor<Feed>()
+
+            guard let feeds = try? modelContext.fetch(fetchDescriptor) else {
+                print("Failed to fetch feeds for deduplication")
+                return
+            }
+
+            // Group feeds by URL
+            var feedsByURL: [String: [Feed]] = [:]
+            for feed in feeds {
+                feedsByURL[feed.url, default: []].append(feed)
+            }
+
+            var deletedCount = 0
+            for (url, duplicates) in feedsByURL where duplicates.count > 1 {
+                // Keep the feed with the most articles (or first if tied)
+                let sorted = duplicates.sorted { ($0.articles?.count ?? 0) > ($1.articles?.count ?? 0) }
+                let keeper = sorted[0]
+                let toDelete = sorted.dropFirst()
+
+                for duplicate in toDelete {
+                    print("Removing duplicate feed: \(duplicate.title) (\(url))")
+                    modelContext.delete(duplicate)
+                    deletedCount += 1
+                }
+
+                // Ensure keeper is active
+                keeper.isActive = true
+            }
+
+            try? modelContext.save()
+
+            userDefaults.set(true, forKey: deduplicateFeedsMigrationKey)
+
+            print("Feed deduplication completed: removed \(deletedCount) duplicate feeds")
         }
     }
 }
