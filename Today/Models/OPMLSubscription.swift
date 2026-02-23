@@ -6,7 +6,7 @@ import SwiftData
 @Model
 final class OPMLSubscription {
     var title: String
-    var url: String
+    @Attribute(.unique) var url: String
     var lastFetched: Date?
     var isActive: Bool
     var defaultCategory: String

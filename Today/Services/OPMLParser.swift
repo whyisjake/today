@@ -45,6 +45,9 @@ class OPMLParser {
     // MARK: - Private
 
     private func parseData(_ data: Data, originalContent: String) throws -> [ParsedFeed] {
+        // Reset state from any previous parse call
+        opmlTitle = nil
+
         print("🔍 OPML Parser: UTF-8 conversion successful, data size: \(data.count) bytes")
 
         // Detect HTML content before attempting XML parse

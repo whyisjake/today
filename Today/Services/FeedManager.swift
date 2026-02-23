@@ -76,10 +76,11 @@ class FeedManager: ObservableObject {
     func addFeed(url: String, category: String = "general") async throws -> Feed {
         // Upgrade http:// to https:// — most servers support it and ATS blocks plain HTTP
         // Skip domains known to not support HTTPS (have ATS exceptions in Info.plist)
-        let httpOnlyDomains = ["data.feedland.org", "scripting.com"]
+        let httpOnlyDomains: Set<String> = ["data.feedland.org", "scripting.com"]
         var normalizedURL = url
         if normalizedURL.lowercased().hasPrefix("http://") {
-            let isHTTPOnly = httpOnlyDomains.contains { normalizedURL.lowercased().contains($0) }
+            let host = URL(string: normalizedURL)?.host?.lowercased() ?? ""
+            let isHTTPOnly = httpOnlyDomains.contains(host) || httpOnlyDomains.contains(where: { host.hasSuffix(".\($0)") })
             if !isHTTPOnly {
                 normalizedURL = "https://" + normalizedURL.dropFirst("http://".count)
             }

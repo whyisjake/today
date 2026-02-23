@@ -30,6 +30,18 @@ class OPMLSubscriptionManager: ObservableObject {
             ])
         }
 
+        // Prevent duplicate subscriptions for the same OPML URL
+        let existingSubscriptions = try modelContext.fetch(
+            FetchDescriptor<OPMLSubscription>(
+                predicate: #Predicate<OPMLSubscription> { $0.url == url }
+            )
+        )
+        if !existingSubscriptions.isEmpty {
+            throw NSError(domain: "OPMLSubscription", code: -2, userInfo: [
+                NSLocalizedDescriptionKey: "A subscription for this OPML URL already exists"
+            ])
+        }
+
         // Fetch the OPML (prefer XML/OPML content)
         let response = try await ConditionalHTTPClient.conditionalFetch(
             url: opmlURL,
@@ -65,7 +77,7 @@ class OPMLSubscriptionManager: ObservableObject {
         // Add feeds from the OPML
         var addedCount = 0
         for parsedFeed in parsedFeeds {
-            let category = parsedFeed.category == "General" ? defaultCategory : parsedFeed.category
+            let category = parsedFeed.category.lowercased() == "general" ? defaultCategory : parsedFeed.category
 
             // Check if feed already exists
             let feedURL = parsedFeed.url
@@ -144,7 +156,7 @@ class OPMLSubscriptionManager: ObservableObject {
         let newURLs = remoteURLs.subtracting(localURLs)
         var addedCount = 0
         for parsedFeed in parsedFeeds where newURLs.contains(parsedFeed.url) {
-            let category = parsedFeed.category == "General" ? subscription.defaultCategory : parsedFeed.category
+            let category = parsedFeed.category.lowercased() == "general" ? subscription.defaultCategory : parsedFeed.category
             do {
                 let feed = try await feedManager.addFeed(url: parsedFeed.url, category: category)
                 feed.opmlSubscriptionURL = subscription.url

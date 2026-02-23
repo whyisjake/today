@@ -105,6 +105,7 @@ struct FeedListView: View {
     @State private var subscribeOPMLCategory = "General"
     @State private var isSubscribing = false
     @State private var subscribeError: String?
+    @State private var opmlActionError: String?
 
     // For macOS: show feed articles in place and use parent's selectedArticle
     #if os(macOS)
@@ -198,6 +199,14 @@ struct FeedListView: View {
             Button("OK", role: .cancel) { }
         } message: {
             Text("Your OPML feed list has been copied to the clipboard.")
+        }
+        .alert("OPML Subscription Error", isPresented: Binding(
+            get: { opmlActionError != nil },
+            set: { if !$0 { opmlActionError = nil } }
+        )) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(opmlActionError ?? "An unknown error occurred.")
         }
         .onAppear {
             // Sync custom categories from existing feeds
@@ -1525,7 +1534,7 @@ struct FeedListView: View {
             let manager = OPMLSubscriptionManager(modelContext: modelContext, feedManager: feedManager)
             try manager.removeSubscription(subscription, removeFeeds: false)
         } catch {
-            print("Error removing OPML subscription: \(error.localizedDescription)")
+            opmlActionError = "Failed to unsubscribe: \(error.localizedDescription)"
         }
     }
 
@@ -1535,8 +1544,18 @@ struct FeedListView: View {
         subscribeError = nil
     }
 
+    private var feedCountsBySubscriptionURL: [String: Int] {
+        var counts: [String: Int] = [:]
+        for feed in feeds {
+            if let url = feed.opmlSubscriptionURL {
+                counts[url, default: 0] += 1
+            }
+        }
+        return counts
+    }
+
     private func managedFeedCount(for subscription: OPMLSubscription) -> String {
-        let count = feeds.filter { $0.opmlSubscriptionURL == subscription.url }.count
+        let count = feedCountsBySubscriptionURL[subscription.url] ?? 0
         return "\(count) feed\(count == 1 ? "" : "s")"
     }
 
@@ -1546,7 +1565,7 @@ struct FeedListView: View {
                 let manager = OPMLSubscriptionManager(modelContext: modelContext, feedManager: feedManager)
                 try await manager.syncSubscription(subscription)
             } catch {
-                print("Error syncing OPML subscription: \(error.localizedDescription)")
+                opmlActionError = "Failed to sync: \(error.localizedDescription)"
             }
         }
     }
