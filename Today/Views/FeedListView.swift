@@ -98,6 +98,15 @@ struct FeedListView: View {
     @State private var showingExportConfirmation = false
     @AppStorage("showAltCategory") private var showAltFeeds = false // Global setting for Alt category visibility
 
+    // OPML Subscription
+    @Query(sort: \OPMLSubscription.title) private var opmlSubscriptions: [OPMLSubscription]
+    @State private var showingSubscribeOPML = false
+    @State private var subscribeOPMLURL = ""
+    @State private var subscribeOPMLCategory = "General"
+    @State private var isSubscribing = false
+    @State private var subscribeError: String?
+    @State private var opmlActionError: String?
+
     // For macOS: show feed articles in place and use parent's selectedArticle
     #if os(macOS)
     @State private var selectedFeedForArticles: Feed?
@@ -183,10 +192,21 @@ struct FeedListView: View {
         .sheet(isPresented: showingNewsletterSheet) {
             newsletterSheet
         }
+        .sheet(isPresented: $showingSubscribeOPML) {
+            subscribeOPMLSheet
+        }
         .alert("OPML Exported", isPresented: $showingExportConfirmation) {
             Button("OK", role: .cancel) { }
         } message: {
             Text("Your OPML feed list has been copied to the clipboard.")
+        }
+        .alert("OPML Subscription Error", isPresented: Binding(
+            get: { opmlActionError != nil },
+            set: { if !$0 { opmlActionError = nil } }
+        )) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(opmlActionError ?? "An unknown error occurred.")
         }
         .onAppear {
             // Sync custom categories from existing feeds
@@ -197,6 +217,56 @@ struct FeedListView: View {
     @ViewBuilder
     private var feedListContent: some View {
         List {
+            // OPML Subscriptions section
+            if !opmlSubscriptions.isEmpty {
+                Section {
+                    ForEach(opmlSubscriptions) { sub in
+                        HStack {
+                            Image(systemName: "antenna.radiowaves.left.and.right")
+                                .foregroundStyle(accentColor.color)
+                                .font(.caption)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(sub.title)
+                                    .font(.subheadline.weight(.medium))
+                                HStack(spacing: 4) {
+                                    Text(managedFeedCount(for: sub))
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                    if let lastFetched = sub.lastFetched {
+                                        Text("·")
+                                            .foregroundStyle(.tertiary)
+                                        Text("Synced \(lastFetched, style: .relative)")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                            Spacer()
+                            if !sub.isActive {
+                                Text("Paused")
+                                    .font(.caption2)
+                                    .foregroundStyle(.orange)
+                            }
+                        }
+                        .contextMenu {
+                            Button {
+                                syncSingleSubscription(sub)
+                            } label: {
+                                Label("Sync Now", systemImage: "arrow.clockwise")
+                            }
+
+                            Button(role: .destructive) {
+                                unsubscribeOPML(sub)
+                            } label: {
+                                Label("Unsubscribe", systemImage: "trash")
+                            }
+                        }
+                    }
+                } header: {
+                    Text("OPML Subscriptions")
+                }
+            }
+
             ForEach(visibleFeeds) { feed in
                 feedRow(for: feed)
             }
@@ -283,8 +353,14 @@ struct FeedListView: View {
                     .background(accentColor.color.opacity(0.2))
                     .cornerRadius(4)
 
+                if feed.opmlSubscriptionURL != nil {
+                    Image(systemName: "antenna.radiowaves.left.and.right")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
                 if let lastFetched = feed.lastFetched {
-                    Text("Last synced: \(lastFetched, style: .relative) ago")
+                    Text("Last synced: \(lastFetched, style: .relative)")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -367,6 +443,12 @@ struct FeedListView: View {
                 showingImportOPML = true
             } label: {
                 Label("Import OPML", systemImage: "square.and.arrow.down")
+            }
+
+            Button {
+                showingSubscribeOPML = true
+            } label: {
+                Label("Subscribe to OPML", systemImage: "antenna.radiowaves.left.and.right")
             }
 
             Button {
@@ -898,6 +980,256 @@ struct FeedListView: View {
         }
     }
 
+    // MARK: - Subscribe to OPML Sheet
+
+    @ViewBuilder
+    private var subscribeOPMLSheet: some View {
+        #if os(macOS)
+        macOSSubscribeOPMLSheet
+        #else
+        iOSSubscribeOPMLSheet
+        #endif
+    }
+
+    #if os(macOS)
+    @ViewBuilder
+    private var macOSSubscribeOPMLSheet: some View {
+        VStack(spacing: 0) {
+            // Header with icon
+            VStack(spacing: 8) {
+                Image(systemName: "antenna.radiowaves.left.and.right")
+                    .font(.system(size: 36))
+                    .foregroundStyle(accentColor.color)
+                    .frame(width: 56, height: 56)
+                    .background(accentColor.color.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                Text("Subscribe to OPML")
+                    .font(.title2.weight(.semibold))
+
+                Text("Automatically sync feeds from a remote OPML file")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.top, 24)
+            .padding(.bottom, 20)
+
+            // Content
+            VStack(alignment: .leading, spacing: 16) {
+                // URL field
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("OPML URL", systemImage: "link")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+
+                    TextField("https://example.com/feeds.opml", text: $subscribeOPMLURL)
+                        .textFieldStyle(.roundedBorder)
+                        .autocorrectionDisabled()
+                }
+
+                // Category
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Default Category", systemImage: "folder")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+
+                    Picker("", selection: $subscribeOPMLCategory) {
+                        ForEach(categoryManager.allCategories, id: \.self) { category in
+                            Text(category).tag(category)
+                        }
+                    }
+                    .labelsHidden()
+
+                    Text("New feeds from this OPML will be assigned this category")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+
+                // Existing subscriptions
+                if !opmlSubscriptions.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("Active Subscriptions", systemImage: "list.bullet")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.secondary)
+
+                        ForEach(opmlSubscriptions) { sub in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(sub.title)
+                                        .font(.subheadline)
+                                    if let lastFetched = sub.lastFetched {
+                                        Text("Last synced: \(lastFetched, style: .relative)")
+                                            .font(.caption2)
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                }
+                                Spacer()
+                                Button(role: .destructive) {
+                                    unsubscribeOPML(sub)
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .font(.caption)
+                                }
+                                .buttonStyle(.borderless)
+                            }
+                            .padding(8)
+                            .background(Color(NSColor.controlBackgroundColor))
+                            .cornerRadius(6)
+                        }
+                    }
+                }
+
+                // Error message
+                if let error = subscribeError {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.red)
+                        Text(error)
+                            .font(.caption)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.red.opacity(0.1))
+                    .cornerRadius(8)
+                }
+            }
+            .padding(.horizontal, 24)
+
+            Spacer()
+
+            // Footer buttons
+            HStack {
+                Button("Cancel") {
+                    showingSubscribeOPML = false
+                    resetSubscribeOPMLForm()
+                }
+                .keyboardShortcut(.escape, modifiers: [])
+
+                Spacer()
+
+                Button {
+                    subscribeToOPML()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus.circle.fill")
+                        Text("Subscribe")
+                    }
+                }
+                .keyboardShortcut(.return, modifiers: [])
+                .disabled(subscribeOPMLURL.isEmpty || isSubscribing)
+                .buttonStyle(.borderedProminent)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 16)
+        }
+        .frame(width: 460, height: 520)
+        .overlay {
+            if isSubscribing {
+                ZStack {
+                    Color.black.opacity(0.3)
+                    VStack(spacing: 12) {
+                        ProgressView()
+                            .scaleEffect(1.2)
+                        Text("Subscribing...")
+                            .font(.subheadline)
+                    }
+                    .padding(24)
+                    .background(.regularMaterial)
+                    .cornerRadius(12)
+                }
+            }
+        }
+    }
+    #endif
+
+    #if os(iOS)
+    @ViewBuilder
+    private var iOSSubscribeOPMLSheet: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("OPML URL", text: $subscribeOPMLURL)
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.URL)
+                        .autocorrectionDisabled()
+                } header: {
+                    Text("OPML URL")
+                } footer: {
+                    Text("Enter the URL of a remote OPML file. Feeds will be synced automatically.")
+                }
+
+                Section {
+                    Picker("Default Category", selection: $subscribeOPMLCategory) {
+                        ForEach(categoryManager.allCategories, id: \.self) { category in
+                            Text(category).tag(category)
+                        }
+                    }
+                } header: {
+                    Text("Category")
+                } footer: {
+                    Text("New feeds from this OPML will be assigned this category.")
+                }
+
+                if !opmlSubscriptions.isEmpty {
+                    Section {
+                        ForEach(opmlSubscriptions) { sub in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(sub.title)
+                                    .font(.subheadline)
+                                if let lastFetched = sub.lastFetched {
+                                    Text("Last synced: \(lastFetched, style: .relative)")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        .onDelete { indexSet in
+                            for index in indexSet {
+                                unsubscribeOPML(opmlSubscriptions[index])
+                            }
+                        }
+                    } header: {
+                        Text("Active Subscriptions")
+                    }
+                }
+
+                if let error = subscribeError {
+                    Section {
+                        Text(error)
+                            .foregroundStyle(.red)
+                            .font(.caption)
+                    }
+                }
+            }
+            .navigationTitle("Subscribe to OPML")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        showingSubscribeOPML = false
+                        resetSubscribeOPMLForm()
+                    }
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Subscribe") {
+                        subscribeToOPML()
+                    }
+                    .disabled(subscribeOPMLURL.isEmpty || isSubscribing)
+                }
+            }
+            .overlay {
+                if isSubscribing {
+                    ProgressView("Subscribing...")
+                        .padding()
+                        .background(.regularMaterial)
+                        .cornerRadius(10)
+                }
+            }
+        }
+    }
+    #endif
+
     @ViewBuilder
     private func unreadBadge(for feed: Feed) -> some View {
         if let articles = feed.articles {
@@ -1051,7 +1383,9 @@ struct FeedListView: View {
         Task {
             do {
                 print("📥 OPML Import: Parsing OPML...")
-                let feedsToImport = try parseOPML(opmlText)
+                let parser = OPMLParser()
+                let parsedFeeds = try parser.parse(opmlText)
+                let feedsToImport = parsedFeeds.map { (url: $0.url, title: $0.title, category: $0.category) }
                 let totalFeeds = feedsToImport.count
 
                 print("📥 OPML Import: Found \(totalFeeds) feeds to import")
@@ -1169,410 +1503,71 @@ struct FeedListView: View {
         }
     }
 
-    private func fixUnescapedAttributeValues(_ content: String) -> String {
-        // Fix unescaped quotes and ampersands inside attribute values
-        // This handles Stream's broken OPML export which doesn't escape special chars
-
-        var fixed = ""
-        var inAttributeValue = false
-        var inXMLDeclaration = false
-        var inComment = false
-        var i = content.startIndex
-
-        while i < content.endIndex {
-            let char = content[i]
-
-            // Check if we're entering an XML comment <!--
-            if !inComment && !inXMLDeclaration && char == "<" {
-                let remaining = String(content[i...])
-                if remaining.hasPrefix("<!--") {
-                    inComment = true
-                }
-            }
-
-            // Check if we're exiting an XML comment -->
-            if inComment && char == "-" {
-                let remaining = String(content[i...])
-                if remaining.hasPrefix("-->") {
-                    fixed.append("-->")
-                    i = content.index(i, offsetBy: 3)
-                    inComment = false
-                    continue
-                }
-            }
-
-            // Skip processing inside comments
-            if inComment {
-                fixed.append(char)
-                i = content.index(after: i)
-                continue
-            }
-
-            // Check if we're entering an XML declaration
-            if char == "<" && content.index(after: i) < content.endIndex &&
-               content[content.index(after: i)] == "?" {
-                inXMLDeclaration = true
-                fixed.append(char)
-                i = content.index(after: i)
-                continue
-            }
-
-            // Check if we're exiting an XML declaration
-            if inXMLDeclaration && char == "?" && content.index(after: i) < content.endIndex &&
-               content[content.index(after: i)] == ">" {
-                fixed.append(char) // append ?
-                i = content.index(after: i)
-                fixed.append(content[i]) // append >
-                inXMLDeclaration = false
-                i = content.index(after: i)
-                continue
-            }
-
-            // Skip processing inside XML declarations
-            if inXMLDeclaration {
-                fixed.append(char)
-                i = content.index(after: i)
-                continue
-            }
-
-            // Detect start of attribute value: ="
-            if char == "=" && content.index(after: i) < content.endIndex &&
-               content[content.index(after: i)] == "\"" {
-                fixed.append(char) // append =
-                i = content.index(after: i)
-                fixed.append(content[i]) // append opening "
-                i = content.index(after: i)
-                inAttributeValue = true
-                continue
-            }
-
-            // Inside attribute value
-            if inAttributeValue {
-                if char == "\"" {
-                    // Check if this is the closing quote by looking ahead for the next attribute or tag end
-                    // A closing quote is followed by: space + attribute name + = OR / OR >
-                    var j = content.index(after: i)
-                    var isClosingQuote = false
-
-                    // Skip whitespace after the quote
-                    while j < content.endIndex && (content[j] == " " || content[j] == "\t") {
-                        j = content.index(after: j)
-                    }
-
-                    if j < content.endIndex {
-                        let nextChar = content[j]
-                        // If followed by / or >, it's definitely a closing quote
-                        if nextChar == "/" || nextChar == ">" {
-                            isClosingQuote = true
-                        } else if nextChar.isLetter {
-                            // If followed by letters, check if it's an attribute name (letter+ followed by =)
-                            var k = j
-                            while k < content.endIndex && (content[k].isLetter || content[k].isNumber || content[k] == "_" || content[k] == "-") {
-                                k = content.index(after: k)
-                            }
-                            if k < content.endIndex && content[k] == "=" {
-                                isClosingQuote = true
-                            }
-                        }
-                    } else {
-                        // End of content
-                        isClosingQuote = true
-                    }
-
-                    if isClosingQuote {
-                        fixed.append(char) // Keep closing quote
-                        inAttributeValue = false
-                    } else {
-                        // Escape embedded quote
-                        fixed.append("&quot;")
-                    }
-                } else if char == "&" {
-                    // Check if this is already part of an entity
-                    let remainingContent = String(content[i...])
-                    let isEntity = remainingContent.hasPrefix("&quot;") ||
-                        remainingContent.hasPrefix("&amp;") ||
-                        remainingContent.hasPrefix("&lt;") ||
-                        remainingContent.hasPrefix("&gt;") ||
-                        remainingContent.hasPrefix("&apos;") ||
-                        remainingContent.hasPrefix("&#")
-
-                    if isEntity {
-                        fixed.append(char) // Keep as-is
-                    } else {
-                        // Escape unescaped ampersand
-                        fixed.append("&amp;")
-                    }
-                } else {
-                    fixed.append(char)
-                }
-            } else {
-                fixed.append(char)
-            }
-
-            i = content.index(after: i)
-        }
-
-        return fixed
-    }
-
-    private func parseOPML(_ opmlContent: String) throws -> [(url: String, title: String, category: String)] {
-        print("🔍 OPML Parser: Starting XML parsing...")
-        print("🔍 OPML Parser: Input length: \(opmlContent.count) characters")
-
-        // Clean up OPML content
-        var cleanedContent = opmlContent.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        // Remove BOM if present
-        if cleanedContent.hasPrefix("\u{FEFF}") {
-            cleanedContent = String(cleanedContent.dropFirst())
-            print("🔍 OPML Parser: Removed BOM")
-        }
-
-        // Detect if OPML was pasted twice (duplicate content)
-        // Check for multiple <?xml declarations or multiple </opml> tags
-        let xmlDeclarationCount = cleanedContent.components(separatedBy: "<?xml").count - 1
-        let closingOpmlCount = cleanedContent.components(separatedBy: "</opml>").count - 1
-
-        if xmlDeclarationCount > 1 || closingOpmlCount > 1 {
-            print("⚠️ OPML Parser: Detected duplicate content (multiple XML declarations or closing tags)")
-            print("⚠️ OPML Parser: Attempting to extract first valid OPML section...")
-
-            // Extract just the first OPML document
-            if let firstOpmlEnd = cleanedContent.range(of: "</opml>") {
-                let endIndex = cleanedContent.index(firstOpmlEnd.upperBound, offsetBy: 0)
-                cleanedContent = String(cleanedContent[..<endIndex])
-                print("✅ OPML Parser: Extracted first OPML section (\(cleanedContent.count) characters)")
-            }
-        }
-
-        // Fix attribute spacing: text= "value" -> text="value"
-        // This is a common issue in Stream and other OPML exporters
-        // Use a more comprehensive regex to catch all variations
-        do {
-            let regex = try NSRegularExpression(pattern: "=\\s+\"", options: [])
-            let range = NSRange(cleanedContent.startIndex..., in: cleanedContent)
-            let fixed = regex.stringByReplacingMatches(
-                in: cleanedContent,
-                options: [],
-                range: range,
-                withTemplate: "=\""
-            )
-            let fixCount = regex.numberOfMatches(in: cleanedContent, options: [], range: range)
-            if fixCount > 0 {
-                cleanedContent = fixed
-                print("🔍 OPML Parser: Fixed \(fixCount) attribute spacing issues (= \" -> =\")")
-            }
-        } catch {
-            print("⚠️ OPML Parser: Regex failed, using simple string replacement")
-            cleanedContent = cleanedContent.replacingOccurrences(of: "= \"", with: "=\"")
-        }
-
-        // Fix unescaped special characters in attribute values
-        // Stream exporter doesn't escape quotes or ampersands in attribute values
-        // We need to escape:
-        // - Unescaped quotes: " -> &quot; (but only inside attribute values)
-        // - Unescaped ampersands: & -> &amp; (but not if already part of an entity like &quot; or &amp;)
-        cleanedContent = fixUnescapedAttributeValues(cleanedContent)
-        print("🔍 OPML Parser: Fixed unescaped special characters in attributes")
-
-        // Remove any invalid control characters (except tab, newline, carriage return)
-        cleanedContent = cleanedContent.filter { char in
-            let scalar = char.unicodeScalars.first!
-            let value = scalar.value
-            // Allow tab (0x09), newline (0x0A), carriage return (0x0D)
-            // Allow normal printable characters (0x20 and above)
-            // Disallow other control characters (0x00-0x1F except the above)
-            return value == 0x09 || value == 0x0A || value == 0x0D || value >= 0x20
-        }
-
-        guard let data = cleanedContent.data(using: .utf8) else {
-            print("❌ OPML Parser: Failed to convert to UTF-8 data")
-            throw NSError(domain: "OPML", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid OPML text encoding"])
-        }
-
-        print("🔍 OPML Parser: UTF-8 conversion successful, data size: \(data.count) bytes")
-
-        let parser = XMLParser(data: data)
-        let delegate = OPMLParserDelegate()
-        parser.delegate = delegate
-
-        print("🔍 OPML Parser: Starting XMLParser.parse()...")
-        let parseResult = parser.parse()
-        print("🔍 OPML Parser: XMLParser.parse() completed with result: \(parseResult)")
-
-        if parseResult {
-            // Check if any parsing error occurred
-            if let error = delegate.parseError {
-                print("❌ OPML Parser: Parse error occurred: \(error.localizedDescription)")
-                throw NSError(domain: "OPML", code: -1, userInfo: [
-                    NSLocalizedDescriptionKey: "XML parsing error: \(error.localizedDescription)"
-                ])
-            }
-
-            print("🔍 OPML Parser: Found \(delegate.feeds.count) feeds")
-
-            // Check if we found any feeds
-            if delegate.feeds.isEmpty {
-                print("❌ OPML Parser: No feeds found in OPML")
-                throw NSError(domain: "OPML", code: -1, userInfo: [
-                    NSLocalizedDescriptionKey: "No valid feeds found in OPML file. Make sure feeds have both a URL and title."
-                ])
-            }
-
-            print("✅ OPML Parser: Successfully parsed \(delegate.feeds.count) feeds")
-            return delegate.feeds
-        } else {
-            // Parser failed - check for specific error
-            let line = parser.lineNumber
-            let column = parser.columnNumber
-
-            if let error = delegate.parseError {
-                print("❌ OPML Parser: Parse failed at line \(line), column \(column)")
-                print("❌ OPML Parser: Error: \(error.localizedDescription)")
-                print("❌ OPML Parser: Error code: \((error as NSError).code)")
-
-                // Try to show the problematic line
-                let lines = cleanedContent.components(separatedBy: .newlines)
-                if line > 0 && line <= lines.count {
-                    let problemLine = lines[line - 1]
-                    print("❌ OPML Parser: Problematic line: \(problemLine)")
-                    if column > 0 && column <= problemLine.count {
-                        let index = problemLine.index(problemLine.startIndex, offsetBy: column - 1, limitedBy: problemLine.endIndex)
-                        if let index = index {
-                            let char = problemLine[index]
-                            print("❌ OPML Parser: Character at error: '\(char)' (Unicode: \\u{\(String(char.unicodeScalars.first!.value, radix: 16))})")
-                        }
-                    }
-                }
-
-                // Provide helpful error message based on error code
-                let errorCode = (error as NSError).code
-                var errorMessage = "Failed to parse OPML at line \(line), column \(column)"
-
-                if errorCode == 23 { // NSXMLParserInvalidCharacterError
-                    errorMessage += "\n\nThis OPML file contains invalid XML characters. This is a known issue with some RSS readers' OPML export.\n\nTry:\n1. Re-export the OPML from your RSS reader\n2. Open the OPML file in a text editor and check for unusual characters\n3. Make sure you didn't accidentally paste the content twice"
-                } else if errorCode == 4 { // NSXMLParserEmptyDocumentError
-                    errorMessage += "\n\nThe OPML content appears to be empty or invalid."
-                } else {
-                    errorMessage += ": \(error.localizedDescription)"
-                }
-
-                throw NSError(domain: "OPML", code: -1, userInfo: [
-                    NSLocalizedDescriptionKey: errorMessage
-                ])
-            } else {
-                print("❌ OPML Parser: Parse failed at line \(line), column \(column) with no specific error")
-
-                var errorMessage = "Failed to parse OPML file at line \(line), column \(column)."
-                errorMessage += "\n\nPlease check that:"
-                errorMessage += "\n• The OPML file was exported correctly from your RSS reader"
-                errorMessage += "\n• You copied the entire file content"
-                errorMessage += "\n• You didn't paste the content multiple times"
-
-                throw NSError(domain: "OPML", code: -1, userInfo: [
-                    NSLocalizedDescriptionKey: errorMessage
-                ])
-            }
-        }
-    }
-
     private func toggleAltFeeds() {
         showAltFeeds.toggle()
     }
-}
 
-// MARK: - OPML Parser Delegate
-class OPMLParserDelegate: NSObject, XMLParserDelegate {
-    var feeds: [(url: String, title: String, category: String)] = []
-    private var currentCategory = "General"
-    private var categoryStack: [String] = []
-    var parseError: Error?
-    private var elementCount = 0
-    private var feedCount = 0
-    private var categoryCount = 0
-    private var skippedCount = 0
+    // MARK: - OPML Subscription Actions
 
-    func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String : String] = [:]) {
-        if elementName == "outline" {
-            elementCount += 1
+    private func subscribeToOPML() {
+        isSubscribing = true
+        subscribeError = nil
 
-            // Log first few elements for debugging
-            if elementCount <= 3 {
-                print("🔍 Delegate: Element \(elementCount) - attributes: \(attributeDict)")
+        Task {
+            do {
+                let manager = OPMLSubscriptionManager(modelContext: modelContext, feedManager: feedManager)
+                _ = try await manager.addSubscription(
+                    url: subscribeOPMLURL,
+                    defaultCategory: subscribeOPMLCategory
+                )
+                showingSubscribeOPML = false
+                resetSubscribeOPMLForm()
+            } catch {
+                subscribeError = error.localizedDescription
             }
-
-            // Case-insensitive attribute lookup helper
-            func getAttribute(_ name: String) -> String? {
-                // Try exact match first
-                if let value = attributeDict[name] {
-                    return value
-                }
-                // Try case-insensitive match
-                for (key, value) in attributeDict {
-                    if key.lowercased() == name.lowercased() {
-                        return value
-                    }
-                }
-                return nil
-            }
-
-            let type = getAttribute("type")
-            let xmlUrl = getAttribute("xmlUrl")
-            let title = getAttribute("title") ?? getAttribute("text")
-            let text = getAttribute("text")
-
-            // Check if this is a feed entry (has xmlUrl or type="rss")
-            let isFeed = xmlUrl != nil || type?.lowercased() == "rss"
-
-            if isFeed, let url = xmlUrl, let feedTitle = title, !feedTitle.trimmingCharacters(in: .whitespaces).isEmpty {
-                // This is a valid feed entry with non-empty title
-                feeds.append((url: url, title: feedTitle, category: currentCategory))
-                feedCount += 1
-
-                if feedCount <= 3 {
-                    print("✅ Delegate: Added feed \(feedCount): \(feedTitle) | \(url)")
-                }
-            } else if !isFeed, let categoryName = text, !categoryName.trimmingCharacters(in: .whitespaces).isEmpty {
-                // This is a category (outline without type="rss" or xmlUrl, with text)
-                categoryStack.append(currentCategory)
-                currentCategory = categoryName.lowercased()
-                categoryCount += 1
-                print("📁 Delegate: Found category: \(categoryName)")
-            } else {
-                // Skipped element - log why
-                skippedCount += 1
-                if skippedCount <= 3 {
-                    var reason = "Unknown"
-                    if !isFeed {
-                        reason = "Not a feed (no xmlUrl or type=rss)"
-                    } else if xmlUrl == nil {
-                        reason = "Missing xmlUrl"
-                    } else if title == nil || title!.trimmingCharacters(in: .whitespaces).isEmpty {
-                        reason = "Missing or empty title"
-                    }
-                    print("⏭️  Delegate: Skipped element (reason: \(reason))")
-                }
-            }
+            isSubscribing = false
         }
     }
 
-    func parser(_ parser: XMLParser, didEndDocument: Void) {
-        print("📊 Delegate: Parsing complete - Processed \(elementCount) outline elements")
-        print("📊 Delegate: Found \(feedCount) feeds, \(categoryCount) categories, skipped \(skippedCount) elements")
-    }
-
-    func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?) {
-        if elementName == "outline" && !categoryStack.isEmpty {
-            currentCategory = categoryStack.removeLast()
+    private func unsubscribeOPML(_ subscription: OPMLSubscription) {
+        do {
+            let manager = OPMLSubscriptionManager(modelContext: modelContext, feedManager: feedManager)
+            try manager.removeSubscription(subscription, removeFeeds: false)
+        } catch {
+            opmlActionError = "Failed to unsubscribe: \(error.localizedDescription)"
         }
     }
 
-    func parser(_ parser: XMLParser, parseErrorOccurred parseError: Error) {
-        self.parseError = parseError
+    private func resetSubscribeOPMLForm() {
+        subscribeOPMLURL = ""
+        subscribeOPMLCategory = "General"
+        subscribeError = nil
     }
 
-    func parser(_ parser: XMLParser, validationErrorOccurred validationError: Error) {
-        self.parseError = validationError
+    private var feedCountsBySubscriptionURL: [String: Int] {
+        var counts: [String: Int] = [:]
+        for feed in feeds {
+            if let url = feed.opmlSubscriptionURL {
+                counts[url, default: 0] += 1
+            }
+        }
+        return counts
+    }
+
+    private func managedFeedCount(for subscription: OPMLSubscription) -> String {
+        let count = feedCountsBySubscriptionURL[subscription.url] ?? 0
+        return "\(count) feed\(count == 1 ? "" : "s")"
+    }
+
+    private func syncSingleSubscription(_ subscription: OPMLSubscription) {
+        Task {
+            do {
+                let manager = OPMLSubscriptionManager(modelContext: modelContext, feedManager: feedManager)
+                try await manager.syncSubscription(subscription)
+            } catch {
+                opmlActionError = "Failed to sync: \(error.localizedDescription)"
+            }
+        }
     }
 }
 

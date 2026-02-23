@@ -21,6 +21,9 @@ final class Feed {
     var httpLastModified: String?  // Server's Last-Modified header value
     var httpEtag: String?          // Server's ETag header value
 
+    // OPML subscription tracking — if set, this feed is managed by an OPML subscription
+    var opmlSubscriptionURL: String?
+
     @Relationship(deleteRule: .cascade, inverse: \Article.feed)
     var articles: [Article]?
 

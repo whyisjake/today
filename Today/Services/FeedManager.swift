@@ -74,8 +74,20 @@ class FeedManager: ObservableObject {
 
     /// Add a new RSS feed subscription
     func addFeed(url: String, category: String = "general") async throws -> Feed {
+        // Upgrade http:// to https:// — most servers support it and ATS blocks plain HTTP
+        // Skip domains known to not support HTTPS (have ATS exceptions in Info.plist)
+        let httpOnlyDomains: Set<String> = ["data.feedland.org", "scripting.com"]
+        var normalizedURL = url
+        if normalizedURL.lowercased().hasPrefix("http://") {
+            let host = URL(string: normalizedURL)?.host?.lowercased() ?? ""
+            let isHTTPOnly = httpOnlyDomains.contains(host) || httpOnlyDomains.contains(where: { host.hasSuffix(".\($0)") })
+            if !isHTTPOnly {
+                normalizedURL = "https://" + normalizedURL.dropFirst("http://".count)
+            }
+        }
+
         // Convert Reddit URLs to JSON format
-        let feedURL = convertRedditURLToJSON(url)
+        let feedURL = convertRedditURLToJSON(normalizedURL)
 
         // Fetch the feed to validate and get metadata (no cache headers for new feed)
         let result = try await fetchFeed(url: feedURL)
