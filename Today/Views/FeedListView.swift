@@ -235,7 +235,7 @@ struct FeedListView: View {
                                     if let lastFetched = sub.lastFetched {
                                         Text("·")
                                             .foregroundStyle(.tertiary)
-                                        Text("Synced \(lastFetched, style: .relative) ago")
+                                        Text("Synced \(lastFetched, style: .relative)")
                                             .font(.caption2)
                                             .foregroundStyle(.secondary)
                                     }
@@ -360,7 +360,7 @@ struct FeedListView: View {
                 }
 
                 if let lastFetched = feed.lastFetched {
-                    Text("Last synced: \(lastFetched, style: .relative) ago")
+                    Text("Last synced: \(lastFetched, style: .relative)")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -1058,7 +1058,7 @@ struct FeedListView: View {
                                     Text(sub.title)
                                         .font(.subheadline)
                                     if let lastFetched = sub.lastFetched {
-                                        Text("Last synced: \(lastFetched, style: .relative) ago")
+                                        Text("Last synced: \(lastFetched, style: .relative)")
                                             .font(.caption2)
                                             .foregroundStyle(.tertiary)
                                     }
@@ -1177,7 +1177,7 @@ struct FeedListView: View {
                                 Text(sub.title)
                                     .font(.subheadline)
                                 if let lastFetched = sub.lastFetched {
-                                    Text("Last synced: \(lastFetched, style: .relative) ago")
+                                    Text("Last synced: \(lastFetched, style: .relative)")
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                 }

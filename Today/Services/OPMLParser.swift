@@ -353,6 +353,7 @@ class OPMLParserDelegate: NSObject, XMLParserDelegate {
 
     private var currentCategory = "General"
     private var categoryStack: [String] = []
+    private var isCategoryOutlineStack: [Bool] = []
     private var elementCount = 0
     private var feedCount = 0
     private var categoryCount = 0
@@ -414,6 +415,7 @@ class OPMLParserDelegate: NSObject, XMLParserDelegate {
                     feedCategory = currentCategory
                 }
                 feeds.append((url: url, title: feedTitle, category: feedCategory))
+                isCategoryOutlineStack.append(false)
                 feedCount += 1
                 if feedCount <= 3 {
                     print("✅ Delegate: Added feed \(feedCount): \(feedTitle) | \(url)")
@@ -421,9 +423,11 @@ class OPMLParserDelegate: NSObject, XMLParserDelegate {
             } else if !isFeed, let categoryName = text, !categoryName.trimmingCharacters(in: .whitespaces).isEmpty {
                 categoryStack.append(currentCategory)
                 currentCategory = categoryName.lowercased()
+                isCategoryOutlineStack.append(true)
                 categoryCount += 1
                 print("📁 Delegate: Found category: \(categoryName)")
             } else {
+                isCategoryOutlineStack.append(false)
                 skippedCount += 1
                 if skippedCount <= 3 {
                     var reason = "Unknown"
@@ -461,8 +465,11 @@ class OPMLParserDelegate: NSObject, XMLParserDelegate {
             return
         }
 
-        if elementName == "outline" && !categoryStack.isEmpty {
-            currentCategory = categoryStack.removeLast()
+        if elementName == "outline" {
+            let wasCategory = isCategoryOutlineStack.popLast() ?? false
+            if wasCategory && !categoryStack.isEmpty {
+                currentCategory = categoryStack.removeLast()
+            }
         }
     }
 
