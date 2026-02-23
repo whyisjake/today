@@ -34,7 +34,6 @@ final class Feed {
     var cloudPath: String?
     var cloudProtocol: String?
     var cloudRegisterProcedure: String?
-    var cloudRegisteredAt: Date?
 
     @Relationship(deleteRule: .cascade, inverse: \Article.feed)
     var articles: [Article]?

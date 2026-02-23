@@ -405,13 +405,19 @@ class FeedManager: ObservableObject {
             updateFeedWithArticles(feed, parsedArticles: parsedArticles)
             feed.httpLastModified = lastModified
             feed.httpEtag = etag
-            // Update RSS Cloud element if present
+            // Update RSS Cloud element
             if let cloud = cloudElement {
                 feed.cloudDomain = cloud.domain
                 feed.cloudPort = cloud.port
                 feed.cloudPath = cloud.path
                 feed.cloudRegisterProcedure = cloud.registerProcedure
                 feed.cloudProtocol = cloud.protocolType
+            } else {
+                feed.cloudDomain = nil
+                feed.cloudPort = nil
+                feed.cloudPath = nil
+                feed.cloudRegisterProcedure = nil
+                feed.cloudProtocol = nil
             }
             // Update URL if there was a permanent redirect
             if let newURL = finalURL {
@@ -435,10 +441,13 @@ class FeedManager: ObservableObject {
     /// Sync a feed by its URL — finds the matching local feed and syncs it.
     /// Shared infra for RSS Cloud callbacks and Feedland WebSocket notifications.
     func syncFeedByURL(_ url: String) async throws {
-        let descriptor = FetchDescriptor<Feed>(
-            predicate: #Predicate<Feed> { $0.url == url }
+        let byURL = try modelContext.fetch(
+            FetchDescriptor<Feed>(predicate: #Predicate<Feed> { $0.url == url })
         )
-        guard let feed = try modelContext.fetch(descriptor).first else { return }
+        let bySource = try modelContext.fetch(
+            FetchDescriptor<Feed>(predicate: #Predicate<Feed> { $0.sourceURL == url })
+        )
+        guard let feed = byURL.first ?? bySource.first else { return }
         try await syncFeed(feed)
     }
 
@@ -466,13 +475,19 @@ class FeedManager: ObservableObject {
             updateFeedWithArticles(updatedFeed, parsedArticles: parsedArticles)
             updatedFeed.httpLastModified = lastModified
             updatedFeed.httpEtag = etag
-            // Update RSS Cloud element if present
+            // Update RSS Cloud element
             if let cloud = cloudElement {
                 updatedFeed.cloudDomain = cloud.domain
                 updatedFeed.cloudPort = cloud.port
                 updatedFeed.cloudPath = cloud.path
                 updatedFeed.cloudRegisterProcedure = cloud.registerProcedure
                 updatedFeed.cloudProtocol = cloud.protocolType
+            } else {
+                updatedFeed.cloudDomain = nil
+                updatedFeed.cloudPort = nil
+                updatedFeed.cloudPath = nil
+                updatedFeed.cloudRegisterProcedure = nil
+                updatedFeed.cloudProtocol = nil
             }
             // Update URL if there was a permanent redirect
             if let newURL = finalURL {
