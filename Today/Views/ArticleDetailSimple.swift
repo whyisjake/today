@@ -469,10 +469,10 @@ struct ScrollableWebView: NSViewRepresentable {
         // Transparent background for dark mode
         webView.underPageBackgroundColor = .clear
         webView.setValue(false, forKey: "drawsBackground")
-        
+
         // Set up scroll observation
         context.coordinator.setupScrollObservation(webView: webView)
-        
+
         // Listen for page down notification
         context.coordinator.setupPageDownNotification(webView: webView)
 
@@ -495,34 +495,34 @@ struct ScrollableWebView: NSViewRepresentable {
             self.parent = parent
             self.articleID = articleID
         }
-        
+
         deinit {
             scrollObserver?.invalidate()
             if let observer = pageDownObserver {
                 NotificationCenter.default.removeObserver(observer)
             }
         }
-        
+
         func setupScrollObservation(webView: WKWebView) {
             // Observe scroll position changes via contentView.bounds on macOS
             guard let scrollView = webView.enclosingScrollView else { return }
-            
+
             // Use a debounced approach to avoid too many notifications
             scrollObserver = scrollView.contentView.observe(\.bounds, options: [.new]) { [weak self] contentView, _ in
-                guard let self = self, 
+                guard let self = self,
                       let articleID = self.articleID,
                       let scrollView = contentView.enclosingScrollView,
                       let documentView = scrollView.documentView else { return }
-                
+
                 let scrollPosition = scrollView.documentVisibleRect.maxY
                 let contentHeight = documentView.frame.height
-                
+
                 // Only post if we have valid dimensions
                 guard contentHeight > 0 else { return }
-                
+
                 // Consider "at bottom" if within 100 points of the end
                 let isAtBottom = (contentHeight - scrollPosition) < 100
-                
+
                 // Post on main thread to be safe
                 DispatchQueue.main.async {
                     if isAtBottom {
@@ -539,7 +539,7 @@ struct ScrollableWebView: NSViewRepresentable {
                 }
             }
         }
-        
+
         func setupPageDownNotification(webView: WKWebView) {
             // Listen for space bar "page down" command
             pageDownObserver = NotificationCenter.default.addObserver(
@@ -549,13 +549,13 @@ struct ScrollableWebView: NSViewRepresentable {
             ) { [weak webView] _ in
                 guard let webView = webView,
                       let scrollView = webView.enclosingScrollView else { return }
-                
+
                 // Scroll down by viewport height
                 let currentY = scrollView.contentView.bounds.origin.y
                 let viewportHeight = scrollView.contentView.bounds.height
                 let newY = min(currentY + viewportHeight,
                               (scrollView.documentView?.frame.height ?? 0) - viewportHeight)
-                
+
                 NSAnimationContext.runAnimationGroup { context in
                     context.duration = 0.25
                     context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
@@ -636,10 +636,18 @@ private func createStyledHTML(from html: String, colorScheme: ColorScheme, accen
                 font-family: \(fontFamily);
                 font-size: 1.125rem;
                 line-height: 1.778;
-                max-width: 70ch;
+                max-width: none;
                 margin-left: auto;
                 margin-right: auto;
-                padding: 1rem 1.5rem;
+                padding: 0;
+            }
+
+            /* Constrain line length for readability on wider screens */
+            @media (min-width: 700px) {
+                .prose {
+                    max-width: 70ch;
+                    padding: 1rem 1.5rem;
+                }
             }
 
             /* Paragraphs */
@@ -775,19 +783,21 @@ private func createStyledHTML(from html: String, colorScheme: ColorScheme, accen
                 max-width: 100%;
                 height: auto;
                 margin-top: 1.5em;
-                margin-bottom: 1.5em;
+                // margin-bottom: 1.5em;
                 border-radius: 0.5rem;
             }
 
             .prose figure {
-                margin: 1.5em 0;
+                margin: 0;
             }
 
             .prose figcaption {
                 color: \(textColorMuted);
-                font-size: 0.875em;
-                margin-top: 0.75em;
-                text-align: center;
+                font-size: 0.75em;
+                margin-top: 0.25em;
+                text-align: left;
+                // text-transform: uppercase;
+                letter-spacing: 0.025em;
             }
 
             /* Horizontal Rule */
