@@ -18,6 +18,7 @@ struct RedditComment: Identifiable {
     let score: Int
     let createdUtc: Date
     let depth: Int
+    let isOP: Bool // True if this comment is from the original poster
     var replies: [RedditComment]
 
     // Use a shared formatter to avoid creating new ones constantly
@@ -91,7 +92,7 @@ class RedditJSONParser {
 
         for child in commentChildren {
             totalParsed += 1
-            if let comment = parseComment(from: child, depth: 0) {
+            if let comment = parseComment(from: child, depth: 0, postAuthor: post.author) {
                 comments.append(comment)
             } else {
                 filteredCount += 1
@@ -273,7 +274,7 @@ class RedditJSONParser {
         )
     }
 
-    private func parseComment(from json: [String: Any], depth: Int) -> RedditComment? {
+    private func parseComment(from json: [String: Any], depth: Int, postAuthor: String) -> RedditComment? {
         guard let kind = json["kind"] as? String,
               kind == "t1", // t1 is a comment
               let data = json["data"] as? [String: Any],
@@ -296,13 +297,16 @@ class RedditJSONParser {
         let createdUtc = data["created_utc"] as? Double ?? 0
         let createdDate = Date(timeIntervalSince1970: createdUtc)
 
+        // Check if this comment is from the original poster
+        let isOP = author == postAuthor
+
         // Parse nested replies
         var replies: [RedditComment] = []
         if let repliesData = data["replies"] as? [String: Any],
            let repliesListing = repliesData["data"] as? [String: Any],
            let repliesChildren = repliesListing["children"] as? [[String: Any]] {
             for replyJson in repliesChildren {
-                if let reply = parseComment(from: replyJson, depth: depth + 1) {
+                if let reply = parseComment(from: replyJson, depth: depth + 1, postAuthor: postAuthor) {
                     replies.append(reply)
                 }
             }
@@ -320,6 +324,7 @@ class RedditJSONParser {
             score: score,
             createdUtc: createdDate,
             depth: depth,
+            isOP: isOP,
             replies: replies
         )
     }
