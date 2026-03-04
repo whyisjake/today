@@ -30,6 +30,13 @@ class RSSParser: NSObject, XMLParserDelegate {
     private(set) var feedDescription = ""
     private(set) var feedImageUrl = ""  // Channel-level image (podcast artwork)
 
+    // RSS Cloud element (channel-level)
+    private(set) var cloudDomain: String?
+    private(set) var cloudPort: Int?
+    private(set) var cloudPath: String?
+    private(set) var cloudRegisterProcedure: String?
+    private(set) var cloudProtocol: String?
+
     struct ParsedArticle {
         let title: String
         let link: String
@@ -144,6 +151,15 @@ class RSSParser: NSObject, XMLParserDelegate {
                 if feedImageUrl.isEmpty {
                     feedImageUrl = href
                 }
+            }
+
+            // Handle RSS Cloud <cloud> element
+            if elementName == "cloud" {
+                cloudDomain = attributeDict["domain"]
+                cloudPort = Int(attributeDict["port"] ?? "")
+                cloudPath = attributeDict["path"]
+                cloudRegisterProcedure = attributeDict["registerProcedure"]
+                cloudProtocol = attributeDict["protocol"]
             }
         }
     }

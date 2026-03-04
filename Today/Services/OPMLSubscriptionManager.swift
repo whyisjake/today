@@ -79,11 +79,15 @@ class OPMLSubscriptionManager: ObservableObject {
         for parsedFeed in parsedFeeds {
             let category = parsedFeed.category.lowercased() == "general" ? defaultCategory : parsedFeed.category
 
-            // Check if feed already exists
+            // Check if feed already exists (by stored URL or original source URL)
             let feedURL = parsedFeed.url
-            let existing = try modelContext.fetch(
+            let existingByURL = try modelContext.fetch(
                 FetchDescriptor<Feed>(predicate: #Predicate<Feed> { $0.url == feedURL })
             )
+            let existingBySource = try modelContext.fetch(
+                FetchDescriptor<Feed>(predicate: #Predicate<Feed> { $0.sourceURL == feedURL })
+            )
+            let existing = existingByURL.isEmpty ? existingBySource : existingByURL
 
             if existing.isEmpty {
                 do {
@@ -150,26 +154,41 @@ class OPMLSubscriptionManager: ObservableObject {
         let managedFeeds = try modelContext.fetch(
             FetchDescriptor<Feed>(predicate: #Predicate<Feed> { $0.opmlSubscriptionURL == subscriptionURL })
         )
-        let localURLs = Set(managedFeeds.map { $0.url })
+        // Use sourceURL (original OPML URL) for matching, falling back to stored url
+        let localSourceURLs = Set(managedFeeds.map { $0.sourceURL ?? $0.url })
 
-        // Add new feeds (in remote but not local)
-        let newURLs = remoteURLs.subtracting(localURLs)
+        // Add new feeds (in remote but not in managed set)
+        let newURLs = remoteURLs.subtracting(localSourceURLs)
         var addedCount = 0
         for parsedFeed in parsedFeeds where newURLs.contains(parsedFeed.url) {
             let category = parsedFeed.category.lowercased() == "general" ? subscription.defaultCategory : parsedFeed.category
-            do {
-                let feed = try await feedManager.addFeed(url: parsedFeed.url, category: category)
-                feed.opmlSubscriptionURL = subscription.url
-                addedCount += 1
-            } catch {
-                logger.warning("Failed to add feed \(parsedFeed.url): \(error.localizedDescription)")
+
+            // Check if feed already exists (by stored URL or original source URL)
+            let feedURL = parsedFeed.url
+            let existingByURL = try modelContext.fetch(
+                FetchDescriptor<Feed>(predicate: #Predicate<Feed> { $0.url == feedURL })
+            )
+            let existingBySource = try modelContext.fetch(
+                FetchDescriptor<Feed>(predicate: #Predicate<Feed> { $0.sourceURL == feedURL })
+            )
+
+            if existingByURL.isEmpty && existingBySource.isEmpty {
+                do {
+                    let feed = try await feedManager.addFeed(url: parsedFeed.url, category: category)
+                    feed.opmlSubscriptionURL = subscription.url
+                    addedCount += 1
+                } catch {
+                    logger.warning("Failed to add feed \(parsedFeed.url): \(error.localizedDescription)")
+                }
             }
+            // If feed exists but isn't managed by this subscription, skip it
+            // (don't create a duplicate, and don't claim user-added feeds)
         }
 
-        // Deactivate removed feeds (in local but not remote)
-        let removedURLs = localURLs.subtracting(remoteURLs)
+        // Deactivate removed feeds (in local/managed but not in remote OPML)
+        let removedSourceURLs = localSourceURLs.subtracting(remoteURLs)
         var deactivatedCount = 0
-        for feed in managedFeeds where removedURLs.contains(feed.url) {
+        for feed in managedFeeds where removedSourceURLs.contains(feed.sourceURL ?? feed.url) {
             feed.isActive = false
             deactivatedCount += 1
         }

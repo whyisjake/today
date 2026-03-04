@@ -24,6 +24,17 @@ final class Feed {
     // OPML subscription tracking — if set, this feed is managed by an OPML subscription
     var opmlSubscriptionURL: String?
 
+    // The original URL used to subscribe (before any redirects)
+    // Useful for matching against OPML URLs which may differ from the final (redirected) url
+    var sourceURL: String?
+
+    // RSS Cloud element — parsed from <cloud> in RSS 2.0 feeds
+    var cloudDomain: String?
+    var cloudPort: Int?
+    var cloudPath: String?
+    var cloudProtocol: String?
+    var cloudRegisterProcedure: String?
+
     @Relationship(deleteRule: .cascade, inverse: \Article.feed)
     var articles: [Article]?
 

@@ -129,6 +129,7 @@ class BackgroundSyncManager: ObservableObject {
         let feedManager = FeedManager(modelContext: context)
         let opmlManager = OPMLSubscriptionManager(modelContext: context, feedManager: feedManager)
         await opmlManager.syncAllSubscriptions()
+
     }
 
     /// Manually trigger a sync (useful for testing and launch sync)
