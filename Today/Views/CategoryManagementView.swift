@@ -22,13 +22,36 @@ struct CategoryManagementView: View {
     @State private var mergeTargetCategory = ""
     @State private var errorMessage: String?
 
+    @State private var feedCategories: [String] = []
+
     init(modelContext: ModelContext) {
         _feedManager = StateObject(wrappedValue: FeedManager(modelContext: modelContext))
+    }
+
+    /// Categories that exist on feeds but don't exactly match any standard or custom category
+    /// e.g. "politics" when "Politics" is standard — case mismatches that should be merged
+    private var unmanagedCategories: [String] {
+        let known = Set(CategoryManager.allStandardCategories + categoryManager.customCategories)
+        return feedCategories
+            .filter { !known.contains($0) }
+            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     var body: some View {
         NavigationStack {
             List {
+                if !unmanagedCategories.isEmpty {
+                    Section {
+                        ForEach(unmanagedCategories, id: \.self) { category in
+                            categoryRow(category)
+                        }
+                    } header: {
+                        Text("Needs Attention")
+                    } footer: {
+                        Text("These categories exist on feeds but don't match a standard category. Consider merging them.")
+                    }
+                }
+
                 if !categoryManager.customCategories.isEmpty {
                     Section {
                         ForEach(categoryManager.customCategories, id: \.self) { category in
@@ -47,8 +70,13 @@ struct CategoryManagementView: View {
                     Text("Standard Categories")
                 }
             }
+            .task {
+                loadFeedCategories()
+            }
             .navigationTitle("Manage Categories")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") {
@@ -139,7 +167,9 @@ struct CategoryManagementView: View {
             Form {
                 Section {
                     TextField("Category Name", text: $newCategoryName)
+                        #if os(iOS)
                         .autocapitalization(.words)
+                        #endif
                 } header: {
                     Text("New Name")
                 } footer: {
@@ -149,7 +179,9 @@ struct CategoryManagementView: View {
                 }
             }
             .navigationTitle("Rename Category")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -185,7 +217,9 @@ struct CategoryManagementView: View {
                 }
             }
             .navigationTitle("Merge Category")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -204,7 +238,9 @@ struct CategoryManagementView: View {
 
     private var availableMergeTargets: [String] {
         guard let selected = selectedCategory else { return [] }
-        return categoryManager.allCategories.filter { $0.lowercased() != selected.lowercased() }
+        let all = Set(categoryManager.allCategories + feedCategories)
+        return all.filter { $0 != selected }
+            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     private func renameCategory() {
@@ -227,6 +263,7 @@ struct CategoryManagementView: View {
         // Update all feeds with this category
         do {
             try feedManager.updateFeedsCategory(from: oldName, to: newName)
+            loadFeedCategories()
             showRenameSheet = false
             selectedCategory = nil
         } catch {
@@ -243,9 +280,17 @@ struct CategoryManagementView: View {
         // Move all feeds to default category
         do {
             try feedManager.updateFeedsCategory(from: category, to: defaultCategory)
+            loadFeedCategories()
             selectedCategory = nil
         } catch {
             errorMessage = "Failed to move feeds: \(error.localizedDescription)"
+        }
+    }
+
+    private func loadFeedCategories() {
+        let descriptor = FetchDescriptor<Feed>()
+        if let feeds = try? modelContext.fetch(descriptor) {
+            feedCategories = Array(Set(feeds.map(\.category)))
         }
     }
 
@@ -263,6 +308,7 @@ struct CategoryManagementView: View {
         // Update all feeds with this category
         do {
             try feedManager.updateFeedsCategory(from: source, to: mergeTargetCategory)
+            loadFeedCategories()
             showMergeSheet = false
             selectedCategory = nil
         } catch {

@@ -135,7 +135,7 @@ class CategoryManager: ObservableObject {
             return false
         }
 
-        guard trimmedSource.lowercased() != trimmedTarget.lowercased() else {
+        guard trimmedSource != trimmedTarget else {
             print("⚠️ CategoryManager: Cannot merge category into itself")
             return false
         }
