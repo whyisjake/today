@@ -396,6 +396,7 @@ struct RedditPostView: View {
                 score: comment.score,
                 createdUtc: comment.createdUtc,
                 depth: depth,
+                isOP: comment.isOP,
                 replies: [] // No nested replies in flattened view
             )
             result.append(flatComment)
