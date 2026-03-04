@@ -385,8 +385,13 @@ struct TodayView: View {
                 resetToToday()
             }
             .navigationDestination(item: $navigationState) { state in
+                #if os(iOS)
+                ArticlePagerView(
+                    context: state.context,
+                    initialArticleID: state.articleID
+                )
+                #else
                 if let article = modelContext.model(for: state.articleID) as? Article {
-                    // For Reddit posts, show combined post + comments view
                     if article.isRedditPost {
                         if !state.context.isEmpty,
                            let currentIndex = state.context.firstIndex(of: state.articleID) {
@@ -412,7 +417,7 @@ struct TodayView: View {
                                     }
                                 }
                             )
-                            .id(state.articleID)  // Force view refresh when article changes
+                            .id(state.articleID)
                         } else {
                             RedditPostView(
                                 article: article,
@@ -422,10 +427,7 @@ struct TodayView: View {
                                 onNavigateToNext: { _ in }
                             )
                         }
-                    }
-                    // For all other articles, show in-app article detail
-                    // Use the captured navigation context (stable across view updates)
-                    else if !state.context.isEmpty,
+                    } else if !state.context.isEmpty,
                        let currentIndex = state.context.firstIndex(of: state.articleID) {
                         let previousIndex = currentIndex - 1
                         let nextIndex = currentIndex + 1
@@ -459,6 +461,7 @@ struct TodayView: View {
                         )
                     }
                 }
+                #endif
             }
             .toolbar {
                 #if os(iOS)
