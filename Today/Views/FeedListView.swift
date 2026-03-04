@@ -96,6 +96,7 @@ struct FeedListView: View {
     @State private var importError: String?
     @State private var importProgress: String?
     @State private var showingExportConfirmation = false
+    @State private var showingCategoryManagement = false
     @AppStorage("showAltCategory") private var showAltFeeds = false // Global setting for Alt category visibility
 
     // OPML Subscription
@@ -185,6 +186,9 @@ struct FeedListView: View {
         }
         .sheet(isPresented: $showingImportOPML) {
             importOPMLSheet
+        }
+        .sheet(isPresented: $showingCategoryManagement) {
+            CategoryManagementView(modelContext: modelContext)
         }
         .sheet(isPresented: showingEditFeed) {
             editFeedSheet
@@ -436,6 +440,14 @@ struct FeedListView: View {
                 Label("Sync All Feeds", systemImage: "arrow.clockwise")
             }
             .disabled(syncManager.isSyncInProgress)
+
+            Divider()
+
+            Button {
+                showingCategoryManagement = true
+            } label: {
+                Label("Manage Categories", systemImage: "folder.badge.gearshape")
+            }
 
             Divider()
 

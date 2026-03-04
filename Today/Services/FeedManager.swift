@@ -721,4 +721,32 @@ class FeedManager: ObservableObject {
         modelContext.delete(feed)
         try modelContext.save()
     }
+
+    /// Update category for all feeds matching a given category
+    /// Used when renaming or merging categories
+    func updateFeedsCategory(from oldCategory: String, to newCategory: String) throws {
+        let descriptor = FetchDescriptor<Feed>(
+            predicate: #Predicate<Feed> { feed in
+                feed.category.lowercased() == oldCategory.lowercased()
+            }
+        )
+        let feeds = try modelContext.fetch(descriptor)
+
+        for feed in feeds {
+            feed.category = newCategory
+        }
+
+        try modelContext.save()
+        print("📂 Updated \(feeds.count) feeds from category '\(oldCategory)' to '\(newCategory)'")
+    }
+
+    /// Get count of feeds in a given category
+    func getFeedCount(forCategory category: String) throws -> Int {
+        let descriptor = FetchDescriptor<Feed>(
+            predicate: #Predicate<Feed> { feed in
+                feed.category.lowercased() == category.lowercased()
+            }
+        )
+        return try modelContext.fetchCount(descriptor)
+    }
 }
