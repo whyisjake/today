@@ -321,4 +321,270 @@ final class CategoryManagerTests: XCTestCase {
         let stored = UserDefaults.standard.array(forKey: testKey) as? [String]
         XCTAssertTrue(stored?.contains("CustomFromFeed") ?? false, "Synced categories should persist to UserDefaults")
     }
+
+    // MARK: - Rename Category Tests
+
+    func testRenameCategorySuccess() {
+        let manager = CategoryManager.shared
+        UserDefaults.standard.removeObject(forKey: testKey)
+
+        _ = manager.addCustomCategory("OldName")
+        let result = manager.renameCategory(from: "OldName", to: "NewName")
+
+        XCTAssertEqual(result, "NewName", "Should return new category name")
+        XCTAssertFalse(manager.customCategories.contains("OldName"), "Old category should be removed")
+        XCTAssertTrue(manager.customCategories.contains("NewName"), "New category should be added")
+    }
+
+    func testRenameCategoryTrimsWhitespace() {
+        let manager = CategoryManager.shared
+        UserDefaults.standard.removeObject(forKey: testKey)
+
+        _ = manager.addCustomCategory("Original")
+        let result = manager.renameCategory(from: "Original", to: "  Trimmed  ")
+
+        XCTAssertEqual(result, "Trimmed", "Should return trimmed name")
+        XCTAssertTrue(manager.customCategories.contains("Trimmed"), "Should store trimmed name")
+    }
+
+    func testRenameCategoryToEmptyFails() {
+        let manager = CategoryManager.shared
+        UserDefaults.standard.removeObject(forKey: testKey)
+
+        _ = manager.addCustomCategory("Original")
+        let result = manager.renameCategory(from: "Original", to: "")
+
+        XCTAssertNil(result, "Should reject empty new name")
+        XCTAssertTrue(manager.customCategories.contains("Original"), "Should keep original category")
+    }
+
+    func testRenameCategoryToWhitespaceFails() {
+        let manager = CategoryManager.shared
+        UserDefaults.standard.removeObject(forKey: testKey)
+
+        _ = manager.addCustomCategory("Original")
+        let result = manager.renameCategory(from: "Original", to: "   ")
+
+        XCTAssertNil(result, "Should reject whitespace-only new name")
+        XCTAssertTrue(manager.customCategories.contains("Original"), "Should keep original category")
+    }
+
+    func testRenameCategoryToExistingCustomFails() {
+        let manager = CategoryManager.shared
+        UserDefaults.standard.removeObject(forKey: testKey)
+
+        _ = manager.addCustomCategory("Category1")
+        _ = manager.addCustomCategory("Category2")
+        let result = manager.renameCategory(from: "Category1", to: "Category2")
+
+        XCTAssertNil(result, "Should reject rename to existing custom category")
+        XCTAssertTrue(manager.customCategories.contains("Category1"), "Should keep original category")
+        XCTAssertTrue(manager.customCategories.contains("Category2"), "Should keep conflicting category")
+    }
+
+    func testRenameCategoryToStandardFails() {
+        let manager = CategoryManager.shared
+        UserDefaults.standard.removeObject(forKey: testKey)
+
+        _ = manager.addCustomCategory("MyCategory")
+        let result = manager.renameCategory(from: "MyCategory", to: "General")
+
+        XCTAssertNil(result, "Should reject rename to standard category")
+        XCTAssertTrue(manager.customCategories.contains("MyCategory"), "Should keep original category")
+    }
+
+    func testRenameCategoryStandardCategory() {
+        let manager = CategoryManager.shared
+        UserDefaults.standard.removeObject(forKey: testKey)
+
+        // Standard categories can be "renamed" by caller updating feeds, but manager doesn't track them
+        let result = manager.renameCategory(from: "General", to: "MyGeneral")
+
+        XCTAssertEqual(result, "MyGeneral", "Should return new name for standard category")
+        // Standard category rename doesn't affect customCategories
+        XCTAssertFalse(manager.customCategories.contains("General"), "Standard category not in custom list")
+    }
+
+    func testRenameCategoryCaseChange() {
+        let manager = CategoryManager.shared
+        UserDefaults.standard.removeObject(forKey: testKey)
+
+        _ = manager.addCustomCategory("gaming")
+        let result = manager.renameCategory(from: "gaming", to: "Gaming")
+
+        XCTAssertEqual(result, "Gaming", "Should allow case change")
+        XCTAssertTrue(manager.customCategories.contains("Gaming"), "Should have new case")
+        XCTAssertFalse(manager.customCategories.contains("gaming"), "Should not have old case")
+    }
+
+    func testRenameCategoryPersists() {
+        let manager = CategoryManager.shared
+        UserDefaults.standard.removeObject(forKey: testKey)
+
+        _ = manager.addCustomCategory("Before")
+        _ = manager.renameCategory(from: "Before", to: "After")
+
+        let stored = UserDefaults.standard.array(forKey: testKey) as? [String]
+        XCTAssertTrue(stored?.contains("After") ?? false, "Renamed category should persist")
+        XCTAssertFalse(stored?.contains("Before") ?? true, "Old name should not persist")
+    }
+
+    // MARK: - Delete Category Tests
+
+    func testDeleteCategoryReturnsDefaultCategory() {
+        let manager = CategoryManager.shared
+        UserDefaults.standard.removeObject(forKey: testKey)
+
+        _ = manager.addCustomCategory("ToDelete")
+        let result = manager.deleteCategory("ToDelete")
+
+        XCTAssertEqual(result, "General", "Should return default category 'General'")
+    }
+
+    func testDeleteCategoryRemovesFromCustom() {
+        let manager = CategoryManager.shared
+        UserDefaults.standard.removeObject(forKey: testKey)
+
+        _ = manager.addCustomCategory("ToDelete")
+        _ = manager.deleteCategory("ToDelete")
+
+        XCTAssertFalse(manager.customCategories.contains("ToDelete"), "Category should be removed from custom list")
+    }
+
+    func testDeleteCategoryCustomDefaultCategory() {
+        let manager = CategoryManager.shared
+        UserDefaults.standard.removeObject(forKey: testKey)
+
+        _ = manager.addCustomCategory("ToDelete")
+        let result = manager.deleteCategory("ToDelete", defaultCategory: "Work")
+
+        XCTAssertEqual(result, "Work", "Should return custom default category")
+    }
+
+    func testDeleteStandardCategory() {
+        let manager = CategoryManager.shared
+        UserDefaults.standard.removeObject(forKey: testKey)
+
+        // Deleting a standard category doesn't affect customCategories, just returns default
+        let result = manager.deleteCategory("Tech")
+
+        XCTAssertEqual(result, "General", "Should return default category")
+        XCTAssertTrue(manager.customCategories.isEmpty, "Should not affect custom categories")
+    }
+
+    func testDeleteCategoryPersists() {
+        let manager = CategoryManager.shared
+        UserDefaults.standard.removeObject(forKey: testKey)
+
+        _ = manager.addCustomCategory("ToDelete")
+        _ = manager.deleteCategory("ToDelete")
+
+        let stored = UserDefaults.standard.array(forKey: testKey) as? [String]
+        XCTAssertFalse(stored?.contains("ToDelete") ?? true, "Deleted category should not persist")
+    }
+
+    // MARK: - Merge Categories Tests
+
+    func testMergeCategoriesSuccess() {
+        let manager = CategoryManager.shared
+        UserDefaults.standard.removeObject(forKey: testKey)
+
+        _ = manager.addCustomCategory("Source")
+        _ = manager.addCustomCategory("Target")
+        let result = manager.mergeCategories(from: "Source", to: "Target")
+
+        XCTAssertTrue(result, "Merge should succeed")
+        XCTAssertFalse(manager.customCategories.contains("Source"), "Source category should be removed")
+        XCTAssertTrue(manager.customCategories.contains("Target"), "Target category should remain")
+    }
+
+    func testMergeCategoriesCreatesTargetIfNeeded() {
+        let manager = CategoryManager.shared
+        UserDefaults.standard.removeObject(forKey: testKey)
+
+        _ = manager.addCustomCategory("Source")
+        let result = manager.mergeCategories(from: "Source", to: "NewTarget")
+
+        XCTAssertTrue(result, "Merge should succeed")
+        XCTAssertFalse(manager.customCategories.contains("Source"), "Source should be removed")
+        XCTAssertTrue(manager.customCategories.contains("NewTarget"), "Target should be created")
+    }
+
+    func testMergeCategoriesIntoStandard() {
+        let manager = CategoryManager.shared
+        UserDefaults.standard.removeObject(forKey: testKey)
+
+        _ = manager.addCustomCategory("Source")
+        let result = manager.mergeCategories(from: "Source", to: "General")
+
+        XCTAssertTrue(result, "Merge into standard category should succeed")
+        XCTAssertFalse(manager.customCategories.contains("Source"), "Source should be removed")
+        XCTAssertFalse(manager.customCategories.contains("General"), "General should not be in custom categories")
+    }
+
+    func testMergeCategoriesTrimsWhitespace() {
+        let manager = CategoryManager.shared
+        UserDefaults.standard.removeObject(forKey: testKey)
+
+        _ = manager.addCustomCategory("Source")
+        let result = manager.mergeCategories(from: "  Source  ", to: "  Target  ")
+
+        XCTAssertTrue(result, "Merge should succeed with trimmed names")
+        XCTAssertTrue(manager.customCategories.contains("Target"), "Target should be added (trimmed)")
+    }
+
+    func testMergeCategoriesEmptySourceFails() {
+        let manager = CategoryManager.shared
+        UserDefaults.standard.removeObject(forKey: testKey)
+
+        let result = manager.mergeCategories(from: "", to: "Target")
+
+        XCTAssertFalse(result, "Should reject empty source")
+    }
+
+    func testMergeCategoriesEmptyTargetFails() {
+        let manager = CategoryManager.shared
+        UserDefaults.standard.removeObject(forKey: testKey)
+
+        _ = manager.addCustomCategory("Source")
+        let result = manager.mergeCategories(from: "Source", to: "")
+
+        XCTAssertFalse(result, "Should reject empty target")
+        XCTAssertTrue(manager.customCategories.contains("Source"), "Source should remain")
+    }
+
+    func testMergeCategoriesIntoItselfFails() {
+        let manager = CategoryManager.shared
+        UserDefaults.standard.removeObject(forKey: testKey)
+
+        _ = manager.addCustomCategory("Same")
+        let result = manager.mergeCategories(from: "Same", to: "Same")
+
+        XCTAssertFalse(result, "Should reject merge into itself")
+        XCTAssertTrue(manager.customCategories.contains("Same"), "Category should remain")
+    }
+
+    func testMergeCategoriesIntoItselfCaseInsensitiveFails() {
+        let manager = CategoryManager.shared
+        UserDefaults.standard.removeObject(forKey: testKey)
+
+        _ = manager.addCustomCategory("Gaming")
+        let result = manager.mergeCategories(from: "Gaming", to: "gaming")
+
+        XCTAssertFalse(result, "Should reject case-insensitive merge into itself")
+        XCTAssertTrue(manager.customCategories.contains("Gaming"), "Category should remain")
+    }
+
+    func testMergeCategoriesPersists() {
+        let manager = CategoryManager.shared
+        UserDefaults.standard.removeObject(forKey: testKey)
+
+        _ = manager.addCustomCategory("Source")
+        _ = manager.addCustomCategory("Target")
+        _ = manager.mergeCategories(from: "Source", to: "Target")
+
+        let stored = UserDefaults.standard.array(forKey: testKey) as? [String]
+        XCTAssertFalse(stored?.contains("Source") ?? true, "Source should not persist")
+        XCTAssertTrue(stored?.contains("Target") ?? false, "Target should persist")
+    }
 }
