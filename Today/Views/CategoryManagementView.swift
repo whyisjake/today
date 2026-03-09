@@ -73,6 +73,9 @@ struct CategoryManagementView: View {
             .task {
                 loadFeedCategories()
             }
+            #if os(macOS)
+            .frame(minWidth: 400, minHeight: 500)
+            #endif
             .navigationTitle("Manage Categories")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
@@ -156,9 +159,18 @@ struct CategoryManagementView: View {
                     }
                 }
             } label: {
+                #if os(macOS)
+                Image(systemName: "chevron.down.circle")
+                    .foregroundStyle(.secondary)
+                #else
                 Image(systemName: "ellipsis.circle")
                     .foregroundStyle(.secondary)
+                #endif
             }
+            #if os(macOS)
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            #endif
         }
     }
 
@@ -170,6 +182,9 @@ struct CategoryManagementView: View {
                         #if os(iOS)
                         .autocapitalization(.words)
                         #endif
+                        .onSubmit {
+                            renameCategory()
+                        }
                 } header: {
                     Text("New Name")
                 } footer: {
@@ -178,6 +193,10 @@ struct CategoryManagementView: View {
                     }
                 }
             }
+            #if os(macOS)
+            .formStyle(.grouped)
+            .frame(minWidth: 350, minHeight: 150)
+            #endif
             .navigationTitle("Rename Category")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
@@ -208,6 +227,9 @@ struct CategoryManagementView: View {
                             Text(category).tag(category)
                         }
                     }
+                    #if os(macOS)
+                    .pickerStyle(.menu)
+                    #endif
                 } header: {
                     Text("Merge Into")
                 } footer: {
@@ -216,6 +238,10 @@ struct CategoryManagementView: View {
                     }
                 }
             }
+            #if os(macOS)
+            .formStyle(.grouped)
+            .frame(minWidth: 350, minHeight: 180)
+            #endif
             .navigationTitle("Merge Category")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
