@@ -393,62 +393,30 @@ Set up these labels in your repository:
 | `complexity:medium` | Multiple files, established patterns           |
 | `complexity:high`   | Architectural decisions, needs planning        |
 
-### Using GitHub Copilot Workspace
+### Using Claude Code
 
-[Copilot Workspace](https://githubnext.com/projects/copilot-workspace) can take issues directly to PRs:
-
-1. **Open an agent-ready issue** in your browser
-2. **Click "Open in Workspace"** (Copilot button)
-3. **Review the generated plan** — Copilot analyzes the issue and proposes changes
-4. **Edit the plan** if needed — Add/remove files, adjust approach
-5. **Generate code** — Copilot implements the plan
-6. **Review and refine** — Edit generated code in the workspace
-7. **Create PR** — Push directly to a branch and open PR
-
-**Tips for Copilot Workspace:**
-
-- Well-structured issues = better plans
-- The Technical Notes section is especially important
-- Review the plan carefully before generating code
-- Use "Regenerate" if the plan misses the mark
-
-### Using Cursor Background Agents
-
-[Cursor's long-running agents](https://cursor.com/agents) can work autonomously:
-
-1. **Clone the repo** in Cursor
-2. **Reference the GitHub issue** — Paste URL or issue content
-3. **Request a plan** — "Based on issue #123, create an implementation plan"
-4. **Review and approve** the plan
-5. **Execute** — Agent implements, can run for hours
-6. **Review output** — Agent creates branch with changes
-7. **Push and PR** — Create PR from the agent's branch
-
-**Tips for Cursor Agents:**
-
-- Use for medium/high complexity issues
-- Always do planning phase first
-- Check in periodically on long runs
-- Agent can run while you do other work
-
-### Using Claude Code / Codex CLI
-
-For command-line agent workflows:
+[Claude Code](https://claude.ai/claude-code) is the primary agent for this workflow. Issues labeled `agent-ready` automatically trigger Claude Code via the `agent-ready-trigger.yml` workflow. You can also run it manually:
 
 ```bash
 # Navigate to repo
-cd ~/Sites/prc-platform
+cd ~/Sites/today
 
-# Have agent read and plan
-claude "Read issue #2130 and create an implementation plan for Phase 4"
+# Have Claude read the issue and plan
+claude "Read issue #123 and create an implementation plan"
 
-# Review plan, then execute
-claude "Implement the approved plan for the REST API endpoints"
+# Review the plan, then execute
+claude "Implement the approved plan"
 
-# Agent works, creates commits
-# Push branch and create PR via gh CLI
-gh pr create --title "Add REST API endpoints" --body "Closes #2130"
+# Claude creates commits on a branch — push and open a PR
+gh pr create --title "Implement feature X" --body "Closes #123"
 ```
+
+**Tips for Claude Code:**
+
+- Well-structured issues with clear Technical Notes produce better results
+- Use the planning phase for medium/high complexity issues
+- The `agent-ready` label auto-triggers Claude via GitHub Actions
+- Claude will comment on the issue if it needs clarification
 
 ### PR Template for Agent-Generated Code
 
@@ -458,7 +426,7 @@ Create `.github/PULL_REQUEST_TEMPLATE/agent-generated.md`:
 ## Agent-Generated PR
 
 **Issue:** #[issue_number]
-**Agent:** [Copilot Workspace / Cursor / Claude Code]
+**Agent:** Claude Code
 **Complexity:** [low / medium / high]
 
 ### Summary
@@ -618,10 +586,8 @@ jobs:
 
 **Agent Platforms:**
 
-- [Cursor Long-Running Agents](https://cursor.com/blog/long-running-agents) — Autonomous agent capabilities
-- [GitHub Copilot Workspace](https://githubnext.com/projects/copilot-workspace) — Issue-to-PR in browser
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) — CLI-based coding agent
-- [OpenAI Codex CLI](https://github.com/openai/codex) — OpenAI's coding agent
+- [Claude Code](https://claude.ai/claude-code) — Primary agent for this workflow
+- [Claude Code GitHub Action](https://github.com/anthropics/claude-code-action) — Automated agent triggering via GitHub Actions
 
 **Background Reading:**
 
