@@ -1,0 +1,65 @@
+# Automatically adds 'agent-ready' label to issues that have all required sections.
+# This helps identify issues that are properly scoped for agent execution.
+
+name: Auto-Label Agent-Ready Issues
+
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  check-and-label:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+
+    steps:
+      - name: Check issue structure and apply label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const body = issue.body || '';
+
+            // Required sections for an agent-ready issue
+            const requiredSections = [
+              '## Summary',
+              '## Context',
+              '## Acceptance Criteria',
+              '## Scope',
+              '## Technical Notes'
+            ];
+
+            // Check if all required sections are present
+            const hasAllSections = requiredSections.every(section =>
+              body.includes(section)
+            );
+
+            // Check if scope has both in/out defined
+            const hasInScope = body.includes('**In scope:**') || body.includes('In scope:');
+            const hasOutScope = body.includes('**Out of scope:**') || body.includes('Out of scope:');
+            const hasScopeBoundaries = hasInScope && hasOutScope;
+
+            // Check if acceptance criteria has at least one checkbox
+            const hasAcceptanceCriteria = /- \[[ x]\]/.test(body);
+
+            const currentLabels = issue.labels.map(l => l.name);
+            const hasAgentReadyLabel = currentLabels.includes('agent-ready');
+
+            if (hasAllSections && hasScopeBoundaries && hasAcceptanceCriteria) {
+              if (!hasAgentReadyLabel) {
+                console.log('Issue meets agent-ready criteria, adding label');
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  labels: ['agent-ready']
+                });
+              }
+            } else {
+              // Log what's missing for debugging
+              console.log('Issue missing requirements:');
+              console.log('- All sections:', hasAllSections);
+              console.log('- Scope boundaries:', hasScopeBoundaries);
+              console.log('- Acceptance criteria:', hasAcceptanceCriteria);
+            }
