@@ -1,0 +1,18 @@
+- color: 0E8A16
+  description: Issue is properly scoped for AI agent execution
+  name: agent-ready
+- color: 1D76DB
+  description: PR was created by an AI agent
+  name: agent-generated
+- color: FBCA04
+  description: Requires agent planning phase before execution
+  name: needs-planning
+- color: C5DEF5
+  description: Single file change, clear pattern to follow
+  name: 'complexity:low'
+- color: BFD4F2
+  description: Multiple files, follows established patterns
+  name: 'complexity:medium'
+- color: 0052CC
+  description: Architectural decisions required, needs planning
+  name: 'complexity:high'

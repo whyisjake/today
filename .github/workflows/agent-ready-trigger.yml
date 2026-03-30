@@ -1,0 +1,61 @@
+# Automatically triggers Claude Code when an issue receives the 'agent-ready' label.
+# Claude will read the issue, create a plan, and implement the solution.
+
+name: Agent-Ready Auto-Trigger
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  trigger-claude:
+    # Only run when the 'agent-ready' label is added
+    if: github.event.label.name == 'agent-ready'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+          # Allow Claude to read CI results and manage PRs
+          additional_permissions: |
+            actions: read
+
+          # Custom prompt for agent-ready issues
+          prompt: |
+            You are working on issue #${{ github.event.issue.number }}.
+
+            Issue Title: ${{ github.event.issue.title }}
+
+            Instructions:
+            1. Read the full issue description carefully
+            2. Follow the acceptance criteria exactly
+            3. Stay within the defined scope (respect "Out of scope" boundaries)
+            4. Follow the patterns referenced in Technical Notes
+            5. Create a PR with your implementation
+            6. Include tests as specified
+            7. Ensure code passes linting (PHPCS, ESLint)
+
+            Important:
+            - Do NOT implement items listed as "Out of scope"
+            - Reference the issue number in your PR description
+            - If you're blocked or unclear on something, comment on the issue asking for clarification rather than guessing
+
+            Begin by reading the issue and creating an implementation plan.
+
+          # Use appropriate model and tools
+          claude_args: '--allowed-tools Bash(git:*,npm:*,composer:*) Edit Read Write'
