@@ -360,9 +360,11 @@ struct TodayView: View {
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
+                    #if os(iOS)
                     .refreshable {
                         await refreshFeeds()
                     }
+                    #endif
                 }
             }
             .navigationTitle(viewTitle)
