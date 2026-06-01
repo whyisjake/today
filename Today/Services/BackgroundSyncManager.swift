@@ -112,14 +112,14 @@ class BackgroundSyncManager: ObservableObject {
     /// Perform the actual background sync
     /// Parsing and insertion run entirely off the main thread via BackgroundFeedSync
     private func performBackgroundSync() async {
-        // Read isSyncInProgress safely from the main actor before proceeding
-        let alreadyInProgress = await MainActor.run { isSyncInProgress }
-        guard !alreadyInProgress else { return }
-
-        await MainActor.run { isSyncInProgress = true }
-        defer {
-            Task { await MainActor.run { self.isSyncInProgress = false } }
+        // Atomically check-and-set isSyncInProgress in a single MainActor hop to prevent
+        // two concurrent callers from both passing the guard before either sets the flag.
+        let started = await MainActor.run { () -> Bool in
+            guard !isSyncInProgress else { return false }
+            isSyncInProgress = true
+            return true
         }
+        guard started else { return }
 
         guard let container = modelContainer else { return }
 
@@ -128,6 +128,8 @@ class BackgroundSyncManager: ObservableObject {
 
         // OPML sync requires FeedManager (@MainActor); run it on the main actor
         await syncOPMLSubscriptions(container: container)
+
+        await MainActor.run { isSyncInProgress = false }
     }
 
     /// Sync OPML subscriptions on the main actor (FeedManager requires mainContext)

@@ -104,9 +104,10 @@ struct TodayApp: App {
                         await addDefaultFeedsIfNeeded(container: container)
                     }
 
-                    // Run database migrations at low priority after UI is ready.
+                    // Run database migrations on the main actor at low priority after UI is ready.
+                    // @MainActor ensures mainContext is accessed on the correct actor.
                     // Guarded by UserDefaults — no-op on all launches after the first.
-                    Task(priority: .background) {
+                    Task { @MainActor in
                         try? await Task.sleep(for: .seconds(3))
                         await DatabaseMigration.shared.runMigrations(modelContext: sharedModelContainer.mainContext)
                     }

@@ -475,8 +475,8 @@ struct TodayView: View {
                 ToolbarItem(placement: .primaryAction) {
                     filterMenu
                 }
-                if syncManager.isSyncInProgress {
-                    ToolbarItem(placement: .navigation) {
+                ToolbarItem(placement: .navigation) {
+                    if syncManager.isSyncInProgress {
                         ProgressView()
                             .controlSize(.small)
                     }
