@@ -89,15 +89,22 @@ struct TodayApp: App {
                     // Schedule background sync when app launches
                     BackgroundSyncManager.shared.enableBackgroundFetch()
 
-                    // Add default feeds on first launch
-                    addDefaultFeedsIfNeeded()
+                    // Add default feeds on first launch (deferred so first frame renders first)
+                    let container = sharedModelContainer
+                    Task.detached(priority: .userInitiated) {
+                        try? await Task.sleep(for: .milliseconds(100))
+                        await addDefaultFeedsIfNeeded(container: container)
+                    }
 
-                    // Run database migrations
-                    Task {
+                    // Run database migrations at low priority after UI is ready.
+                    // Guarded by UserDefaults — no-op on all launches after the first.
+                    Task(priority: .background) {
+                        try? await Task.sleep(for: .seconds(3))
                         await DatabaseMigration.shared.runMigrations(modelContext: sharedModelContainer.mainContext)
                     }
 
-                    // Check if we need to sync on launch (content older than 2 hours)
+                    // Check if we need to sync on launch (content older than 2 hours).
+                    // Delay increased to 1500ms to ensure first frame and @Query fetches complete.
                     checkAndSyncIfNeeded()
                 }
                 #if os(macOS)
@@ -238,56 +245,9 @@ struct TodayApp: App {
     private func checkAndSyncIfNeeded() {
         guard FeedManager.needsSync() else { return }
 
-        // Delay sync slightly to let UI render first, then run entirely in background
+        // Delay sync to let first frame and @Query fetches complete before network work begins
         Task.detached(priority: .utility) {
-            try? await Task.sleep(for: .milliseconds(500))
-            await BackgroundSyncManager.shared.triggerManualSync()
-        }
-    }
-
-    @MainActor
-    private func addDefaultFeedsIfNeeded() {
-        let context = sharedModelContainer.mainContext
-
-        // Check if any feeds already exist
-        let fetchDescriptor = FetchDescriptor<Feed>()
-        let existingFeeds = try? context.fetch(fetchDescriptor)
-
-        guard existingFeeds?.isEmpty ?? true else {
-            return // Feeds already exist, don't add defaults
-        }
-
-        // Default feeds to add
-        let defaultFeeds = [
-            ("Jake Spurlock", "https://jakespurlock.com/feed/", "personal"),
-            ("Matt Mullenweg", "https://ma.tt/feed/", "personal"),
-            ("XKCD", "https://xkcd.com/rss.xml", "comics"),
-            ("TechCrunch", "https://techcrunch.com/feed/", "technology"),
-            ("The Verge", "https://www.theverge.com/rss/index.xml", "technology"),
-            ("Hacker News", "https://news.ycombinator.com/rss", "technology"),
-            ("Ars Technica", "https://feeds.arstechnica.com/arstechnica/index", "technology"),
-            ("Daring Fireball", "https://daringfireball.net/feeds/main", "technology"),
-            ("The New York Times", "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml", "news"),
-            ("NPR", "https://feeds.npr.org/1001/rss.xml", "news"),
-            ("r/politics", "https://www.reddit.com/r/politics/.json", "news"),
-            ("r/TodayRSS", "https://www.reddit.com/r/TodayRSS/.json", "tech"),
-            ("r/itookapicture", "https://www.reddit.com/r/itookapicture/.json", "social"),
-            ("r/astrophotography", "https://www.reddit.com/r/astrophotography/.json", "social"),
-        ]
-
-        // Create Feed objects
-        for (title, url, category) in defaultFeeds {
-            let feed = Feed(title: title, url: url, category: category)
-            context.insert(feed)
-        }
-
-        // Save the context
-        try? context.save()
-
-        // Sync the feeds to get initial articles (delay to let UI render first)
-        Task.detached(priority: .utility) {
-            try? await Task.sleep(for: .milliseconds(500))
-            // Use BackgroundSyncManager for off-main-thread sync
+            try? await Task.sleep(for: .milliseconds(1500))
             await BackgroundSyncManager.shared.triggerManualSync()
         }
     }
@@ -345,4 +305,51 @@ struct TodayApp: App {
         window.setFrame(frame, display: true)
     }
     #endif
+}
+
+// MARK: - Default Feed Setup
+
+/// Insert default feeds on a fresh install, using a background ModelContext to avoid blocking
+/// the main thread. The feed-count check runs on the main actor; inserts run off it.
+///
+/// Note: if this completes after the 1500ms launch sync fires, the sync will see zero feeds
+/// and be a no-op. The next background refresh will pick up the defaults. This is acceptable
+/// on first install.
+private func addDefaultFeedsIfNeeded(container: ModelContainer) async {
+    // Check feed count on the main actor (mainContext is @MainActor-bound)
+    let isEmpty = await MainActor.run {
+        let fetchDescriptor = FetchDescriptor<Feed>()
+        let existing = try? container.mainContext.fetch(fetchDescriptor)
+        return existing?.isEmpty ?? true
+    }
+
+    guard isEmpty else { return }
+
+    let defaultFeeds: [(String, String, String)] = [
+        ("Jake Spurlock", "https://jakespurlock.com/feed/", "personal"),
+        ("Matt Mullenweg", "https://ma.tt/feed/", "personal"),
+        ("XKCD", "https://xkcd.com/rss.xml", "comics"),
+        ("TechCrunch", "https://techcrunch.com/feed/", "technology"),
+        ("The Verge", "https://www.theverge.com/rss/index.xml", "technology"),
+        ("Hacker News", "https://news.ycombinator.com/rss", "technology"),
+        ("Ars Technica", "https://feeds.arstechnica.com/arstechnica/index", "technology"),
+        ("Daring Fireball", "https://daringfireball.net/feeds/main", "technology"),
+        ("The New York Times", "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml", "news"),
+        ("NPR", "https://feeds.npr.org/1001/rss.xml", "news"),
+        ("r/politics", "https://www.reddit.com/r/politics/.json", "news"),
+        ("r/TodayRSS", "https://www.reddit.com/r/TodayRSS/.json", "tech"),
+        ("r/itookapicture", "https://www.reddit.com/r/itookapicture/.json", "social"),
+        ("r/astrophotography", "https://www.reddit.com/r/astrophotography/.json", "social"),
+    ]
+
+    // Insert and save on a background context — avoids blocking the main thread
+    let context = ModelContext(container)
+    for (title, url, category) in defaultFeeds {
+        let feed = Feed(title: title, url: url, category: category)
+        context.insert(feed)
+    }
+    try? context.save()
+
+    // Kick off initial sync after default feeds are inserted
+    await BackgroundSyncManager.shared.triggerManualSync()
 }
