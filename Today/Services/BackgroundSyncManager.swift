@@ -12,7 +12,6 @@ import BackgroundTasks
 import SwiftData
 import Combine
 
-@MainActor
 class BackgroundSyncManager: ObservableObject {
     static let shared = BackgroundSyncManager()
 
@@ -26,8 +25,10 @@ class BackgroundSyncManager: ObservableObject {
     /// Shared ModelContainer for background sync operations
     /// Set by TodayApp on launch
     var modelContainer: ModelContainer?
-    /// Track whether a sync is currently in progress
-    @Published var isSyncInProgress = false
+
+    /// Track whether a sync is currently in progress.
+    /// Always read and written on the main actor to avoid data races.
+    @MainActor @Published var isSyncInProgress = false
 
     private init() {}
 
@@ -37,8 +38,9 @@ class BackgroundSyncManager: ObservableObject {
     /// Register background task on app launch
     nonisolated func registerBackgroundTasks() {
         BGTaskScheduler.shared.register(forTaskWithIdentifier: syncTaskIdentifier, using: nil) { task in
-            Task { @MainActor in
-                self.handleBackgroundSync(task: task as! BGAppRefreshTask)
+            // handleBackgroundSync is not @MainActor, so no cross-actor call needed
+            Task {
+                await self.handleBackgroundSync(task: task as! BGAppRefreshTask)
             }
         }
     }
@@ -61,7 +63,7 @@ class BackgroundSyncManager: ObservableObject {
     }
 
     /// Handle background sync task
-    private func handleBackgroundSync(task: BGAppRefreshTask) {
+    private func handleBackgroundSync(task: BGAppRefreshTask) async {
         print("🔔 Background sync task triggered by iOS")
 
         // Schedule the next sync
@@ -78,12 +80,10 @@ class BackgroundSyncManager: ObservableObject {
             syncTask.cancel()
         }
 
-        // Mark task as complete when done
-        Task {
-            await syncTask.value
-            task.setTaskCompleted(success: true)
-            print("✅ Background sync task completed successfully")
-        }
+        // Wait for sync to complete, then mark the BGTask done
+        await syncTask.value
+        task.setTaskCompleted(success: true)
+        print("✅ Background sync task completed successfully")
     }
     #endif
 
@@ -91,18 +91,18 @@ class BackgroundSyncManager: ObservableObject {
 
     #if os(macOS)
     /// Start timer-based background sync for macOS
+    @MainActor
     func startBackgroundSync() {
         stopBackgroundSync()
 
         syncTimer = Timer.scheduledTimer(withTimeInterval: syncInterval, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                self?.triggerManualSync()
-            }
+            self?.triggerManualSync()
         }
         print("⏰ macOS background sync timer started (interval: \(Int(syncInterval / 60)) minutes)")
     }
 
     /// Stop the background sync timer
+    @MainActor
     func stopBackgroundSync() {
         syncTimer?.invalidate()
         syncTimer = nil
@@ -110,25 +110,33 @@ class BackgroundSyncManager: ObservableObject {
     #endif
 
     /// Perform the actual background sync
-    /// Parsing runs in background, inserts run on main thread in chunks
+    /// Parsing and insertion run entirely off the main thread via BackgroundFeedSync
     private func performBackgroundSync() async {
-        // Prevent concurrent syncs
-        guard !isSyncInProgress else { return }
+        // Read isSyncInProgress safely from the main actor before proceeding
+        let alreadyInProgress = await MainActor.run { isSyncInProgress }
+        guard !alreadyInProgress else { return }
 
-        isSyncInProgress = true
-        defer { isSyncInProgress = false }
+        await MainActor.run { isSyncInProgress = true }
+        defer {
+            Task { await MainActor.run { self.isSyncInProgress = false } }
+        }
 
         guard let container = modelContainer else { return }
 
-        // Use BackgroundFeedSync which parses and inserts entirely off the main thread
+        // BackgroundFeedSync runs parsing and insertion entirely off the main thread
         await BackgroundFeedSync.syncAllFeeds(container: container)
 
-        // Sync OPML subscriptions after feed sync
+        // OPML sync requires FeedManager (@MainActor); run it on the main actor
+        await syncOPMLSubscriptions(container: container)
+    }
+
+    /// Sync OPML subscriptions on the main actor (FeedManager requires mainContext)
+    @MainActor
+    private func syncOPMLSubscriptions(container: ModelContainer) async {
         let context = container.mainContext
         let feedManager = FeedManager(modelContext: context)
         let opmlManager = OPMLSubscriptionManager(modelContext: context, feedManager: feedManager)
         await opmlManager.syncAllSubscriptions()
-
     }
 
     /// Manually trigger a sync (useful for testing and launch sync)
@@ -149,6 +157,7 @@ extension BackgroundSyncManager {
         scheduleBackgroundSync()
     }
     #elseif os(macOS)
+    @MainActor
     func enableBackgroundFetch() {
         startBackgroundSync()
     }
