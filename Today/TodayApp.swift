@@ -76,6 +76,14 @@ struct TodayApp: App {
         // Register background tasks (nonisolated - safe to call from init)
         BackgroundSyncManager.shared.registerBackgroundTasks()
         #endif
+
+        // Debug: delete all articles and reset sync state so the next launch behaves like a cold start.
+        // Activate via the "-ResetArticlesOnLaunch" launch argument (see the "Today (Cold Launch)" scheme).
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-ResetArticlesOnLaunch") {
+            resetArticlesForTesting()
+        }
+        #endif
     }
 
     var body: some Scene {
@@ -303,6 +311,23 @@ struct TodayApp: App {
         
         let frame = NSRect(x: x, y: y, width: width, height: height)
         window.setFrame(frame, display: true)
+    }
+    #endif
+
+    // MARK: - Debug Helpers
+
+    #if DEBUG
+    private func resetArticlesForTesting() {
+        let context = ModelContext(sharedModelContainer)
+        let descriptor = FetchDescriptor<Article>()
+        if let articles = try? context.fetch(descriptor) {
+            for article in articles { context.delete(article) }
+            try? context.save()
+            print("🧹 [Debug] Deleted \(articles.count) articles for cold-launch test")
+        }
+        // Clear the last sync date so checkAndSyncIfNeeded() treats this as a stale launch
+        UserDefaults.standard.removeObject(forKey: "com.today.lastGlobalSyncDate")
+        print("🧹 [Debug] Reset sync date — app will sync on next launch")
     }
     #endif
 }
