@@ -3,7 +3,7 @@
 //  Today
 //
 //  Background feed syncing that parses feeds off main thread,
-//  then inserts articles on main thread in small chunks to avoid UI hangs
+//  then inserts articles using a background ModelContext to avoid blocking the UI
 //
 
 import Foundation
@@ -20,29 +20,28 @@ struct ParsedFeedData: Sendable {
 }
 
 /// Service for background feed syncing
-/// Parses feeds off the main thread, then inserts on main thread in chunks
+/// Both parsing and database insertion run off the main thread
 enum BackgroundFeedSync {
 
     /// Sync all active feeds
-    /// - Parsing happens on background threads
-    /// - Database inserts happen on main thread in small chunks to avoid UI hangs
-    @MainActor
-    static func syncAllFeeds(modelContext: ModelContext) async {
+    /// - Parsing and insertion both happen on background threads via a background ModelContext
+    static func syncAllFeeds(container: ModelContainer) async {
         let syncStartTime = Date()
 
         do {
-            // Fetch all active feeds
+            // Fetch active feeds using a background context
+            let context = ModelContext(container)
             let descriptor = FetchDescriptor<Feed>(
                 predicate: #Predicate<Feed> { $0.isActive }
             )
-            let feeds = try modelContext.fetch(descriptor)
+            let feeds = try context.fetch(descriptor)
             let totalFeeds = feeds.count
 
             guard totalFeeds > 0 else {
                 return
             }
 
-            // Collect feed URLs, IDs, and cache headers for background parsing
+            // Extract only Sendable values before leaving this context's scope
             let feedInfos: [(id: PersistentIdentifier, url: String, lastModified: String?, etag: String?)] =
                 feeds.map { ($0.persistentModelID, $0.url, $0.httpLastModified, $0.httpEtag) }
 
@@ -54,11 +53,8 @@ enum BackgroundFeedSync {
             let failureCount = totalFeeds - parsedResults.count
             print("📡 [Sync] \(successCount) fetched, \(notModifiedCount) not modified (304), \(failureCount) failed")
 
-            // PHASE 2: Insert articles on main thread in small chunks
-            await insertArticlesInChunks(parsedResults: parsedResults, modelContext: modelContext)
-
-            // Save once at the end
-            try? modelContext.save()
+            // PHASE 2: Insert articles using a background ModelContext
+            await insertArticlesInChunks(parsedResults: parsedResults, container: container)
 
             // Update last sync date
             UserDefaults.standard.set(syncStartTime, forKey: "com.today.lastGlobalSyncDate")
@@ -281,13 +277,14 @@ enum BackgroundFeedSync {
         throw SyncError.parsingFailed
     }
 
-    /// Insert articles on main thread in small chunks with yields between them
-    @MainActor
-    private static func insertArticlesInChunks(parsedResults: [ParsedFeedData], modelContext: ModelContext) async {
-        let chunkSize = 20 // Insert 20 articles at a time, then yield
+    /// Insert articles using a background ModelContext — does not touch the main actor
+    private static func insertArticlesInChunks(parsedResults: [ParsedFeedData], container: ModelContainer) async {
+        // Background context: all writes stay off the main thread.
+        // SwiftData notifies @Query observers automatically on save.
+        let context = ModelContext(container)
 
         for feedData in parsedResults {
-            guard let feed = modelContext.model(for: feedData.feedID) as? Feed else { continue }
+            guard let feed = context.model(for: feedData.feedID) as? Feed else { continue }
 
             // Update cache headers regardless of modification status
             feed.httpLastModified = feedData.newLastModified
@@ -304,38 +301,32 @@ enum BackgroundFeedSync {
                 continue
             }
 
-            // Get existing article GUIDs
+            // Get existing article GUIDs — validate relationship fault is populated
             let existingGUIDs = Set((feed.articles ?? []).map { $0.guid })
 
             // Filter to only new articles
             let newArticles = feedData.articles.filter { !existingGUIDs.contains($0.guid) }
 
-            // Insert in chunks
-            for chunk in newArticles.chunked(into: chunkSize) {
-                for parsedArticle in chunk {
-                    let article = Article(
-                        title: parsedArticle.title,
-                        link: parsedArticle.link,
-                        articleDescription: parsedArticle.description,
-                        content: parsedArticle.content,
-                        contentEncoded: parsedArticle.contentEncoded,
-                        imageUrl: parsedArticle.imageUrl,
-                        publishedDate: parsedArticle.publishedDate ?? Date(),
-                        author: parsedArticle.author,
-                        guid: parsedArticle.guid,
-                        feed: feed,
-                        redditSubreddit: parsedArticle.redditSubreddit,
-                        redditCommentsUrl: parsedArticle.redditCommentsUrl,
-                        redditPostId: parsedArticle.redditPostId,
-                        audioUrl: parsedArticle.audioUrl,
-                        audioDuration: parsedArticle.audioDuration,
-                        audioType: parsedArticle.audioType
-                    )
-                    modelContext.insert(article)
-                }
-
-                // Yield to let UI breathe between chunks
-                await Task.yield()
+            for parsedArticle in newArticles {
+                let article = Article(
+                    title: parsedArticle.title,
+                    link: parsedArticle.link,
+                    articleDescription: parsedArticle.description,
+                    content: parsedArticle.content,
+                    contentEncoded: parsedArticle.contentEncoded,
+                    imageUrl: parsedArticle.imageUrl,
+                    publishedDate: parsedArticle.publishedDate ?? Date(),
+                    author: parsedArticle.author,
+                    guid: parsedArticle.guid,
+                    feed: feed,
+                    redditSubreddit: parsedArticle.redditSubreddit,
+                    redditCommentsUrl: parsedArticle.redditCommentsUrl,
+                    redditPostId: parsedArticle.redditPostId,
+                    audioUrl: parsedArticle.audioUrl,
+                    audioDuration: parsedArticle.audioDuration,
+                    audioType: parsedArticle.audioType
+                )
+                context.insert(article)
             }
 
             // Update audio data for existing articles
@@ -350,10 +341,10 @@ enum BackgroundFeedSync {
             }
 
             feed.lastFetched = Date()
-
-            // Yield after each feed
-            await Task.yield()
         }
+
+        // Single save for all feeds — background context notifies @Query observers on completion
+        try? context.save()
     }
 
     enum SyncError: LocalizedError {
