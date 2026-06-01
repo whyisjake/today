@@ -462,12 +462,24 @@ struct TodayView: View {
             }
             .toolbar {
                 #if os(iOS)
+                ToolbarItem(placement: .topBarLeading) {
+                    if syncManager.isSyncInProgress {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     filterMenu
                 }
                 #else
                 ToolbarItem(placement: .primaryAction) {
                     filterMenu
+                }
+                if syncManager.isSyncInProgress {
+                    ToolbarItem(placement: .navigation) {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
                 }
                 #endif
             }
