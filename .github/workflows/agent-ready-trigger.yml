@@ -1,5 +1,18 @@
-# Automatically triggers Claude Code when an issue receives the 'agent-ready' label.
-# Claude will read the issue, create a plan, and implement the solution.
+# Fires when an issue receives the 'agent-ready' label.
+# Routes to the AI agent configured in the AGENT_PROVIDER repository variable.
+#
+# Supported providers:
+#   claude        → Claude Code via anthropics/claude-code-action (default, fully supported)
+#   openai-codex  → OpenAI Codex CLI (stub — extend for your setup)
+#   copilot       → GitHub Copilot via gh-aw (stub — extend for your setup)
+#   custom        → repository_dispatch event (bring your own listener)
+#
+# Setup:
+#   1. Set AGENT_PROVIDER in Settings → Secrets and variables → Variables
+#   2. Add the required secret for your chosen provider (see README)
+#   3. Run the Setup Labels workflow once to create all labels
+#
+# If AGENT_PROVIDER is not set, the workflow defaults to claude.
 
 name: Agent-Ready Auto-Trigger
 
@@ -7,10 +20,21 @@ on:
   issues:
     types: [labeled]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # CLAUDE (default)
+  # Uses Claude Code with Compound Engineering for complexity-aware execution.
+  #
+  # complexity:high  → /ce-plan first, human approves via /approve-plan, then /ce-work
+  # complexity:low/medium (or absent) → /ce-work directly
+  # ─────────────────────────────────────────────────────────────────────────────
   trigger-claude:
-    # Only run when the 'agent-ready' label is added
-    if: github.event.label.name == 'agent-ready'
+    if: |
+      github.event.label.name == 'agent-ready' &&
+      (vars.AGENT_PROVIDER == 'claude' || vars.AGENT_PROVIDER == '')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -20,42 +44,206 @@ jobs:
       actions: read
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
 
-      - name: Run Claude Code
-        id: claude
+      - name: Determine complexity
+        id: complexity
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labels = context.payload.issue.labels.map(l => l.name);
+            const isHigh = labels.includes('complexity:high');
+            console.log('Issue labels:', labels.join(', '));
+            console.log('complexity:high:', isHigh);
+            core.setOutput('is_high', isHigh ? 'true' : 'false');
+
+      # ── HIGH COMPLEXITY: plan first, then gate on /approve-plan ──────────────
+      - name: Run Claude Code — Planning Phase (complexity:high)
+        id: claude-plan
+        if: steps.complexity.outputs.is_high == 'true'
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-
-          # Allow Claude to read CI results and manage PRs
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           additional_permissions: |
             actions: read
-
-          # Custom prompt for agent-ready issues
           prompt: |
-            You are working on issue #${{ github.event.issue.number }}.
+            You are planning the implementation for issue #${{ github.event.issue.number }}.
 
-            Issue Title: ${{ github.event.issue.title }}
+            Issue title: ${{ github.event.issue.title }}
+
+            This is a complexity:high issue. Your job is to PLAN, not implement.
 
             Instructions:
-            1. Read the full issue description carefully
-            2. Follow the acceptance criteria exactly
-            3. Stay within the defined scope (respect "Out of scope" boundaries)
+            1. Read the full issue body carefully
+            2. Invoke /ce-plan with the issue description as input to generate a structured
+               implementation plan
+            3. Commit the generated plan file to docs/plans/ on a new branch named
+               plan/issue-${{ github.event.issue.number }}
+            4. After committing, post a comment on the issue with:
+               - A link to the plan file (use the GitHub file URL)
+               - The message: "Implementation plan is ready for review. Reply /approve-plan
+                 to begin implementation, or comment with feedback to revise the plan."
+            5. Do NOT write any application code
+            6. Do NOT open a pull request
+
+            After posting the comment, verify that a plan file was committed to docs/plans/.
+            If /ce-plan was unavailable or the commit failed, post a comment explaining what
+            happened instead of the approval-request message.
+
+      # ── LOW/MEDIUM COMPLEXITY: execute directly ──────────────────────────────
+      - name: Run Claude Code — Direct Execution (complexity:low/medium)
+        id: claude-work
+        if: steps.complexity.outputs.is_high == 'false'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          additional_permissions: |
+            actions: read
+          prompt: |
+            You are implementing issue #${{ github.event.issue.number }}.
+
+            Issue title: ${{ github.event.issue.title }}
+
+            Instructions:
+            1. Read the full issue body carefully
+            2. Invoke /ce-work with the issue as input to implement the feature
+            3. Stay within the defined scope — "Out of scope" is a hard boundary
             4. Follow the patterns referenced in Technical Notes
-            5. Create a PR with your implementation
-            6. Include tests as specified
-            7. Ensure code passes linting (PHPCS, ESLint)
+            5. Open a PR using the agent-generated PR template
+            6. Add the 'agent-generated' label to the PR
+            7. Reference the issue in the PR body: "Closes #${{ github.event.issue.number }}"
 
-            Important:
-            - Do NOT implement items listed as "Out of scope"
-            - Reference the issue number in your PR description
-            - If you're blocked or unclear on something, comment on the issue asking for clarification rather than guessing
+            If you are blocked or unclear on something, post a comment on the issue
+            asking for clarification rather than guessing.
 
-            Begin by reading the issue and creating an implementation plan.
+      - name: Check for missing CLAUDE_CODE_OAUTH_TOKEN
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: [
+                '⚠️ **Agent setup incomplete**',
+                '',
+                'The Claude Code workflow failed. This is usually caused by a missing `CLAUDE_CODE_OAUTH_TOKEN` secret.',
+                '',
+                'To fix: go to **Settings → Secrets and variables → Secrets** and add `CLAUDE_CODE_OAUTH_TOKEN`.',
+                '',
+                'See the [README](../blob/main/README.md) for setup instructions.'
+              ].join('\n')
+            });
 
-          # Use appropriate model and tools
-          claude_args: '--allowed-tools Bash(git:*,npm:*,composer:*) Edit Read Write'
+  # ─────────────────────────────────────────────────────────────────────────────
+  # OPENAI CODEX (stub)
+  # TODO: extend this job for your Codex setup.
+  # See https://github.com/openai/codex for the CLI reference.
+  # ─────────────────────────────────────────────────────────────────────────────
+  trigger-openai-codex:
+    if: |
+      github.event.label.name == 'agent-ready' &&
+      vars.AGENT_PROVIDER == 'openai-codex'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Codex
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          # TODO: Replace this stub with your Codex invocation.
+          # Example using the Codex CLI:
+          #
+          #   npm install -g @openai/codex
+          #   codex --approval-mode full-auto \
+          #     --model o4-mini \
+          #     "Implement issue #${ISSUE_NUMBER}: ${ISSUE_TITLE}"
+          #
+          # After implementation, create a PR:
+          #   git push origin HEAD
+          #   gh pr create --title "..." --body "Closes #${ISSUE_NUMBER}"
+          #
+          echo "OpenAI Codex provider stub — configure this step for your setup"
+          echo "Issue #${ISSUE_NUMBER}: ${ISSUE_TITLE}"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # GITHUB COPILOT via gh-aw (stub)
+  # TODO: extend this job for your gh-aw setup.
+  # See https://github.com/github/gh-aw for the CLI reference.
+  # ─────────────────────────────────────────────────────────────────────────────
+  trigger-copilot:
+    if: |
+      github.event.label.name == 'agent-ready' &&
+      vars.AGENT_PROVIDER == 'copilot'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Copilot via gh-aw
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          # TODO: Replace this stub with your gh-aw invocation.
+          # Prerequisites:
+          #   1. Install gh-aw: gh extension install github/gh-aw
+          #   2. Author a workflow markdown file (e.g., .github/workflows/implement-issue.md)
+          #   3. Compile it: gh aw compile implement-issue
+          #
+          # Then invoke the compiled workflow:
+          #   gh aw run implement-issue --issue "${ISSUE_NUMBER}"
+          #
+          echo "GitHub Copilot (gh-aw) provider stub — configure this step for your setup"
+          echo "Issue #${ISSUE_NUMBER}"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # CUSTOM — repository_dispatch
+  # Emits an event that a listener workflow in this repo can consume.
+  # Note: repository_dispatch events are NOT cross-repo. Your listener workflow
+  # must be in this same repository. For outbound HTTP to an external agent,
+  # replace the github-script step with a curl call.
+  # ─────────────────────────────────────────────────────────────────────────────
+  trigger-custom:
+    if: |
+      github.event.label.name == 'agent-ready' &&
+      vars.AGENT_PROVIDER == 'custom'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Dispatch agent-ready event
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.createDispatchEvent({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              event_type: 'agent-ready',
+              client_payload: {
+                issue_number: context.payload.issue.number,
+                issue_title: context.payload.issue.title,
+                issue_body: context.payload.issue.body,
+                issue_url: context.payload.issue.html_url,
+                labels: context.payload.issue.labels.map(l => l.name)
+              }
+            });
+            console.log(`Dispatched agent-ready event for issue #${context.payload.issue.number}`);

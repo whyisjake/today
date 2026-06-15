@@ -3,16 +3,29 @@
 ## Writing Issues That Agents Can Execute
 
 **Version:** 1.0
-**Date:** February 2026
-**Audience:** Pew Research Center Engineering Team
+**Date:** June 2026
+**Audience:** Engineering teams adopting AI-assisted development
 
 ---
 
 ## The Core Idea
 
-AI coding agents can take well-scoped issues 80-90% to completion before human review. The key word is **well-scoped**. A vague issue produces vague code. A precise issue produces precise code.
+AI coding agents can take well-scoped issues 80–90% to completion before human review. The key word is **well-scoped**. A vague issue produces vague code. A precise issue produces precise code.
 
-This guide teaches you how to write issues that agents can actually execute.
+This guide teaches you how to write issues that agents can actually execute, how to configure the workflow for your chosen provider, and how to integrate Compound Engineering when using Claude.
+
+---
+
+## Provider Overview
+
+| Provider | AGENT_PROVIDER value | Required secret | Notes |
+|----------|---------------------|-----------------|-------|
+| Claude + Compound Engineering | `claude` (default) | `CLAUDE_CODE_OAUTH_TOKEN` | Full support — complexity-aware, planning phase for high complexity |
+| OpenAI Codex | `openai-codex` | `OPENAI_API_KEY` | Stub — configure the `trigger-openai-codex` job |
+| GitHub Copilot (gh-aw) | `copilot` | _(gh-aw setup)_ | Stub — configure the `trigger-copilot` job |
+| Custom / bring-your-own | `custom` | _(your own)_ | Dispatches `repository_dispatch` event; add your listener |
+
+Set `AGENT_PROVIDER` in **Settings → Secrets and variables → Variables**. If not set, the workflow defaults to `claude`.
 
 ---
 
@@ -23,12 +36,10 @@ This guide teaches you how to write issues that agents can actually execute.
 State what needs to happen in a single sentence. If you can't, the scope is too big.
 
 **❌ Bad:**
-
-> Improve the PDF extraction system
+> Improve the data pipeline
 
 **✅ Good:**
-
-> Add REST API endpoints for retrieving extracted text in plain, markdown, and JSON formats
+> Add a REST endpoint that returns the latest pipeline run status as JSON
 
 ---
 
@@ -42,8 +53,7 @@ Agents don't have institutional knowledge. Tell them:
 - How it fits into the bigger picture
 
 **Example:**
-
-> LLMs and research tools need programmatic access to extracted topline data. Currently, content is only accessible via the WordPress admin. REST endpoints enable integration with external tools like NotebookLM, custom chatbots, and research pipelines.
+> External monitoring tools need programmatic access to pipeline status. Currently the status is only visible in the admin dashboard. A REST endpoint enables integration with Datadog, PagerDuty, and custom alerting scripts.
 
 ---
 
@@ -52,178 +62,104 @@ Agents don't have institutional knowledge. Tell them:
 Define "done" with measurable criteria. Each criterion should be testable.
 
 **❌ Vague:**
-
 - [ ] API works correctly
 - [ ] Good error handling
 
 **✅ Specific:**
-
-- [ ] `GET /prc-api/v3/pdf-extraction/text/{id}` returns extracted text
-- [ ] Returns 404 with error message when extraction doesn't exist
-- [ ] Returns 400 when format parameter is invalid
-- [ ] Response includes `X-OCR-Provider` and `X-Extraction-Date` headers
-- [ ] All endpoints require no authentication (public data)
-- [ ] Unit tests cover success and error cases
+- [ ] `GET /api/v1/pipeline/status` returns `{ status, last_run_at, duration_ms }`
+- [ ] Returns 404 when pipeline has never run
+- [ ] Returns 503 when pipeline is currently failing
+- [ ] Response includes `Cache-Control: no-cache` header
+- [ ] Unit tests cover success, 404, and 503 cases
 
 ---
 
 ### 4. Scope Boundaries (In/Out)
 
-Explicitly state what's included and excluded. Agents will try to be helpful — sometimes too helpful. Boundaries prevent scope creep.
+Explicitly state what's included and excluded. Agents try to be helpful — sometimes too helpful. Boundaries prevent scope creep.
 
 **Example:**
-
 ```
 In scope:
-- Three GET endpoints (status, text, list)
+- GET endpoint for current status
 - JSON response format
-- Basic error handling
+- Error handling for missing/failed pipeline
 - Unit tests
 
 Out of scope:
-- Authentication/rate limiting (Phase 2)
-- Caching layer (separate issue)
-- Admin UI for API keys
-- Webhook notifications
+- Authentication (existing endpoints are public)
+- Historical run data (separate issue)
+- Webhook notifications for status changes
 ```
 
 ---
 
 ### 5. Technical Notes (The Cheat Sheet)
 
-Give the agent everything it needs to match your codebase patterns:
+Give the agent everything it needs to match your codebase:
 
 - **Key files** to read or modify
 - **Patterns to follow** (link to similar implementations)
-- **Dependencies** and imports
-- **Configuration** locations
+- **Dependencies** and configuration
 - **Testing approach**
 
 **Example:**
-
 ```
 Key files:
-- /plugins/prc-pdf-text-extraction/includes/rest-api/ (create here)
-- /plugins/prc-platform-core/includes/api/ (pattern reference)
+- src/api/routes/pipeline.ts (create here)
+- src/api/routes/health.ts (pattern reference)
 
 Patterns to follow:
-- REST endpoint registration via prc_api_endpoints filter
-- Response format matches existing PRC API v3 endpoints
-- Error handling follows class-api-error-handler.php
+- Route registration in src/api/index.ts
+- Error response format matches src/api/errors.ts
 
 Testing:
-- PHPUnit tests in /tests/rest-api/
-- Follow test-content-type.php structure
+- Jest tests in src/api/__tests__/
+- Follow health.test.ts structure
 ```
 
 ---
 
 ## The Agent-Ready Checklist
 
-Before labeling an issue `agent-ready`, verify:
+Before labeling an issue `agent-ready`:
 
 - [ ] **Scope is bounded** — Can be completed in one PR
 - [ ] **Success is measurable** — Clear pass/fail criteria
 - [ ] **Context is sufficient** — Agent can understand why without asking
 - [ ] **Patterns are referenced** — Links to similar code in the repo
 - [ ] **No external blockers** — API keys available, dependencies installed
-- [ ] **Complexity is labeled** — `low`, `medium`, or `high`
+- [ ] **Complexity is labeled** — `complexity:low`, `complexity:medium`, or `complexity:high`
 
 ---
 
 ## Complexity Levels
 
-### Low Complexity
-
+### `complexity:low`
 - Single file changes
 - Following an obvious existing pattern
 - Bug fixes with clear reproduction steps
 - Adding tests for existing code
 
-**Example:** Add validation for empty PDF attachments in the upload handler
+**Example:** Add validation for empty input in an existing form handler
 
-### Medium Complexity
-
+### `complexity:medium`
 - Multiple related files
 - New feature following established patterns
 - Refactoring with clear before/after states
 - Integration with one external system
 
-**Example:** Add REST endpoints for text extraction following existing API patterns
+**Example:** Add REST endpoints following existing API patterns in the codebase
 
-### High Complexity
-
+### `complexity:high`
 - Architectural decisions required
 - Multiple system integrations
 - New patterns being established
-- Performance-critical code
+- Performance-critical code paths
 
-**Example:** Design and implement multi-provider OCR orchestration with fallback logic
+**Example:** Design and implement a multi-provider data pipeline with fallback logic
 
-> **Note:** High complexity issues benefit from a planning phase before execution. Have the agent propose an implementation plan for human review before coding.
-
----
-
-## When Agents Excel
-
-✅ **Use agents for:**
-
-- Implementing features against clear specs
-- Following established patterns to new areas
-- Writing tests for existing code
-- Refactoring with defined outcomes
-- Bug fixes with clear reproduction steps
-- Documentation generation
-- Boilerplate and scaffolding
-
----
-
-## When Agents Struggle
-
-⚠️ **Be cautious with:**
-
-- Vague requirements ("make it better")
-- Novel architecture decisions
-- Performance optimization without metrics
-- Security-critical code (always human review)
-- Code requiring deep institutional knowledge
-- Tasks requiring external research
-
-> For these cases, use agents in **interactive mode** — work alongside them rather than delegating fully.
-
----
-
-## Anti-Patterns to Avoid
-
-### The Kitchen Sink Issue
-
-**Problem:** Issue tries to do too much
-**Symptom:** Multiple unrelated acceptance criteria
-**Fix:** Split into focused issues, link them with dependencies
-
-### The Assumption Issue
-
-**Problem:** Assumes agent knows your conventions
-**Symptom:** "Follow our standard approach"
-**Fix:** Link to specific examples, name the patterns
-
-### The Moving Target
-
-**Problem:** Requirements change during execution
-**Symptom:** Comments adding new requirements mid-PR
-**Fix:** New requirements = new issue. Keep original scope.
-
-### The Mystery Context
-
-**Problem:** No explanation of why
-**Symptom:** Agent makes wrong trade-offs
-**Fix:** Always include context section explaining purpose
-
-### The Perfectionist Trap
-
-**Problem:** Expecting production-perfect output
-**Symptom:** Frustration when agent code needs polish
-**Fix:** Expect 80-90%. Plan for human review and refinement.
+> **Note:** `complexity:high` issues trigger a planning phase when using Claude + CE. The agent generates an implementation plan that a human approves before any code is written.
 
 ---
 
@@ -236,15 +172,15 @@ Before labeling an issue `agent-ready`, verify:
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  2. PLAN (Agent + Human)                                    │
+│  2. PLAN (Agent + Human)  — complexity:high only            │
 │     Agent proposes implementation plan                      │
-│     Human reviews and approves                              │
-│     (Skip for low complexity)                               │
+│     Human reviews: reply /approve-plan to proceed           │
+│     (Skipped for low/medium complexity)                     │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
 │  3. EXECUTE (Agent)                                         │
-│     Agent implements against approved plan                  │
+│     Agent implements against issue (and plan if present)    │
 │     Creates PR with summary and testing notes               │
 └─────────────────────────────────────────────────────────────┘
                               ↓
@@ -258,119 +194,226 @@ Before labeling an issue `agent-ready`, verify:
 ┌─────────────────────────────────────────────────────────────┐
 │  5. FINALIZE (Human)                                        │
 │     Merge PR                                                │
-│     Deploy via standard process                             │
+│     Deploy via your standard process                        │
 │     Close issue                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Planning Phase Deep Dive
+## Compound Engineering Integration
 
-For medium and high complexity issues, the planning phase prevents wasted cycles.
+[Compound Engineering](https://github.com/anthropics/compound-engineering) is a Claude Code plugin that provides structured planning (`/ce-plan`) and work execution (`/ce-work`) skills.
 
-**What to ask for:**
+When `AGENT_PROVIDER=claude`, the trigger workflow uses CE automatically:
+
+### Low/Medium Complexity Flow
 
 ```
-Based on this issue, provide an implementation plan including:
-1. Files to create or modify
-2. Key functions/classes to implement
-3. How this integrates with existing code
-4. Potential risks or blockers
-5. Testing approach
-6. Estimated scope (small/medium/large PR)
+agent-ready label applied
+        ↓
+agent-ready-trigger.yml fires
+        ↓
+Claude invokes /ce-work on the issue
+        ↓
+/ce-work reads the issue, implements the feature, opens a PR
 ```
 
-**Review the plan for:**
+### High Complexity Flow
 
-- Correct understanding of requirements
-- Alignment with codebase patterns
-- Reasonable scope
-- Nothing obviously missing
+```
+agent-ready label applied
+        ↓
+agent-ready-trigger.yml fires
+        ↓
+Claude invokes /ce-plan on the issue
+        ↓
+Plan committed to docs/plans/ on a branch
+        ↓
+Claude posts comment: "Review plan → reply /approve-plan to implement"
+        ↓
+Human reviews the plan (in docs/plans/)
+        ↓
+Human replies /approve-plan
+        ↓
+plan-approval-gate.yml fires
+        ↓
+Claude invokes /ce-work with the plan as context
+        ↓
+/ce-work implements the plan and opens a PR
+```
 
-**Then:** Approve the plan or provide corrections before execution begins.
+### Using CE Interactively (Outside the Workflow)
+
+You can also invoke CE manually in your local Claude Code session:
+
+```bash
+# Plan a feature from an issue
+claude "/ce-plan [paste issue description or use issue URL]"
+
+# Execute a plan
+claude "/ce-work docs/plans/2026-01-15-001-feat-my-feature-plan.md"
+
+# Or work from the issue directly
+claude "/ce-work Implement the feature described in GitHub issue #42"
+```
+
+CE is a Claude Code plugin. Other providers use equivalent plain-language prompts without the CE skill layer — the workflow adapts the prompt accordingly.
 
 ---
 
-## Issue Template
+## GitHub Setup
 
-```markdown
-## Summary
+### Initial Setup (One Time)
 
-<!-- One sentence: what needs to happen -->
+1. **Use the template** — Click "Use this template" on GitHub
+2. **Enable the template flag** — Settings → General → check "Template repository"
+3. **Sync labels** — Actions → Setup Labels → Run workflow
+4. **Set your provider** — Settings → Secrets and variables → Variables → `AGENT_PROVIDER`
+5. **Add your secret** — Settings → Secrets and variables → Secrets → add the required token
 
-## Context
+### Labels
 
-<!-- Why this matters, who uses it, how it fits -->
+The workflow uses 7 labels. All are created by the Setup Labels workflow.
 
-## Acceptance Criteria
+| Label | Applied by | Meaning |
+|-------|-----------|---------|
+| `agent-ready` | Human or auto-labeler | Issue is scoped for agent execution |
+| `agent-candidate` | Issue screener | Screener flagged as promising — human review needed |
+| `agent-generated` | Agent | PR was created by an agent |
+| `needs-planning` | Human | Manual flag: this issue needs a plan before execution |
+| `complexity:low` | Human | Single file, clear pattern |
+| `complexity:medium` | Human | Multiple files, established patterns |
+| `complexity:high` | Human | Architectural work — triggers planning phase |
 
-- [ ] Criterion with measurable outcome
-- [ ] Another specific criterion
-- [ ] Tests pass
-- [ ] Code review approved
+### Adding CI Checks
 
-## Scope
+This template intentionally omits a CI workflow — linting and testing commands are too stack-specific to generalize. Add your own:
 
-**In scope:**
-
-- Specific deliverable 1
-- Specific deliverable 2
-
-**Out of scope:**
-
-- Explicitly excluded item
-- Future enhancement (separate issue)
-
-## Technical Notes
-
-**Key files:**
-
-- `/path/to/relevant/file.php`
-- `/path/to/pattern/reference.php`
-
-**Patterns to follow:**
-
-- Name the pattern, link to example
-
-**Dependencies:**
-
-- Required packages, API keys, etc.
-
-**Testing:**
-
-- How to verify this works
-
-## Complexity
-
-`complexity:medium`
-
-## Agent Readiness
-
-- [ ] Scope is bounded
-- [ ] Success is measurable
-- [ ] Context is sufficient
-- [ ] Patterns are referenced
-- [ ] No external blockers
+```yaml
+# .github/workflows/ci.yml
+name: CI
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install
+        run: npm install  # or: pip install, bundle install, etc.
+      - name: Lint
+        run: npm run lint
+      - name: Test
+        run: npm test
 ```
+
+### Code Review Guidelines for Agent PRs
+
+When reviewing agent-generated code, focus on:
+
+**1. Intent Match**
+- Does the code actually solve the issue?
+- Are acceptance criteria met?
+
+**2. Pattern Adherence**
+- Does it follow existing codebase patterns?
+- Are naming conventions consistent?
+
+**3. Edge Cases**
+- What happens with empty inputs?
+- Error handling present and correct?
+- Boundary conditions covered?
+
+**4. Security**
+- Input validation present?
+- No exposed secrets?
+- Data properly sanitized?
+
+**5. Tests**
+- Are tests actually testing behavior?
+- Edge cases covered?
+- Not just the happy path?
+
+---
+
+## When Agents Excel
+
+✅ **Use agents for:**
+- Implementing features against clear specs
+- Following established patterns to new areas
+- Writing tests for existing code
+- Refactoring with defined outcomes
+- Bug fixes with clear reproduction steps
+- Documentation generation
+- Boilerplate and scaffolding
+
+---
+
+## When Agents Struggle
+
+⚠️ **Be cautious with:**
+- Vague requirements ("make it better")
+- Novel architecture decisions
+- Performance optimization without metrics
+- Security-critical code (always human review)
+- Code requiring deep institutional knowledge
+
+> For these cases, use agents in **interactive mode** — work alongside them rather than delegating fully.
+
+---
+
+## Anti-Patterns to Avoid
+
+### The Kitchen Sink Issue
+**Problem:** Issue tries to do too much
+**Fix:** Split into focused issues, link them with dependencies
+
+### The Assumption Issue
+**Problem:** Assumes agent knows your conventions
+**Fix:** Link to specific examples, name the patterns explicitly
+
+### The Moving Target
+**Problem:** Requirements change during execution
+**Fix:** New requirements = new issue. Keep original scope.
+
+### The Mystery Context
+**Problem:** No explanation of why
+**Fix:** Always include context explaining purpose and users
+
+### The Perfectionist Trap
+**Problem:** Expecting production-perfect output
+**Fix:** Expect 80–90%. Plan for human review and refinement.
+
+---
+
+## Extending Provider Stubs
+
+The `openai-codex` and `copilot` jobs in `agent-ready-trigger.yml` are intentional stubs. To activate them:
+
+1. Open `.github/workflows/agent-ready-trigger.yml`
+2. Find the stub job for your provider (search for `# TODO: extend`)
+3. Replace the stub `run:` block with your actual invocation
+4. Add the required secret (see the job's `env:` block)
+
+If you build a working provider integration, consider contributing it back via a PR!
 
 ---
 
 ## Quick Reference
 
-| Element             | Question It Answers       |
-| ------------------- | ------------------------- |
-| Summary             | What are we building?     |
-| Context             | Why does it matter?       |
+| Element | Question It Answers |
+|---------|---------------------|
+| Summary | What are we building? |
+| Context | Why does it matter? |
 | Acceptance Criteria | How do we know it's done? |
-| Scope Boundaries    | What's in and out?        |
-| Technical Notes     | How do we build it?       |
+| Scope Boundaries | What's in and out? |
+| Technical Notes | How do we build it? |
 
 ---
 
 ## Getting Started
 
-1. **Start small** — Pick a low-complexity issue for your first agent-assisted task
+1. **Start small** — Pick a `complexity:low` issue for your first agent-assisted task
 2. **Use the template** — It forces good structure
 3. **Review agent output** — Learn what works and what needs refinement
 4. **Iterate on issues** — Improve your issue-writing based on results
@@ -378,228 +421,4 @@ Based on this issue, provide an implementation plan including:
 
 ---
 
-## GitHub Integration
-
-### Labels for Agent Workflow
-
-Set up these labels in your repository:
-
-| Label               | Purpose                                        |
-| ------------------- | ---------------------------------------------- |
-| `agent-ready`       | Issue is properly scoped for agent execution   |
-| `needs-planning`    | Requires agent planning phase before execution |
-| `agent-generated`   | PR was created by an agent                     |
-| `complexity:low`    | Single file, clear pattern                     |
-| `complexity:medium` | Multiple files, established patterns           |
-| `complexity:high`   | Architectural decisions, needs planning        |
-
-### Using Claude Code
-
-[Claude Code](https://claude.ai/claude-code) is the primary agent for this workflow. Issues labeled `agent-ready` automatically trigger Claude Code via the `agent-ready-trigger.yml` workflow. You can also run it manually:
-
-```bash
-# Navigate to repo
-cd ~/Sites/today
-
-# Have Claude read the issue and plan
-claude "Read issue #123 and create an implementation plan"
-
-# Review the plan, then execute
-claude "Implement the approved plan"
-
-# Claude creates commits on a branch — push and open a PR
-gh pr create --title "Implement feature X" --body "Closes #123"
-```
-
-**Tips for Claude Code:**
-
-- Well-structured issues with clear Technical Notes produce better results
-- Use the planning phase for medium/high complexity issues
-- The `agent-ready` label auto-triggers Claude via GitHub Actions
-- Claude will comment on the issue if it needs clarification
-
-### PR Template for Agent-Generated Code
-
-Create `.github/PULL_REQUEST_TEMPLATE/agent-generated.md`:
-
-```markdown
-## Agent-Generated PR
-
-**Issue:** #[issue_number]
-**Agent:** Claude Code
-**Complexity:** [low / medium / high]
-
-### Summary
-
-<!-- What this PR does -->
-
-### Implementation Notes
-
-<!-- Key decisions made, patterns followed -->
-
-### Testing Done
-
-- [ ] Automated tests pass
-- [ ] Manual testing performed
-- [ ] Edge cases considered
-
-### Review Checklist
-
-- [ ] Code follows project patterns
-- [ ] No security concerns
-- [ ] No hardcoded values that should be config
-- [ ] Tests are meaningful (not just coverage)
-- [ ] Documentation updated if needed
-
-### Human Reviewer Notes
-
-<!-- Anything the reviewer should pay special attention to -->
-```
-
-### CI Requirements for Agent PRs
-
-Configure required checks in branch protection:
-
-```yaml
-# .github/workflows/agent-pr-checks.yml
-name: Agent PR Validation
-
-on:
-    pull_request:
-        types: [opened, synchronize]
-
-jobs:
-    validate:
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v4
-
-            - name: Lint
-              run: npm run lint
-
-            - name: Type Check
-              run: npm run typecheck
-
-            - name: Unit Tests
-              run: npm test
-
-            - name: Security Scan
-              uses: github/codeql-action/analyze@v2
-```
-
-**Required checks before merge:**
-
-- All linting passes
-- All tests pass
-- Security scan clean
-- At least one human approval
-
-### Code Review Guidelines for Agent PRs
-
-When reviewing agent-generated code, focus on:
-
-**1. Intent Match**
-
-- Does the code actually solve the issue?
-- Are acceptance criteria met?
-
-**2. Pattern Adherence**
-
-- Does it follow existing codebase patterns?
-- Are naming conventions consistent?
-
-**3. Edge Cases**
-
-- What happens with empty inputs?
-- Error handling present?
-- Boundary conditions covered?
-
-**4. Security**
-
-- Input validation present?
-- No exposed secrets?
-- Proper escaping/sanitization?
-
-**5. Performance**
-
-- Any obvious N+1 queries?
-- Reasonable complexity?
-- Caching where appropriate?
-
-**6. Tests**
-
-- Are tests actually testing behavior?
-- Edge cases covered?
-- Not just happy path?
-
-### Automation Ideas
-
-**Auto-label agent-ready issues:**
-
-```yaml
-# .github/workflows/auto-label.yml
-name: Auto Label
-
-on:
-    issues:
-        types: [opened, edited]
-
-jobs:
-    label:
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/github-script@v7
-              with:
-                  script: |
-                      const body = context.payload.issue.body || '';
-                      const hasAllSections =
-                        body.includes('## Summary') &&
-                        body.includes('## Acceptance Criteria') &&
-                        body.includes('## Scope') &&
-                        body.includes('## Technical Notes');
-
-                      if (hasAllSections) {
-                        await github.rest.issues.addLabels({
-                          owner: context.repo.owner,
-                          repo: context.repo.repo,
-                          issue_number: context.issue.number,
-                          labels: ['agent-ready']
-                        });
-                      }
-```
-
-**Notify on agent-ready:**
-
-```yaml
-# Post to Slack/Discord when issue is labeled agent-ready
-- name: Notify
-  if: contains(github.event.label.name, 'agent-ready')
-  run: |
-      curl -X POST $SLACK_WEBHOOK -d '{
-        "text": "Issue #${{ github.event.issue.number }} is ready for agent execution"
-      }'
-```
-
----
-
-## Resources
-
-**Agent Platforms:**
-
-- [Claude Code](https://claude.ai/claude-code) — Primary agent for this workflow
-- [Claude Code GitHub Action](https://github.com/anthropics/claude-code-action) — Automated agent triggering via GitHub Actions
-
-**Background Reading:**
-
-- [Cursor: Self-Driving Codebases](https://cursor.com/blog/self-driving-codebases) — Vision for agent-assisted development
-- [GitHub: AI-Powered Development](https://github.blog/ai-and-ml/) — GitHub's AI roadmap
-
-**This Repository:**
-
-- Issue Template: `/.github/ISSUE_TEMPLATE/agent-ready.md`
-- PR Template: `/.github/PULL_REQUEST_TEMPLATE/agent-generated.md`
-- Example Issues: See `agent-ready` label
-
----
-
-_This is a living document. Update it as you learn what works for your team and codebase._
+_This is a living document. Update it as you learn what works for your team._
