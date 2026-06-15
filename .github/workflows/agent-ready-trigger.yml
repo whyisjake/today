@@ -75,21 +75,23 @@ jobs:
             This is a complexity:high issue. Your job is to PLAN, not implement.
 
             Instructions:
-            1. Read the full issue body carefully
-            2. Invoke /ce-plan with the issue description as input to generate a structured
-               implementation plan
-            3. Commit the generated plan file to docs/plans/ on a new branch named
+            1. Read the full issue body:
+               gh issue view ${{ github.event.issue.number }} --repo ${{ github.repository }}
+            2. Read CLAUDE.md for project-specific guidance
+            3. Read the key files referenced in Technical Notes to understand the codebase
+            4. Write a structured implementation plan as a markdown file saved to:
+               docs/plans/YYYY-MM-DD-NNN-<type>-<short-title>-plan.md
+               The plan should include: problem frame, requirements, scope boundaries,
+               key technical decisions, and implementation units (each with goal, files,
+               approach, and test scenarios)
+            5. Commit the plan file to a new branch named:
                plan/issue-${{ github.event.issue.number }}
-            4. After committing, post a comment on the issue with:
-               - A link to the plan file (use the GitHub file URL)
-               - The message: "Implementation plan is ready for review. Reply /approve-plan
-                 to begin implementation, or comment with feedback to revise the plan."
-            5. Do NOT write any application code
-            6. Do NOT open a pull request
-
-            After posting the comment, verify that a plan file was committed to docs/plans/.
-            If /ce-plan was unavailable or the commit failed, post a comment explaining what
-            happened instead of the approval-request message.
+            6. After committing, post a comment on the issue with:
+               - A link to the plan file (GitHub URL)
+               - "Implementation plan is ready for review. Reply /approve-plan to begin
+                 implementation, or comment with feedback to revise the plan."
+            7. Do NOT write any application code
+            8. Do NOT open a pull request
 
       # ── LOW/MEDIUM COMPLEXITY: execute directly ──────────────────────────────
       - name: Run Claude Code — Direct Execution (complexity:low/medium)
@@ -106,13 +108,18 @@ jobs:
             Issue title: ${{ github.event.issue.title }}
 
             Instructions:
-            1. Read the full issue body carefully
-            2. Invoke /ce-work with the issue as input to implement the feature
-            3. Stay within the defined scope — "Out of scope" is a hard boundary
-            4. Follow the patterns referenced in Technical Notes
-            5. Open a PR using the agent-generated PR template
-            6. Add the 'agent-generated' label to the PR
-            7. Reference the issue in the PR body: "Closes #${{ github.event.issue.number }}"
+            1. Read the full issue body carefully using the GitHub CLI:
+               gh issue view ${{ github.event.issue.number }} --repo ${{ github.repository }}
+            2. Read CLAUDE.md for project-specific guidance
+            3. Implement the feature following the acceptance criteria exactly
+            4. Stay within the defined scope — "Out of scope" is a hard boundary
+            5. Follow the patterns referenced in Technical Notes (read the key files listed there)
+            6. Create a branch, commit your changes, and open a PR:
+               - Branch name: agent/issue-${{ github.event.issue.number }}
+               - PR title should match the issue title
+               - PR body: reference "Closes #${{ github.event.issue.number }}" and summarize what you did
+               - Use the template at .github/PULL_REQUEST_TEMPLATE/agent-generated.md if it exists
+            7. Add the 'agent-generated' label to the PR
 
             If you are blocked or unclear on something, post a comment on the issue
             asking for clarification rather than guessing.
