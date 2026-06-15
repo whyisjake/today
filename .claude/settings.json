@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep",
+      "Bash(git *)",
+      "Bash(gh *)",
+      "Bash(find *)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(grep *)",
+      "Bash(chmod *)",
+      "Bash(mkdir *)",
+      "Bash(cp *)",
+      "Bash(mv *)",
+      "Bash(sed *)",
+      "Bash(wc *)",
+      "Bash(sort *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(echo *)",
+      "Bash(curl *)"
+    ],
+    "deny": []
+  }
+}
