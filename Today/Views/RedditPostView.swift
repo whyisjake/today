@@ -984,10 +984,8 @@ struct ImageGalleryView: View {
             }
         }
         #if os(iOS)
-        .sheet(isPresented: $showFullScreen) {
+        .fullScreenCover(isPresented: $showFullScreen) {
             FullScreenImageGallery(images: images, currentIndex: $currentPage)
-                .presentationDragIndicator(.visible)
-                .presentationBackground(.black)
         }
         #else
         .onReceive(NotificationCenter.default.publisher(for: .navigateToPreviousImage)) { _ in
