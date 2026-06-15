@@ -1,0 +1,136 @@
+# Listens for '/approve-plan' comments on issues and resumes ce-work execution.
+#
+# This workflow is part of the complexity:high flow:
+#   1. agent-ready-trigger.yml fires, Claude runs /ce-plan, commits plan to docs/plans/
+#   2. Claude posts a comment asking for /approve-plan
+#   3. This workflow fires on that comment, verifies the commenter, then runs /ce-work
+#
+# Only collaborators with write or admin permission can approve plans.
+# Non-collaborators receive a reply comment but no agent run is started.
+
+name: Plan Approval Gate
+
+on:
+  issue_comment:
+    types: [created]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  handle-approve-plan:
+    # Only fire on /approve-plan comments (not PR comments, not other content)
+    if: |
+      github.event.issue.pull_request == null &&
+      startsWith(github.event.comment.body, '/approve-plan')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check commenter permissions
+        id: permission-check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const commenter = context.payload.comment.user.login;
+            const issueNumber = context.payload.issue.number;
+
+            let permLevel;
+            try {
+              const result = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                username: commenter
+              });
+              permLevel = result.data.permission;
+            } catch (err) {
+              // User is not a collaborator at all
+              permLevel = 'none';
+            }
+
+            const allowed = ['write', 'admin'].includes(permLevel);
+            console.log(`Commenter ${commenter} has permission: ${permLevel} — allowed: ${allowed}`);
+
+            if (!allowed) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: `@${commenter} Only collaborators with write access can approve plans. Your approval was not processed.`
+              });
+            }
+
+            core.setOutput('allowed', allowed ? 'true' : 'false');
+
+      - name: Check for existing PR (idempotency)
+        id: pr-check
+        if: steps.permission-check.outputs.allowed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = context.payload.issue.number;
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open'
+            });
+
+            // Check if any open PR references this issue
+            const existing = prs.find(pr =>
+              pr.body && (
+                pr.body.includes(`Closes #${issueNumber}`) ||
+                pr.body.includes(`closes #${issueNumber}`) ||
+                pr.body.includes(`Fixes #${issueNumber}`) ||
+                pr.body.includes(`fixes #${issueNumber}`)
+              )
+            );
+
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: `Implementation is already in progress: ${existing.html_url}`
+              });
+              core.setOutput('already_running', 'true');
+            } else {
+              core.setOutput('already_running', 'false');
+            }
+
+      - name: Run Claude Code with /ce-work
+        if: |
+          steps.permission-check.outputs.allowed == 'true' &&
+          steps.pr-check.outputs.already_running == 'false'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            You are implementing issue #${{ github.event.issue.number }}.
+
+            Issue title: ${{ github.event.issue.title }}
+
+            A human has approved the plan for this issue. Your job is to implement it.
+
+            Instructions:
+            1. Find the plan file in docs/plans/ that corresponds to this issue
+               (look for a recent plan file — check file dates and titles)
+            2. If a plan file exists, invoke /ce-work with the plan file path as input
+            3. If no plan file exists, invoke /ce-work directly with the issue as context
+            4. Implement the feature per the plan or issue
+            5. Open a PR using the agent-generated PR template
+            6. Add the 'agent-generated' label to the PR
+
+            Important:
+            - Stay within the issue's defined scope ("Out of scope" is a hard boundary)
+            - Reference the issue number in the PR: "Closes #${{ github.event.issue.number }}"
+            - If blocked or uncertain, comment on the issue asking for clarification
+
+          additional_permissions: |
+            actions: read

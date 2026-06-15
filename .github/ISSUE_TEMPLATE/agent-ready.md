@@ -23,7 +23,7 @@ assignees: ''
 - [ ]
 - [ ]
 - [ ] Tests pass (unit + integration as appropriate)
-- [ ] Passes linting and code standards (PHPCS, ESLint)
+- [ ] Passes linting and code standards (project-specific)
 - [ ] Code review approved
 
 ## Scope
@@ -51,16 +51,16 @@ assignees: ''
 <!-- Files to create, modify, or use as reference -->
 
 ```
-- /plugins/plugin-name/path/to/modify.php
-- /plugins/plugin-name/path/to/pattern-reference.php (for reference)
+- src/path/to/file-to-modify.ext
+- src/path/to/pattern-reference.ext  (for reference)
 ```
 
 **Patterns to follow:**
 
 <!-- Name specific patterns, link to examples in the codebase -->
 
-- See `/plugins/prc-platform-core/...` for similar implementation
-- Follow VIP coding standards
+- See `src/...` for similar implementation
+- Follow project coding standards
 
 **Dependencies:**
 
@@ -72,7 +72,7 @@ assignees: ''
 
 <!-- How should this be tested? What test files to create/update? -->
 
-- PHPUnit tests in `/tests/`
+- Add tests to `tests/` or the project's test directory
 -
 
 ## Complexity
@@ -111,5 +111,5 @@ TIPS FOR GOOD AGENT ISSUES:
 - Combine unrelated changes
 - Skip the context section
 
-See docs/agentic-development-guide.md for full guidelines.
+See docs/AGENTIC_DEVELOPMENT.md for full guidelines.
 -->

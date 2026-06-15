@@ -1,0 +1,241 @@
+# Scans open issues for agent-readiness candidates.
+# Runs weekly and on manual dispatch.
+#
+# This is the lightweight (no-LLM) screener. It scores issues structurally
+# using the rubric below and applies 'agent-candidate' to high-scoring issues.
+# A human must review candidates and apply 'agent-ready' to start execution.
+#
+# For the Claude-powered screener (richer analysis, draft templates in comments),
+# see .github/agents/issue-screener.agent.md and use it with Claude Code or
+# anthropics/claude-code-action.
+#
+# The screener NEVER applies 'agent-ready' — that decision belongs to a human.
+
+name: Issue Screener
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'  # Every Monday at 9am UTC
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  screen-issues:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+
+    steps:
+      - name: Screen open issues for agent-readiness
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Fetch open issues not yet labeled agent-ready or agent-candidate
+            const { data: allIssues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100
+            });
+
+            const issues = allIssues.filter(issue => {
+              // Skip PRs (GitHub returns them in issues API)
+              if (issue.pull_request) return false;
+              const labelNames = issue.labels.map(l => l.name);
+              return !labelNames.includes('agent-ready') && !labelNames.includes('agent-candidate');
+            });
+
+            if (issues.length === 0) {
+              console.log('No unscreened open issues found.');
+              return;
+            }
+
+            console.log(`Screening ${issues.length} issue(s)...`);
+
+            // ── SCORING RUBRIC ────────────────────────────────────────────────
+            //
+            // Positive signals (+points):
+            //   +2  Has expected vs actual behavior described
+            //   +2  References a specific file, class, module, or API by name
+            //   +2  Has testable acceptance criteria (checkboxes)
+            //   +1  Is clearly a code bug (not content or design judgment)
+            //   +1  Has reproduction steps or error logs
+            //   +1  Scope is bounded (likely completable in one PR)
+            //
+            // Negative signals (-points):
+            //   -3  Just a URL with minimal description
+            //   -2  Requires human visual or editorial judgment
+            //   -1  Vague improvement language
+            //
+            // Score ≥ 7: Strong candidate
+            // Score 5–6: Good candidate
+            // Score < 5: Skip
+
+            function scoreIssue(issue) {
+              const body = issue.body || '';
+              const title = issue.title || '';
+              const combined = title + ' ' + body;
+              let score = 0;
+              const signals = [];
+
+              // Positive: expected vs actual behavior
+              if (/expected|actual|should|instead/i.test(body) &&
+                  /(expected|should)[\s\S]{0,200}(actual|instead)/i.test(body)) {
+                score += 2;
+                signals.push({ signal: 'Has expected vs actual behavior', points: 2 });
+              }
+
+              // Positive: references specific file/class/module/API
+              if (/[a-zA-Z0-9_\-]+\.(js|ts|py|rb|go|java|php|swift|rs|kt|cs|cpp|h|css|scss|md)|[A-Z][a-zA-Z]+Controller|[A-Z][a-zA-Z]+Service|[A-Z][a-zA-Z]+Model|\/api\/|GET |POST |PUT |DELETE /i.test(body)) {
+                score += 2;
+                signals.push({ signal: 'References specific file/class/module/API', points: 2 });
+              }
+
+              // Positive: testable acceptance criteria (checkboxes)
+              const checkboxCount = (body.match(/- \[[ x]\]/g) || []).length;
+              if (checkboxCount >= 2) {
+                score += 2;
+                signals.push({ signal: `Has ${checkboxCount} acceptance criteria checkbox(es)`, points: 2 });
+              } else if (checkboxCount === 1) {
+                score += 1;
+                signals.push({ signal: 'Has 1 acceptance criteria checkbox', points: 1 });
+              }
+
+              // Positive: clearly a code bug
+              if (/error|exception|stack trace|console\.error|TypeError|undefined is not|cannot read|failed|broken|crash|bug/i.test(body)) {
+                score += 1;
+                signals.push({ signal: 'Mentions error/bug/exception', points: 1 });
+              }
+
+              // Positive: reproduction steps or logs
+              if (/steps to reproduce|reproduction:|repro:|```[\s\S]*?```|^\d+\. /m.test(body)) {
+                score += 1;
+                signals.push({ signal: 'Has reproduction steps or code/log block', points: 1 });
+              }
+
+              // Positive: scope is bounded
+              const wordCount = body.split(/\s+/).length;
+              if (wordCount > 50 && wordCount < 800 &&
+                  !/(redesign|overhaul|rewrite|revamp|rethink|entire|whole system|everything)/i.test(body)) {
+                score += 1;
+                signals.push({ signal: 'Scope appears bounded', points: 1 });
+              }
+
+              // Negative: just a URL
+              const nonUrlContent = body.replace(/https?:\/\/[^\s]+/g, '').trim();
+              if (nonUrlContent.split(/\s+/).length < 10) {
+                score -= 3;
+                signals.push({ signal: 'Mostly a URL with minimal description', points: -3 });
+              }
+
+              // Negative: visual/editorial judgment required
+              if (/looks wrong|design review|check with|content update|visual|styling|layout|UI feedback/i.test(body)) {
+                score -= 2;
+                signals.push({ signal: 'Requires visual/editorial judgment', points: -2 });
+              }
+
+              // Negative: vague improvement language
+              if (/\b(improve|enhance|make better|clean up|refactor)\b/i.test(body) &&
+                  !/specific|exactly|in particular|specifically/i.test(body)) {
+                score -= 1;
+                signals.push({ signal: 'Vague improvement language without specifics', points: -1 });
+              }
+
+              return { score, signals };
+            }
+
+            let candidates = 0, skipped = 0, errors = 0;
+            const candidateList = [];
+
+            for (const issue of issues) {
+              const { score, signals } = scoreIssue(issue);
+
+              if (score < 5) {
+                console.log(`  #${issue.number} (score: ${score}) — skipped`);
+                skipped++;
+                continue;
+              }
+
+              // Build signal table for comment
+              const signalRows = signals.map(s =>
+                `| ${s.signal} | ${s.points > 0 ? '+' : ''}${s.points} |`
+              ).join('\n');
+
+              const comment = [
+                '## Issue Screener — Candidate Report',
+                '',
+                '> **This is an automated structural assessment.** A human must review and apply',
+                '> the `agent-ready` label to start agent execution.',
+                '> The `agent-candidate` label has been applied to this issue.',
+                '',
+                '---',
+                '',
+                `### Score: ${score} / 10`,
+                '',
+                '| Signal | Points |',
+                '|--------|--------|',
+                signalRows,
+                `| **Total** | **${score}** |`,
+                '',
+                '### What Would Improve This Issue',
+                '',
+                ...(score >= 7 ? [
+                  'This issue scores strongly. To promote to `agent-ready`:',
+                  '',
+                  '- [ ] Verify scope is bounded (one PR)',
+                  '- [ ] Add "Out of scope" exclusions if missing',
+                  '- [ ] Link to specific files or patterns to follow',
+                ] : [
+                  'To reach `agent-ready` status, consider:',
+                  '',
+                  ...(!signals.find(s => s.signal.includes('acceptance criteria')) ? ['- [ ] Add acceptance criteria checkboxes (specific, testable criteria)'] : []),
+                  ...(!signals.find(s => s.signal.includes('file/class')) ? ['- [ ] Reference specific files, classes, or APIs in the codebase'] : []),
+                  ...(!signals.find(s => s.signal.includes('reproduction')) ? ['- [ ] Add reproduction steps or paste a relevant error log'] : []),
+                  '- [ ] Define scope explicitly (what is and is not included)',
+                ]),
+                '',
+                '---',
+                '',
+                `_Issue Screener — automated structural check · [Configure](.github/workflows/issue-screener.yml)_`,
+              ].join('\n');
+
+              try {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  body: comment
+                });
+
+                try {
+                  await github.rest.issues.addLabels({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issue.number,
+                    labels: ['agent-candidate']
+                  });
+                } catch (labelErr) {
+                  console.error(`  Could not apply agent-candidate to #${issue.number}: ${labelErr.message}`);
+                  // Continue — the comment was posted; the label is a bonus
+                }
+
+                console.log(`  #${issue.number} (score: ${score}) — candidate`);
+                candidateList.push({ number: issue.number, title: issue.title, score });
+                candidates++;
+              } catch (err) {
+                console.error(`  #${issue.number} — error: ${err.message}`);
+                errors++;
+              }
+            }
+
+            // Run summary
+            console.log('');
+            console.log('Issue Screener Run Summary');
+            console.log('==========================');
+            console.log(`Total issues evaluated: ${issues.length}`);
+            console.log(`Candidates (score ≥ 5): ${candidates}`);
+            candidateList.forEach(c => console.log(`  - #${c.number} "${c.title}" (score: ${c.score})`));
+            console.log(`Skipped (score < 5): ${skipped}`);
+            console.log(`Errors: ${errors}`);
