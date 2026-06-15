@@ -120,6 +120,10 @@ jobs:
                - PR body: reference "Closes #${{ github.event.issue.number }}" and summarize what you did
                - Use the template at .github/PULL_REQUEST_TEMPLATE/agent-generated.md if it exists
             7. Add the 'agent-generated' label to the PR
+            8. After the PR is open, update the original issue's acceptance criteria:
+               - Check off any criteria your implementation directly satisfies
+               - Leave unchecked anything that requires manual testing, human review, or CI
+               - Use gh issue edit to update the checkbox state in the issue body
 
             If you are blocked or unclear on something, post a comment on the issue
             asking for clarification rather than guessing.
