@@ -385,79 +385,21 @@ struct TodayView: View {
                 resetToToday()
             }
             .navigationDestination(item: $navigationState) { state in
-                if let article = modelContext.model(for: state.articleID) as? Article {
-                    // For Reddit posts, show combined post + comments view
-                    if article.isRedditPost {
-                        if !state.context.isEmpty,
-                           let currentIndex = state.context.firstIndex(of: state.articleID) {
-                            let previousIndex = currentIndex - 1
-                            let nextIndex = currentIndex + 1
-                            let previousArticleID = previousIndex >= 0 ? state.context[previousIndex] : nil
-                            let nextArticleID = nextIndex < state.context.count ? state.context[nextIndex] : nil
-
-                            RedditPostView(
-                                article: article,
-                                previousArticleID: previousArticleID,
-                                nextArticleID: nextArticleID,
-                                onNavigateToPrevious: { prevID in
-                                    Task { @MainActor in
-                                        try? await Task.sleep(nanoseconds: 50_000_000)
-                                        navigationState = NavigationState(articleID: prevID, context: state.context)
-                                    }
-                                },
-                                onNavigateToNext: { nextID in
-                                    Task { @MainActor in
-                                        try? await Task.sleep(nanoseconds: 50_000_000)
-                                        navigationState = NavigationState(articleID: nextID, context: state.context)
-                                    }
-                                }
-                            )
-                            .id(state.articleID)  // Force view refresh when article changes
-                        } else {
-                            RedditPostView(
-                                article: article,
-                                previousArticleID: nil,
-                                nextArticleID: nil,
-                                onNavigateToPrevious: { _ in },
-                                onNavigateToNext: { _ in }
-                            )
-                        }
-                    }
-                    // For all other articles, show in-app article detail
-                    // Use the captured navigation context (stable across view updates)
-                    else if !state.context.isEmpty,
-                       let currentIndex = state.context.firstIndex(of: state.articleID) {
-                        let previousIndex = currentIndex - 1
-                        let nextIndex = currentIndex + 1
-                        let previousArticleID = previousIndex >= 0 ? state.context[previousIndex] : nil
-                        let nextArticleID = nextIndex < state.context.count ? state.context[nextIndex] : nil
-
-                        ArticleDetailSimple(
-                            article: article,
-                            previousArticleID: previousArticleID,
-                            nextArticleID: nextArticleID,
-                            onNavigateToPrevious: { prevID in
-                                Task { @MainActor in
-                                    try? await Task.sleep(nanoseconds: 50_000_000)
-                                    navigationState = NavigationState(articleID: prevID, context: state.context)
-                                }
-                            },
-                            onNavigateToNext: { nextID in
-                                Task { @MainActor in
-                                    try? await Task.sleep(nanoseconds: 50_000_000)
-                                    navigationState = NavigationState(articleID: nextID, context: state.context)
-                                }
-                            }
-                        )
-                    } else {
-                        ArticleDetailSimple(
-                            article: article,
-                            previousArticleID: nil,
-                            nextArticleID: nil,
-                            onNavigateToPrevious: { _ in },
-                            onNavigateToNext: { _ in }
-                        )
-                    }
+                if !state.context.isEmpty,
+                   let initialIndex = state.context.firstIndex(of: state.articleID) {
+                    ArticlePagerView(
+                        articleIDs: state.context,
+                        initialIndex: initialIndex
+                    )
+                } else if let article = modelContext.model(for: state.articleID) as? Article {
+                    // Fallback for single article without context
+                    ArticleDetailSimple(
+                        article: article,
+                        previousArticleID: nil,
+                        nextArticleID: nil,
+                        onNavigateToPrevious: { _ in },
+                        onNavigateToNext: { _ in }
+                    )
                 }
             }
             .toolbar {
