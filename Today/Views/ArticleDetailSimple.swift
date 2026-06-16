@@ -366,6 +366,62 @@ struct ArticleDetailSimple: View {
     #endif
 }
 
+// Paged container that enables horizontal swipe navigation between articles.
+// Uses TabView with PageTabViewStyle so the swipe gesture is native and does
+// not interfere with vertical scrolling inside each article page.
+struct ArticlePagerView: View {
+    let articleIDs: [PersistentIdentifier]
+    let initialIndex: Int
+
+    @Environment(\.modelContext) private var modelContext
+    @State private var currentIndex: Int
+
+    init(articleIDs: [PersistentIdentifier], initialIndex: Int) {
+        self.articleIDs = articleIDs
+        self.initialIndex = initialIndex
+        _currentIndex = State(initialValue: initialIndex)
+    }
+
+    var body: some View {
+        TabView(selection: $currentIndex) {
+            ForEach(Array(articleIDs.enumerated()), id: \.offset) { index, articleID in
+                articlePage(for: articleID, at: index)
+                    .tag(index)
+            }
+        }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+        #if os(iOS)
+        .toolbar(.hidden, for: .tabBar)
+        #endif
+    }
+
+    @ViewBuilder
+    private func articlePage(for articleID: PersistentIdentifier, at index: Int) -> some View {
+        if let article = modelContext.model(for: articleID) as? Article {
+            let previousID = index > 0 ? articleIDs[index - 1] : nil
+            let nextID = index < articleIDs.count - 1 ? articleIDs[index + 1] : nil
+
+            if article.isRedditPost {
+                RedditPostView(
+                    article: article,
+                    previousArticleID: previousID,
+                    nextArticleID: nextID,
+                    onNavigateToPrevious: { _ in currentIndex = index - 1 },
+                    onNavigateToNext: { _ in currentIndex = index + 1 }
+                )
+            } else {
+                ArticleDetailSimple(
+                    article: article,
+                    previousArticleID: previousID,
+                    nextArticleID: nextID,
+                    onNavigateToPrevious: { _ in currentIndex = index - 1 },
+                    onNavigateToNext: { _ in currentIndex = index + 1 }
+                )
+            }
+        }
+    }
+}
+
 struct ArticleWebViewSimple: View {
     let url: URL
     @Environment(\.openURL) private var openURL
