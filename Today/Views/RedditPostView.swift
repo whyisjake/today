@@ -54,6 +54,10 @@ struct RedditPostView: View {
     let onNavigateToPrevious: (PersistentIdentifier) -> Void
     let onNavigateToNext: (PersistentIdentifier) -> Void
 
+    // Optional preloaded data from RedditPostCache (used by ArticlePagerView)
+    var cachedPost: ParsedRedditPost? = nil
+    var cachedComments: [RedditComment]? = nil
+
     @State private var post: ParsedRedditPost?
     @State private var comments: [RedditComment] = []
     @State private var isLoading = true
@@ -124,7 +128,7 @@ struct RedditPostView: View {
                         } else {
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack {
-                                    Text("\(post.numComments) Comments")
+                                    Text("\(displayComments.count) Comments")
                                         .font(.headline)
                                         .fontWeight(.semibold)
                                     Spacer()
@@ -332,6 +336,17 @@ struct RedditPostView: View {
         isLoading = true
         errorMessage = nil
 
+        // Use preloaded cache if available
+        if let cachedPost, let cachedComments {
+            self.post = cachedPost
+            self.comments = cachedComments
+            #if os(macOS)
+            self.commentsWithChildren = computeCommentsWithChildren(cachedComments)
+            #endif
+            isLoading = false
+            return
+        }
+
         guard let commentsUrl = article.redditCommentsUrl else {
             errorMessage = "Invalid Reddit post URL"
             isLoading = false
@@ -339,25 +354,14 @@ struct RedditPostView: View {
         }
 
         do {
-            let jsonURL = commentsUrl.hasSuffix("/") ? commentsUrl + ".json" : commentsUrl + ".json"
-            guard let requestURL = URL(string: jsonURL) else {
-                throw RedditError.invalidURL
-            }
+            let result = try await RedditPostCache.fetchRedditPost(commentsUrl: commentsUrl)
 
-            var request = URLRequest(url: requestURL)
-            request.setValue("ios:com.today.app:v1.0 (by /u/TodayApp)", forHTTPHeaderField: "User-Agent")
-
-            let (data, _) = try await URLSession.shared.data(for: request)
-
-            let parser = RedditJSONParser()
-            let (parsedPost, parsedComments) = try parser.parsePostWithComments(data: data)
-
-            self.post = parsedPost
-            self.comments = parsedComments
+            self.post = result.post
+            self.comments = result.comments
 
             // Pre-compute which comments have children (for macOS collapse UI)
             #if os(macOS)
-            self.commentsWithChildren = computeCommentsWithChildren(parsedComments)
+            self.commentsWithChildren = computeCommentsWithChildren(result.comments)
             #endif
 
             isLoading = false
@@ -454,16 +458,8 @@ struct PostContentView: View {
                     .system(.title2, design: .serif, weight: .bold) :
                     .system(.title2, design: .default, weight: .bold))
 
-            // Meta info: subreddit, author, score, time
+            // Meta info: author, score, time
             HStack(spacing: 8) {
-                Text("r/\(post.subreddit)")
-                    .font(.subheadline)
-                    .foregroundStyle(accentColor.color)
-
-                Text("•")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
                 Text("u/\(post.author)")
                     .font(.subheadline)
                     .foregroundStyle(accentColor.color)
