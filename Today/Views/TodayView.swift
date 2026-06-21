@@ -307,12 +307,6 @@ struct TodayView: View {
                             }
                             .buttonStyle(.plain)
                             .id(article.persistentModelID)
-                            .onAppear {
-                                // If first article appears and we're viewing multiple days, reset to today
-                                if article.persistentModelID == filteredArticles.first?.persistentModelID && daysToLoad > 1 {
-                                    resetToToday()
-                                }
-                            }
                             .swipeActions(edge: .leading) {
                                 Button {
                                     toggleRead(article)
@@ -328,13 +322,18 @@ struct TodayView: View {
                                 Button {
                                     toggleFavorite(article)
                                 } label: {
-
                                     Label(
                                         article.isFavorite ? "Unfavorite" : "Favorite",
                                         systemImage: article.isFavorite ? "star.slash" : "star.fill"
                                     )
                                 }
                                 .tint(.yellow)
+                            }
+                            .onAppear {
+                                // If first article appears and we're viewing multiple days, reset to today
+                                if article.persistentModelID == filteredArticles.first?.persistentModelID && daysToLoad > 1 {
+                                    resetToToday()
+                                }
                             }
                         }
 
