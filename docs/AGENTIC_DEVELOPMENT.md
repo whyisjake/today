@@ -203,7 +203,7 @@ Before labeling an issue `agent-ready`:
 
 ## Compound Engineering Integration
 
-[Compound Engineering](https://github.com/anthropics/compound-engineering) is a Claude Code plugin that provides structured planning (`/ce-plan`) and work execution (`/ce-work`) skills.
+[Compound Engineering](https://github.com/EveryInc/compound-engineering-plugin) is a Claude Code plugin that provides structured planning (`/ce-plan`) and work execution (`/ce-work`) skills.
 
 When `AGENT_PROVIDER=claude`, the trigger workflow uses CE automatically:
 
