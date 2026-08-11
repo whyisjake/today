@@ -217,6 +217,39 @@ Five feeds timing out inside one `chunked(into: 5)` wave stall the entire phase.
 exactly what U8 removes, and it also confirms the U5 timeout works — 14.6 s against the
 configured 15 s cap, rather than `URLSession`'s 60 s default.
 
+## U7 result: OPML sync stages moved off the main actor
+
+`syncSubscription` previously did everything on the main actor: HTTP fetch, XML parse, the
+managed-feed query, the diff, and every mutation. It now splits into stages:
+
+| Stage | Where it runs |
+|---|---|
+| HTTP fetch + XML parse | `@concurrent` — off main |
+| Managed-feed snapshot | `@concurrent`, background `ModelContext` |
+| Diff computation | pure function, no model access |
+| Deactivations | `@concurrent`, background `ModelContext` |
+| Cache headers, title | main actor (`mainContext`, trivial) |
+| Adding a newly-discovered feed | **still main actor** |
+
+The manager itself stays `@MainActor` because it owns `@Published` state and `mainContext`.
+
+**What is deliberately not moved:** adding a new feed still goes through
+`FeedManager.addFeed`, which owns URL normalisation, Reddit URL conversion, redirect handling
+and the initial article fetch. Reproducing that off-main would mean restructuring
+`FeedManager`, which the plan puts out of scope. The tradeoff is acceptable because that path
+only runs when the remote OPML actually gained a feed, whereas the fetch and parse happen on
+**every** sync cycle and are now fully off-main.
+
+`fetchAndParse` opens with `assert(!Thread.isMainThread)`, and
+`testFetchAndParseRunsOffTheMainThread` calls it from XCTest's main thread — so if
+`@concurrent` is ever weakened to plain `nonisolated`, the test traps rather than silently
+returning network and XML parsing to the main thread.
+
+The diff is now a pure function with 15 characterization tests covering the behaviours that
+had produced duplicate feeds: matching on `sourceURL` so a redirected feed is not re-added
+every sync, `general` resolving to the subscription default, user-added feeds never being
+claimed or deactivated, and the diff being empty once a subscription has settled.
+
 ## Note: this module is main-actor by default
 
 `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` is set, so **every unannotated declaration is

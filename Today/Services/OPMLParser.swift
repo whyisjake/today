@@ -6,7 +6,7 @@ import Foundation
 /// Used by both OPML import and OPML subscription features.
 class OPMLParser {
 
-    struct ParsedFeed {
+    struct ParsedFeed: Sendable, Equatable {
         let url: String
         let title: String
         let category: String
