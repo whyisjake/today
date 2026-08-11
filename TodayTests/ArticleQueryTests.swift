@@ -538,6 +538,91 @@ final class ArticleQueryTests: XCTestCase {
         XCTAssertTrue(actual.isEmpty)
     }
 
+    // MARK: - Rolling window (sidebar)
+
+    /// The sidebar filters on a rolling N×24h cutoff from `now`, not from the start of
+    /// today like TodayView. Reference is the pre-U4 sidebar expression.
+    func testRollingWindowPipelineMatchesReference() throws {
+        let all = try allArticlesNewestFirst()
+
+        for daysBack in [1, 7, 30] {
+            for showAlt in [false, true] {
+                let cutoff = Calendar.current.date(byAdding: .day, value: -daysBack, to: now)!
+                let expected = all.filter { article in
+                    article.publishedDate >= cutoff &&
+                    (showAlt
+                        ? article.feed?.category.lowercased() == "alt"
+                        : article.feed?.category.lowercased() != "alt")
+                }
+
+                let window = try context.fetch(ArticleQuery.rollingWindowDescriptor(
+                    daysBack: daysBack, now: now
+                ))
+                let actual = window.filter {
+                    ArticleQuery.isWithinRollingWindow($0, daysBack: daysBack, now: now)
+                        && ArticleQuery.matchesAltVisibility($0, altVisible: showAlt)
+                }
+
+                XCTAssertEqual(
+                    actual.map(\.guid), expected.map(\.guid),
+                    "rolling window diverged — daysBack=\(daysBack) alt=\(showAlt)"
+                )
+            }
+        }
+    }
+
+    /// The descriptor's margin is what keeps a long-lived view correct: its lower bound is
+    /// frozen at init, but the exact cutoff moves forward, so the frozen bound must stay
+    /// more generous than the cutoff — never less.
+    func testRollingDescriptorBoundIsMoreGenerousThanTheExactCutoff() throws {
+        let daysBack = 7
+        let window = try context.fetch(ArticleQuery.rollingWindowDescriptor(
+            daysBack: daysBack, now: now
+        ))
+        let exact = window.filter {
+            ArticleQuery.isWithinRollingWindow($0, daysBack: daysBack, now: now)
+        }
+        XCTAssertGreaterThanOrEqual(
+            window.count, exact.count,
+            "descriptor must be a superset of the exact window"
+        )
+
+        // Simulate the view having been created a day ago: the descriptor built then must
+        // still cover everything today's exact cutoff admits.
+        let yesterday = now.addingTimeInterval(-86_400)
+        let staleWindow = try context.fetch(ArticleQuery.rollingWindowDescriptor(
+            daysBack: daysBack, now: yesterday
+        ))
+        let exactToday = Set(
+            try allArticlesNewestFirst()
+                .filter { ArticleQuery.isWithinRollingWindow($0, daysBack: daysBack, now: now) }
+                .map(\.guid)
+        )
+        XCTAssertTrue(
+            Set(staleWindow.map(\.guid)).isSuperset(of: exactToday),
+            "a day-old descriptor must still cover today's window — this is what marginDays buys"
+        )
+    }
+
+    func testRollingWindowExcludesArticlesOlderThanTheCutoff() throws {
+        let window = try context.fetch(ArticleQuery.rollingWindowDescriptor(
+            daysBack: 2, now: now
+        ))
+        let exact = window.filter {
+            ArticleQuery.isWithinRollingWindow($0, daysBack: 2, now: now)
+        }
+        let cutoff = Calendar.current.date(byAdding: .day, value: -2, to: now)!
+        XCTAssertTrue(exact.allSatisfy { $0.publishedDate >= cutoff })
+        XCTAssertFalse(exact.isEmpty)
+    }
+
+    func testRollingWindowRespectsFetchLimit() throws {
+        let limited = try context.fetch(ArticleQuery.rollingWindowDescriptor(
+            daysBack: 30, limit: 4, now: now
+        ))
+        XCTAssertEqual(limited.count, 4)
+    }
+
     func testCutoffMatchesTodayViewComputation() {
         for daysToLoad in [1, 2, 7, 30] {
             let startOfToday = Calendar.current.startOfDay(for: now)

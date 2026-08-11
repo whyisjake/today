@@ -105,6 +105,44 @@ enum ArticleQuery {
         return descriptor
     }
 
+    /// Descriptor for a **rolling** N-day window, as the sidebar uses — measured from `now`
+    /// rather than from the start of today, which is how `SidebarContentView` has always
+    /// computed its 7-day cutoff.
+    ///
+    /// Over-fetches by `marginDays` on purpose. A view's `@Query` descriptor is built once
+    /// in `init`, but the rolling cutoff moves forward as time passes. Since the cutoff only
+    /// ever moves *forward*, a slightly older lower bound stays generous indefinitely, and
+    /// the exact cutoff is re-applied in Swift by `isWithinRollingWindow`. The alternative —
+    /// a frozen exact bound — would slowly diverge from the intended window in a long-lived
+    /// window on macOS.
+    static func rollingWindowDescriptor(
+        daysBack: Int,
+        marginDays: Int = 1,
+        limit: Int = defaultFetchLimit,
+        now: Date = .now,
+        calendar: Calendar = .current
+    ) -> FetchDescriptor<Article> {
+        let lowerBound = calendar.date(byAdding: .day, value: -(daysBack + marginDays), to: now) ?? now
+        var descriptor = FetchDescriptor<Article>(
+            predicate: #Predicate { $0.publishedDate >= lowerBound },
+            sortBy: [SortDescriptor(\Article.publishedDate, order: .reverse)]
+        )
+        descriptor.fetchLimit = limit
+        descriptor.relationshipKeyPathsForPrefetching = [\.feed]
+        return descriptor
+    }
+
+    /// The exact rolling-window test, evaluated fresh so it does not drift.
+    static func isWithinRollingWindow(
+        _ article: Article,
+        daysBack: Int,
+        now: Date = .now,
+        calendar: Calendar = .current
+    ) -> Bool {
+        let cutoff = calendar.date(byAdding: .day, value: -daysBack, to: now) ?? now
+        return article.publishedDate >= cutoff
+    }
+
     /// Count-only descriptor for the store-wide totals.
     ///
     /// These correspond to TodayView's `totalUnreadCount` / `totalFavoritesCount`, which

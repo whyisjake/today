@@ -84,6 +84,25 @@ articles — rather than the size of the store. Pre-U3 over the same range went 
 The repeat-render count matters as much as the per-render figure: the pre-U3 view derived
 six independent full-array passes and did so on every render, 11 times during launch alone.
 
+## U4 result: sidebar (iPad / macOS)
+
+iPad Pro 13-inch simulator, 10,000-article store (20 feeds × 500, dates spread over 90 days):
+
+```
+SidebarContentView appeared with 20 feeds, 900 articles in window
+```
+
+900 instead of 10,000 — the rolling 7-day window plus a 1-day descriptor margin over a
+90-day spread, which is the expected ≈8/90 of the store. `article-list-derivation` no longer
+logs for the sidebar at all, so it is under the 10 ms threshold.
+
+The `@State` cache is gone along with its 10 ms `Task.sleep` layout-escape. That cache was
+also a correctness bug: keyed on `allArticles.count`, so a sync that replaced articles
+without changing the total served stale data indefinitely.
+
+Runtime-verified on iPad (which is the same `SidebarContentView` code path as macOS). The
+macOS app compiles but was not launched, to avoid touching a local development store.
+
 ## Known gap: indexes do not reach existing stores
 
 `#Index` declarations (U2) are applied when a store is **created**, not when one is
