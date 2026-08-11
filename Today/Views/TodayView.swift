@@ -284,7 +284,27 @@ struct TodayView: View {
                 }
             }
             .navigationTitle(viewTitle)
+            // Pinned rather than left at the default `.automatic` placement.
+            //
+            // `.automatic` keeps the field collapsed until the list is pulled down, but this
+            // list is also `.refreshable`, so the same downward drag drives pull-to-refresh —
+            // which usually wins. The search field was effectively unreachable.
+            //
+            // It also fixes a dead spot: when the filtered list is empty this view renders a
+            // ContentUnavailableView instead of the List, so there was no scrollable content
+            // to pull and therefore no way to search at all.
+            //
+            // Costs a fixed row of vertical space. `navigationBarDrawer` is iOS-only, and
+            // macOS puts search in the toolbar anyway, so the default stands there.
+            #if os(iOS)
+            .searchable(
+                text: $searchText,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: "Search articles"
+            )
+            #else
             .searchable(text: $searchText, prompt: "Search articles")
+            #endif
             .onChange(of: selectedCategory) { _, newCategory in
                 // Don't reset time filter when selecting Podcasts - podcasts are infrequent
                 // and users expect to see all their podcast episodes
