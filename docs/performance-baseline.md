@@ -103,6 +103,40 @@ without changing the total served stale data indefinitely.
 Runtime-verified on iPad (which is the same `SidebarContentView` code path as macOS). The
 macOS app compiles but was not launched, to avoid touching a local development store.
 
+## U5 result: no unbounded article query remains
+
+All seven `@Query` declarations over `Article` now build from an explicit descriptor with
+both a predicate and a `fetchLimit`:
+
+| View | Bound |
+|---|---|
+| `TodayView` (via `ArticleWindow`) | date window + selection |
+| `SidebarContentView` | rolling 7-day window + margin |
+| `FeedDetailView` | feed predicate + limit |
+| `FeedArticlesView` | feed predicate + limit |
+| `FeedNewsletterView` (×2) | feed + read-state, limit 15 each |
+| `AIChatView` | rolling 8-day window |
+
+`AIChatView` needed care: two of its three consumers already applied a 7-day window, but
+`generateResponse` passed every non-alt article to `AIService`, which uses only
+`prefix(15)` for context yet injects `Total articles: N` / `Unread: N` into the prompt — and
+the pattern-based fallback answered "how many articles do you have" from `articles.count`.
+Those are library-wide facts, so bounding the fetch alone would have changed the
+assistant's answers. They are now counted separately by `ArticleQuery.nonAltCounts` and
+passed to `AIService` explicitly, which is both exact and free of a full fetch.
+
+### Regression found and fixed during U5
+
+Bounding `TodayView` in U3 turned the plain-text backfill from a filter over an
+already-materialised array into its own predicate fetch — an unindexed table scan on the
+main actor **on every appearance of the view**, measured at **512.7 ms** on the
+40,000-article store even with nothing to backfill.
+
+Now guarded by a `UserDefaults` completion flag and batched at 500 rows, so it works through
+a large store across launches and then stops scanning entirely. Two consecutive launches on
+the 40,000-article store show no backfill interval at all, with derivation steady at
+10.4–11.3 ms.
+
 ## Known gap: indexes do not reach existing stores
 
 `#Index` declarations (U2) are applied when a store is **created**, not when one is

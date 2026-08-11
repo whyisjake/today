@@ -422,18 +422,37 @@ struct TodayView: View {
         }
     }
 
+    /// Set once the backfill has nothing left to do, so the scan stops running forever.
+    private static let plainTextBackfillCompleteKey = "hasCompletedPlainTextBackfill_v1"
+
+    /// Rows per appearance. Bounded so a large store is worked through across launches
+    /// instead of in one long main-thread pass.
+    private static let plainTextBackfillBatchSize = 500
+
     private func populatePlainTextCache() async {
+        // Without this guard the predicate below is an unindexed table scan on every
+        // appearance of this view — measured at ~510ms on a 40k-article store even when
+        // there was nothing to backfill. U6 moves the work off the main actor; this stops
+        // it costing anything once complete.
+        guard !UserDefaults.standard.bool(forKey: Self.plainTextBackfillCompleteKey) else {
+            return
+        }
+
         let interval = Perf.begin(.plainTextBackfill)
         defer { Perf.end(interval) }
 
-        // Store-wide, not window-scoped: this is a backfill, not a display concern. Fetched
-        // with a predicate so it no longer depends on a full-table query being in scope.
-        // U6 moves this off the main actor entirely.
-        let articlesNeedingCache = (try? modelContext.fetch(FetchDescriptor<Article>(
+        // Store-wide, not window-scoped: this is a backfill, not a display concern.
+        var descriptor = FetchDescriptor<Article>(
             predicate: #Predicate { $0.plainTextDescription == nil && $0.articleDescription != nil }
-        ))) ?? []
+        )
+        descriptor.fetchLimit = Self.plainTextBackfillBatchSize
+        let articlesNeedingCache = (try? modelContext.fetch(descriptor)) ?? []
 
-        guard !articlesNeedingCache.isEmpty else { return }
+        guard !articlesNeedingCache.isEmpty else {
+            // Nothing left anywhere — never scan again.
+            UserDefaults.standard.set(true, forKey: Self.plainTextBackfillCompleteKey)
+            return
+        }
 
         // Process on main actor (required for SwiftData models)
         for article in articlesNeedingCache {
@@ -442,7 +461,8 @@ struct TodayView: View {
             }
         }
 
-        // Save once after processing all
+        // Save once after processing this batch. If a full batch came back there may be
+        // more, so the completion flag stays unset and the next appearance continues.
         try? modelContext.save()
     }
 

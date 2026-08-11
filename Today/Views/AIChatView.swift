@@ -42,7 +42,20 @@ class ChatMessage: Identifiable, ObservableObject {
 
 struct AIChatView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \Article.publishedDate, order: .reverse) private var articles: [Article]
+    /// Bounded to a rolling 8-day window rather than the whole table.
+    ///
+    /// 8 days, not 7: this view's own features use a start-of-today-minus-7-days cutoff,
+    /// and a rolling 8-day lower bound is always at or below that, so the exact cutoffs
+    /// applied below stay correct even though the descriptor is built once in init.
+    ///
+    /// Library-wide facts ("you have N articles") no longer come from this array — they are
+    /// counted separately and passed to AIService, so bounding the fetch does not change
+    /// what the assistant reports.
+    @Query private var articles: [Article]
+
+    init() {
+        _articles = Query(ArticleQuery.rollingWindowDescriptor(daysBack: 8))
+    }
 
     @State private var messages: [ChatMessage] = []
     @State private var inputText = ""
@@ -248,7 +261,13 @@ struct AIChatView: View {
         Task {
             // Exclude Alt category articles from AI features
             let filteredArticles = articles.filter { $0.feed?.category.lowercased() != "alt" }
-            let (response, recommendedArticles) = await AIService.shared.generateResponse(for: trimmed, articles: Array(filteredArticles))
+            let libraryCounts = ArticleQuery.nonAltCounts(in: modelContext)
+            let (response, recommendedArticles) = await AIService.shared.generateResponse(
+                for: trimmed,
+                articles: Array(filteredArticles),
+                libraryTotalCount: libraryCounts.total,
+                libraryUnreadCount: libraryCounts.unread
+            )
 
             await MainActor.run {
                 messages.append(ChatMessage(content: response, isUser: false, recommendedArticles: recommendedArticles))

@@ -1769,13 +1769,30 @@ struct EditFeedView: View {
 struct FeedArticlesView: View {
     let feed: Feed
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \Article.publishedDate, order: .reverse) private var allArticles: [Article]
+
+    /// This feed's articles, filtered and capped in the database. Previously this fetched
+    /// every Article in the store and narrowed to `feed.id` in Swift.
+    @Query private var feedArticles: [Article]
+
     @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
 
     @State private var showReadArticles = false
     @State private var searchText = ""
     @State private var navigationState: NavigationState?
     @AppStorage("fontOption") private var fontOption: FontOption = .serif
+
+    /// No date window: this is a feed browser, where the whole history is the point.
+    /// Bounded by count instead.
+    private static func articlesQuery(for feed: Feed) -> FetchDescriptor<Article> {
+        let feedId = feed.id
+        var descriptor = FetchDescriptor<Article>(
+            predicate: #Predicate<Article> { $0.feed?.id == feedId },
+            sortBy: [SortDescriptor(\Article.publishedDate, order: .reverse)]
+        )
+        descriptor.fetchLimit = ArticleQuery.defaultFetchLimit
+        descriptor.relationshipKeyPathsForPrefetching = [\.feed]
+        return descriptor
+    }
 
     // For macOS: use parent's selectedArticle to show in detail column
     #if os(macOS)
@@ -1784,10 +1801,12 @@ struct FeedArticlesView: View {
     init(feed: Feed, selectedArticle: Binding<Article?>) {
         self.feed = feed
         _selectedArticle = selectedArticle
+        _feedArticles = Query(Self.articlesQuery(for: feed))
     }
     #else
     init(feed: Feed) {
         self.feed = feed
+        _feedArticles = Query(Self.articlesQuery(for: feed))
     }
     #endif
 
@@ -1798,7 +1817,7 @@ struct FeedArticlesView: View {
     }
 
     private var filteredArticles: [Article] {
-        var articles = allArticles.filter { $0.feed?.id == feed.id }
+        var articles = feedArticles
 
         if !showReadArticles {
             articles = articles.filter { !$0.isRead }
@@ -1816,8 +1835,14 @@ struct FeedArticlesView: View {
         return articles
     }
 
+    /// Counted in the database so the answer stays exact regardless of the fetch limit —
+    /// deriving it from the fetched array would silently cap it.
     private var unreadCount: Int {
-        allArticles.filter { $0.feed?.id == feed.id && !$0.isRead }.count
+        let feedId = feed.id
+        let descriptor = FetchDescriptor<Article>(
+            predicate: #Predicate<Article> { $0.feed?.id == feedId && !$0.isRead }
+        )
+        return (try? modelContext.fetchCount(descriptor)) ?? 0
     }
 
     var body: some View {
@@ -2026,27 +2051,46 @@ struct FeedNewsletterView: View {
     let feed: Feed
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \Article.publishedDate, order: .reverse) private var allArticles: [Article]
+
+    /// Split into two bounded queries rather than one unbounded fetch.
+    ///
+    /// The ordering this view wants is "unread first, then newest first, take 15", which
+    /// cannot be expressed as a single SortDescriptor — Bool is not Comparable, so
+    /// `SortDescriptor(\.isRead)` does not compile. Two queries capped at the same 15
+    /// reproduce it exactly: take the newest unread, then top up from the newest read.
+    @Query private var unreadFeedArticles: [Article]
+    @Query private var readFeedArticles: [Article]
 
     @State private var isGenerating = false
     @State private var newsletterMessage: ChatMessage?
 
+    /// Matches the prefix the AI context is truncated to anyway.
+    private static let newsletterArticleLimit = 15
+
+    init(feed: Feed) {
+        self.feed = feed
+        let feedId = feed.id
+
+        var unread = FetchDescriptor<Article>(
+            predicate: #Predicate<Article> { $0.feed?.id == feedId && !$0.isRead },
+            sortBy: [SortDescriptor(\Article.publishedDate, order: .reverse)]
+        )
+        unread.fetchLimit = Self.newsletterArticleLimit
+        unread.relationshipKeyPathsForPrefetching = [\.feed]
+        _unreadFeedArticles = Query(unread)
+
+        var read = FetchDescriptor<Article>(
+            predicate: #Predicate<Article> { $0.feed?.id == feedId && $0.isRead },
+            sortBy: [SortDescriptor(\Article.publishedDate, order: .reverse)]
+        )
+        read.fetchLimit = Self.newsletterArticleLimit
+        read.relationshipKeyPathsForPrefetching = [\.feed]
+        _readFeedArticles = Query(read)
+    }
+
     private var feedArticles: [Article] {
-        // Get articles from this feed, prioritizing unread then by date
-        let feedArticles = allArticles.filter { article in
-            article.feed?.id == feed.id
-        }
-
-        // Sort: unread first, then by published date (newest first)
-        let sortedArticles = feedArticles.sorted { a, b in
-            if a.isRead != b.isRead {
-                return !a.isRead  // Unread articles first
-            }
-            return a.publishedDate > b.publishedDate  // Then newest first
-        }
-
-        // Limit to most recent 15 articles to avoid context window issues
-        return Array(sortedArticles.prefix(15))
+        // Unread first, then read — each already newest-first from the descriptor.
+        Array((unreadFeedArticles + readFeedArticles).prefix(Self.newsletterArticleLimit))
     }
 
     var body: some View {

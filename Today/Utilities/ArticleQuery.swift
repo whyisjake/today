@@ -143,6 +143,38 @@ enum ArticleQuery {
         return article.publishedDate >= cutoff
     }
 
+    /// Store-wide totals excluding alt-category articles, counted exactly.
+    ///
+    /// The AI features describe the user's whole library ("you have N articles, M unread"),
+    /// so these must not be window-scoped even though the articles handed to the AI are.
+    ///
+    /// Alt exclusion cannot go into a predicate (`lowercased()` is unavailable, and the
+    /// workarounds fail SQL generation — see PredicateCapabilityProbeTests), so the alt
+    /// contribution is counted per alt feed and subtracted. There are only ever a handful
+    /// of feeds, and these are count queries that materialise nothing.
+    static func nonAltCounts(in context: ModelContext) -> (total: Int, unread: Int) {
+        let total = (try? context.fetchCount(FetchDescriptor<Article>())) ?? 0
+        let unread = (try? context.fetchCount(
+            FetchDescriptor<Article>(predicate: #Predicate { !$0.isRead })
+        )) ?? 0
+
+        let feeds = (try? context.fetch(FetchDescriptor<Feed>())) ?? []
+        let altFeedIDs = feeds.filter { $0.category.lowercased() == "alt" }.map(\.id)
+
+        var altTotal = 0
+        var altUnread = 0
+        for feedID in altFeedIDs {
+            altTotal += (try? context.fetchCount(FetchDescriptor<Article>(
+                predicate: #Predicate { $0.feed?.id == feedID }
+            ))) ?? 0
+            altUnread += (try? context.fetchCount(FetchDescriptor<Article>(
+                predicate: #Predicate { $0.feed?.id == feedID && !$0.isRead }
+            ))) ?? 0
+        }
+
+        return (max(total - altTotal, 0), max(unread - altUnread, 0))
+    }
+
     /// Count-only descriptor for the store-wide totals.
     ///
     /// These correspond to TodayView's `totalUnreadCount` / `totalFavoritesCount`, which

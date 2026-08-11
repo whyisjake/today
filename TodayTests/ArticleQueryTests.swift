@@ -538,6 +538,73 @@ final class ArticleQueryTests: XCTestCase {
         XCTAssertTrue(actual.isEmpty)
     }
 
+    // MARK: - Library-wide non-alt counts (AI features)
+
+    /// These back the assistant's "you have N articles, M unread" answers, so they must stay
+    /// store-wide and exact even though the articles handed to the AI are windowed. The
+    /// reference is the pre-U5 expression: count over all non-alt articles.
+    func testNonAltCountsMatchFullScan() throws {
+        let all = try allArticlesNewestFirst()
+        let expectedTotal = all.filter { $0.feed?.category.lowercased() != "alt" }.count
+        let expectedUnread = all.filter {
+            $0.feed?.category.lowercased() != "alt" && !$0.isRead
+        }.count
+
+        let counts = ArticleQuery.nonAltCounts(in: context)
+
+        XCTAssertEqual(counts.total, expectedTotal)
+        XCTAssertEqual(counts.unread, expectedUnread)
+    }
+
+    /// The fixture has both "Alt" and "alt" feeds; both must be excluded.
+    func testNonAltCountsExcludeEveryAltSpelling() throws {
+        let all = try allArticlesNewestFirst()
+        let altCount = all.filter { $0.feed?.category.lowercased() == "alt" }.count
+        XCTAssertGreaterThan(altCount, 0, "fixture must contain alt articles for this to mean anything")
+
+        let counts = ArticleQuery.nonAltCounts(in: context)
+        XCTAssertEqual(counts.total, all.count - altCount)
+    }
+
+    /// The feed-less article has no category, so it is not alt and must be counted.
+    func testNonAltCountsIncludeFeedLessArticles() throws {
+        let counts = ArticleQuery.nonAltCounts(in: context)
+        let all = try allArticlesNewestFirst()
+        let orphanIsUnread = all.first { $0.guid == "guid-orphan" }?.isRead == false
+
+        XCTAssertEqual(counts.total, all.filter { $0.feed?.category.lowercased() != "alt" }.count)
+        if orphanIsUnread {
+            XCTAssertGreaterThan(counts.unread, 0)
+        }
+    }
+
+    func testNonAltCountsAreZeroOnAnEmptyStore() throws {
+        let schema = Schema([Feed.self, Article.self, OPMLSubscription.self])
+        let emptyContainer = try ModelContainer(
+            for: schema,
+            configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)]
+        )
+        let counts = ArticleQuery.nonAltCounts(in: ModelContext(emptyContainer))
+        XCTAssertEqual(counts.total, 0)
+        XCTAssertEqual(counts.unread, 0)
+    }
+
+    /// Marking an article read must move the unread total without touching the grand total.
+    func testNonAltCountsTrackReadStateChanges() throws {
+        let before = ArticleQuery.nonAltCounts(in: context)
+
+        let target = try context.fetch(FetchDescriptor<Article>(
+            predicate: #Predicate { !$0.isRead && $0.feed?.category == "Technology" }
+        )).first
+        let unwrapped = try XCTUnwrap(target)
+        unwrapped.isRead = true
+        try context.save()
+
+        let after = ArticleQuery.nonAltCounts(in: context)
+        XCTAssertEqual(after.total, before.total)
+        XCTAssertEqual(after.unread, before.unread - 1)
+    }
+
     // MARK: - Rolling window (sidebar)
 
     /// The sidebar filters on a rolling N×24h cutoff from `now`, not from the start of
