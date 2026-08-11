@@ -126,8 +126,13 @@ class BackgroundSyncManager: ObservableObject {
         // BackgroundFeedSync runs parsing and insertion entirely off the main thread
         await BackgroundFeedSync.syncAllFeeds(container: container)
 
-        // OPML sync requires FeedManager (@MainActor); run it on the main actor
-        await syncOPMLSubscriptions(container: container)
+        // The OPML managers stay main-actor because they own @Published state and
+        // mainContext, but their expensive stages no longer run there: fetch, XML parse,
+        // the managed-feed snapshot and deactivations are all @concurrent. Only adding a
+        // newly-discovered feed still hops to the main actor.
+        await Perf.measureAsync(.syncOPML) {
+            await syncOPMLSubscriptions(container: container)
+        }
 
         await MainActor.run { isSyncInProgress = false }
     }

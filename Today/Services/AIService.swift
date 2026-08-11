@@ -276,7 +276,13 @@ class AIService {
     /// Generate conversational response using Apple's on-device LLM (iOS 26+)
     #if canImport(FoundationModels)
     @available(iOS 26.0, macOS 26.0, *)
-    private func generateAIResponse(query: String, articles: [Article], session: LanguageModelSession) async throws -> (String, [Article]?) {
+    private func generateAIResponse(
+        query: String,
+        articles: [Article],
+        libraryTotalCount: Int,
+        libraryUnreadCount: Int,
+        session: LanguageModelSession
+    ) async throws -> (String, [Article]?) {
         // Prepare article context (limit to avoid token limits)
         let articleContext = articles.prefix(15).map { article in
             "Title: \(article.title)\nRead: \(article.isRead ? "Yes" : "No")\nDate: \(article.publishedDate.formatted())"
@@ -289,8 +295,8 @@ class AIService {
         Here are their recent articles:
         \(articleContext)
 
-        Total articles: \(articles.count)
-        Unread: \(articles.filter { !$0.isRead }.count)
+        Total articles: \(libraryTotalCount)
+        Unread: \(libraryUnreadCount)
 
         Respond in a conversational, witty voice:
         - Be conversational and clever — like you're sharing cool finds with a friend.
@@ -743,13 +749,31 @@ class AIService {
     }
 
     /// Generate a conversational response about articles using Apple Intelligence when available
-    func generateResponse(for query: String, articles: [Article]) async -> (String, [Article]?) {
+    /// - Parameters:
+    ///   - articles: the articles to reason over. Callers pass a bounded window; only the
+    ///     newest handful is ever used for context.
+    ///   - libraryTotalCount: articles in the whole library, not just `articles`. Passed in
+    ///     because answers like "you have N articles" describe the library, and the caller
+    ///     no longer fetches all of it to find out.
+    ///   - libraryUnreadCount: unread articles in the whole library.
+    func generateResponse(
+        for query: String,
+        articles: [Article],
+        libraryTotalCount: Int,
+        libraryUnreadCount: Int
+    ) async -> (String, [Article]?) {
         // Try Apple Intelligence for more natural responses (iOS 26+)
         if #available(iOS 26.0, macOS 26.0, *), isAppleIntelligenceAvailable {
             #if canImport(FoundationModels)
             if let session = session {
                 do {
-                    let result = try await generateAIResponse(query: query, articles: articles, session: session)
+                    let result = try await generateAIResponse(
+                        query: query,
+                        articles: articles,
+                        libraryTotalCount: libraryTotalCount,
+                        libraryUnreadCount: libraryUnreadCount,
+                        session: session
+                    )
                     return result
                 } catch {
                     print("Apple Intelligence response failed: \(error.localizedDescription)")
@@ -764,7 +788,7 @@ class AIService {
 
         // Count queries
         if lowercasedQuery.contains("how many") || lowercasedQuery.contains("count") {
-            return ("You have \(articles.count) articles in your feed. \(articles.filter { !$0.isRead }.count) are unread.", nil)
+            return ("You have \(libraryTotalCount) articles in your feed. \(libraryUnreadCount) are unread.", nil)
         }
 
         // Summary queries
@@ -790,7 +814,7 @@ class AIService {
 
         // Unread queries
         if lowercasedQuery.contains("unread") || lowercasedQuery.contains("haven't read") {
-            let unreadCount = articles.filter { !$0.isRead }.count
+            let unreadCount = libraryUnreadCount
             let unreadArticles = Array(articles.filter { !$0.isRead }.sorted { $0.publishedDate > $1.publishedDate }.prefix(5))
             return ("You have \(unreadCount) unread articles. Here are the most recent ones:", unreadArticles.isEmpty ? nil : unreadArticles)
         }

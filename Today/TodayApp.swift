@@ -63,6 +63,9 @@ struct TodayApp: App {
     }()
 
     init() {
+        let initInterval = Perf.begin(.appInit)
+        defer { Perf.end(initInterval) }
+
         #if os(iOS)
         // Configure audio session to mix with other audio (music, podcasts, etc.)
         // This allows animated GIFs and videos to play without interrupting user's audio
@@ -82,6 +85,24 @@ struct TodayApp: App {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-ResetArticlesOnLaunch") {
             resetArticlesForTesting()
+        }
+
+        // Generate a realistically large store on demand, so read-path cost can be
+        // measured without waiting weeks for one to accumulate naturally.
+        // Usage: -SeedLargeStore [-SeedFeedCount 20] [-SeedArticlesPerFeed 500]
+        if ProcessInfo.processInfo.arguments.contains("-SeedLargeStore") {
+            seedLargeStoreForTesting()
+        }
+
+        // Force a sync on this launch without deleting anything.
+        //
+        // needsSync() gates on a 2-hour window, and the sync date cannot be cleared from
+        // outside the app: the live CFPreferences value shadows the on-disk plist, so
+        // `defaults write` from the host is silently ignored. Clearing it from in here is
+        // the only reliable way to measure the sync path repeatedly.
+        if ProcessInfo.processInfo.arguments.contains("-ForceSyncOnLaunch") {
+            UserDefaults.standard.removeObject(forKey: "com.today.lastGlobalSyncDate")
+            print("🔁 [Debug] Cleared sync date — this launch will sync")
         }
         #endif
     }
@@ -109,7 +130,17 @@ struct TodayApp: App {
                     // Guarded by UserDefaults — no-op on all launches after the first.
                     Task { @MainActor in
                         try? await Task.sleep(for: .seconds(3))
-                        await DatabaseMigration.shared.runMigrations(modelContext: sharedModelContainer.mainContext)
+                        await Perf.measureAsync(.databaseMigration) {
+                            await DatabaseMigration.shared.runMigrations(modelContext: sharedModelContainer.mainContext)
+                        }
+                    }
+
+                    // Backfill derived article fields off the main actor. Guarded and
+                    // resumable, so this is a no-op on all launches after it completes.
+                    // Deferred past the migration above so the two don't contend.
+                    Task.detached(priority: .utility) {
+                        try? await Task.sleep(for: .seconds(5))
+                        await DatabaseMigration.shared.backfillDerivedArticleFields(container: container)
                     }
 
                     // Check if we need to sync on launch (content older than 2 hours).
@@ -330,6 +361,85 @@ struct TodayApp: App {
         UserDefaults.standard.removeObject(forKey: "com.today.lastGlobalSyncDate")
         print("🧹 [Debug] Reset sync date — app will sync on next launch")
     }
+
+    /// Seed a large store for performance measurement.
+    ///
+    /// Article `publishedDate` values are spread across a 90-day window so date-window
+    /// predicates and the day-by-day "load previous day" path get realistic distribution
+    /// rather than every article landing in the same bucket. Descriptions carry HTML so
+    /// plain-text and minimal-content derivation costs are realistic too.
+    private func seedLargeStoreForTesting() {
+        let defaults = UserDefaults.standard
+        let feedCount = defaults.integer(forKey: "SeedFeedCount") > 0
+            ? defaults.integer(forKey: "SeedFeedCount") : 20
+        let articlesPerFeed = defaults.integer(forKey: "SeedArticlesPerFeed") > 0
+            ? defaults.integer(forKey: "SeedArticlesPerFeed") : 500
+        let windowDays = 90
+
+        let context = ModelContext(sharedModelContainer)
+
+        // Idempotent: seeding runs in init(), so without this a second launch with the
+        // flag would double the store. Keeping it a no-op lets you seed once and then
+        // measure cold launch on subsequent runs with the same flag set.
+        let seededMarker = "https://example.invalid/seed/0/feed.xml"
+        let existing = try? context.fetch(
+            FetchDescriptor<Feed>(predicate: #Predicate<Feed> { $0.url == seededMarker })
+        )
+        if let existing, !existing.isEmpty {
+            let count = (try? context.fetchCount(FetchDescriptor<Article>())) ?? -1
+            print("🌱 [Debug] Store already seeded (\(count) articles) — skipping")
+            return
+        }
+
+        let categories = ["Technology", "News", "Personal", "Social", "Comics", "Alt"]
+        let start = Date()
+        var inserted = 0
+
+        for feedIndex in 0..<feedCount {
+            let feed = Feed(
+                title: "Seeded Feed \(feedIndex)",
+                url: "https://example.invalid/seed/\(feedIndex)/feed.xml",
+                category: categories[feedIndex % categories.count]
+            )
+            context.insert(feed)
+
+            for articleIndex in 0..<articlesPerFeed {
+                // Spread across the window, oldest last, deterministically.
+                let ageSeconds = Double(articleIndex) / Double(max(articlesPerFeed - 1, 1))
+                    * Double(windowDays) * 86_400
+                let published = Date(timeIntervalSinceNow: -ageSeconds)
+
+                let article = Article(
+                    title: "Seeded article \(articleIndex) from feed \(feedIndex)",
+                    link: "https://example.invalid/seed/\(feedIndex)/\(articleIndex)",
+                    articleDescription: "<p>Seeded <em>HTML</em> summary for article \(articleIndex) "
+                        + "with entities &amp; &#8220;quotes&#8221; so stripping cost is realistic.</p>",
+                    content: articleIndex % 3 == 0
+                        ? String(repeating: "<p>Body paragraph.</p>", count: 20)
+                        : nil,
+                    publishedDate: published,
+                    author: "Seed Author",
+                    guid: "seed-\(feedIndex)-\(articleIndex)",
+                    feed: feed
+                )
+                // Vary read/favorite so count aggregates have something to count.
+                article.isRead = articleIndex % 4 == 0
+                article.isFavorite = articleIndex % 25 == 0
+                if articleIndex % 50 == 0 {
+                    article.audioUrl = "https://example.invalid/seed/\(feedIndex)/\(articleIndex).mp3"
+                    article.audioType = "audio/mpeg"
+                }
+                context.insert(article)
+                inserted += 1
+            }
+
+            // Save per feed to keep peak memory bounded while seeding.
+            try? context.save()
+        }
+
+        let elapsed = Date().timeIntervalSince(start)
+        print("🌱 [Debug] Seeded \(feedCount) feeds / \(inserted) articles in \(String(format: "%.1f", elapsed))s")
+    }
     #endif
 }
 
@@ -342,6 +452,9 @@ struct TodayApp: App {
 /// and be a no-op. The next background refresh will pick up the defaults. This is acceptable
 /// on first install.
 private func addDefaultFeedsIfNeeded(container: ModelContainer) async {
+    let interval = Perf.begin(.defaultFeedSetup)
+    defer { Perf.end(interval) }
+
     // Check feed count on the main actor (mainContext is @MainActor-bound)
     let isEmpty = await MainActor.run {
         let fetchDescriptor = FetchDescriptor<Feed>()

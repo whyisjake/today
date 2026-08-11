@@ -10,6 +10,9 @@ import SwiftData
 
 @Model
 final class Feed {
+    // BackgroundFeedSync.syncAllFeeds fetches on exactly this predicate every sync.
+    #Index<Feed>([\.isActive])
+
     var title: String
     var url: String
     var feedDescription: String?
@@ -20,6 +23,12 @@ final class Feed {
     // HTTP caching headers for conditional GET
     var httpLastModified: String?  // Server's Last-Modified header value
     var httpEtag: String?          // Server's ETag header value
+
+    // Sync health. No UI reads these yet; they exist so a persistently broken feed is
+    // diagnosable instead of just being silently absent from every sync's results.
+    // Optional so existing stores migrate without a default.
+    var lastSyncError: String?
+    var consecutiveSyncFailureCount: Int?
 
     // OPML subscription tracking — if set, this feed is managed by an OPML subscription
     var opmlSubscriptionURL: String?

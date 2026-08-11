@@ -121,15 +121,16 @@ struct CompactContentView: View {
 struct SidebarContentView: View {
     let modelContext: ModelContext
     @Query(sort: \Feed.title) private var feeds: [Feed]
-    @Query(sort: \Article.publishedDate, order: .reverse) private var allArticles: [Article]
+
+    /// Bounded to the sidebar's rolling 7-day window rather than the whole table.
+    /// The exact cutoff is re-applied in `recentArticles` so it cannot drift.
+    @Query private var windowArticles: [Article]
+
     @AppStorage("showAltCategory") private var showAltFeeds = false
     @AppStorage("accentColor") private var accentColor: AccentColorOption = .orange
     @State private var selectedSidebarItem: SidebarItem? = .today
     @State private var selectedArticle: Article?
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
-    @State private var cachedRecentArticles: [Article] = []
-    @State private var lastArticleCount: Int = 0
-    @State private var lastShowAltFeeds: Bool = false
     @StateObject private var audioPlayer = ArticleAudioPlayer.shared
     @StateObject private var podcastPlayer = PodcastAudioPlayer.shared
     @FocusState private var detailColumnFocused: Bool
@@ -140,6 +141,16 @@ struct SidebarContentView: View {
         case feed(PersistentIdentifier)
         case aiChat
         case settings
+    }
+
+    /// The rolling window the sidebar's Today list shows.
+    private static let recentWindowDays = 7
+
+    init(modelContext: ModelContext) {
+        self.modelContext = modelContext
+        _windowArticles = Query(
+            ArticleQuery.rollingWindowDescriptor(daysBack: Self.recentWindowDays)
+        )
     }
 
     private static let miniPlayerHeight: CGFloat = 120
@@ -187,35 +198,24 @@ struct SidebarContentView: View {
             logger.info("📄 Article selection changed: \(oldValue?.title ?? "nil") → \(newValue?.title ?? "nil")")
         }
         .onAppear {
-            logger.info("🚀 SidebarContentView appeared with \(self.feeds.count) feeds, \(self.allArticles.count) articles")
-            // Initialize cached articles synchronously on first appear (need data immediately)
-            if cachedRecentArticles.isEmpty && !allArticles.isEmpty {
-                lastArticleCount = allArticles.count
-                lastShowAltFeeds = showAltFeeds
-                cachedRecentArticles = computeRecentArticles()
-            }
+            logger.info("🚀 SidebarContentView appeared with \(self.feeds.count) feeds, \(self.windowArticles.count) articles in window")
         }
         .task {
             // Auto-select first article on launch (macOS)
-            if selectedArticle == nil, let firstArticle = cachedRecentArticles.first {
+            if selectedArticle == nil, let firstArticle = recentArticles.first {
                 selectedArticle = firstArticle
                 logger.info("📄 Auto-selected first article: \(firstArticle.title)")
             }
         }
-        .onChange(of: allArticles.count) { oldCount, newCount in
-            // Update cache when articles change
-            updateCachedArticlesIfNeeded()
-            // Auto-select first article when articles first load (macOS)
+        .onChange(of: windowArticles.count) { oldCount, newCount in
+            // Auto-select first article when articles first load (macOS). No cache to
+            // refresh any more — recentArticles is derived from the bounded query.
             if oldCount == 0 && newCount > 0 && selectedArticle == nil {
-                if let firstArticle = cachedRecentArticles.first {
+                if let firstArticle = recentArticles.first {
                     selectedArticle = firstArticle
                     logger.info("📄 Auto-selected first article after load: \(firstArticle.title)")
                 }
             }
-        }
-        .onChange(of: showAltFeeds) { _, _ in
-            // Update cache when alt feeds toggle changes
-            updateCachedArticlesIfNeeded()
         }
     }
 
@@ -241,50 +241,20 @@ struct SidebarContentView: View {
         logger.info("⌨️ Navigated to previous article via keyboard: \(self.currentArticlesList[currentIndex - 1].title)")
     }
 
-    // Cached articles for the Today view (updated when data changes)
+    /// Articles for the sidebar's Today list.
+    ///
+    /// Previously this was a `@State` cache invalidated on `allArticles.count`, refreshed
+    /// inside a `Task` with a 10ms sleep to escape the layout pass. Both existed because the
+    /// computation ran over every article in the store. With the query bounded to the rolling
+    /// window there is nothing expensive left to cache, and the count-keyed invalidation was
+    /// itself a bug: a sync that replaced articles without changing the total served stale
+    /// data indefinitely.
     private var recentArticles: [Article] {
-        cachedRecentArticles
-    }
-
-    // Compute filtered articles - only called when data actually changes
-    private func computeRecentArticles() -> [Article] {
-        let start = CFAbsoluteTimeGetCurrent()
-        let sevenDaysAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
-        let result = allArticles.filter { article in
-            article.publishedDate >= sevenDaysAgo &&
-            (showAltFeeds ? article.feed?.category.lowercased() == "alt" : article.feed?.category.lowercased() != "alt")
-        }
-        let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000
-        if elapsed > 10 {
-            logger.info("📊 recentArticles computed in \(elapsed, format: .fixed(precision: 1))ms for \(self.allArticles.count) articles → \(result.count) results")
-        }
-        return result
-    }
-
-    // Update cached articles when underlying data changes
-    // Uses Task with sleep to fully break out of layout cycle
-    private func updateCachedArticlesIfNeeded() {
-        // Only recompute if data actually changed
-        guard allArticles.count != lastArticleCount || showAltFeeds != lastShowAltFeeds else {
-            return
-        }
-
-        // Capture current values before async
-        let currentCount = allArticles.count
-        let currentShowAlt = showAltFeeds
-
-        // Use Task with tiny sleep to fully break out of current layout cycle
-        Task { @MainActor in
-            // Tiny delay to escape the layout pass
-            try? await Task.sleep(for: .milliseconds(10))
-
-            // Double-check we still need to update
-            guard currentCount != lastArticleCount || currentShowAlt != lastShowAltFeeds else {
-                return
+        Perf.measure(.articleListDerivation, "sidebar: \(windowArticles.count) in window") {
+            windowArticles.filter { article in
+                ArticleQuery.isWithinRollingWindow(article, daysBack: Self.recentWindowDays)
+                    && ArticleQuery.matchesAltVisibility(article, altVisible: showAltFeeds)
             }
-            lastArticleCount = currentCount
-            lastShowAltFeeds = currentShowAlt
-            cachedRecentArticles = computeRecentArticles()
         }
     }
 
@@ -525,23 +495,13 @@ struct ArticleListColumn: View {
     @State private var sort: ArticleSort = .newest
 
     private var processedArticles: [Article] {
-        let start = CFAbsoluteTimeGetCurrent()
-        var result = articles
-
-        // Apply filter
-        result = applyFilter(to: result)
-        
-        // Apply search
-        result = applySearch(to: result)
-        
-        // Apply sort
-        result = applySort(to: result)
-
-        let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000
-        if elapsed > 10 {
-            logger.warning("⚠️ processedArticles took \(elapsed, format: .fixed(precision: 1))ms for \(self.articles.count) articles")
+        Perf.measure(.articleListDerivation, "list column: \(articles.count) articles") {
+            var result = articles
+            result = applyFilter(to: result)
+            result = applySearch(to: result)
+            result = applySort(to: result)
+            return result
         }
-        return result
     }
     
     private func applyFilter(to articles: [Article]) -> [Article] {
@@ -930,16 +890,17 @@ struct FeedDetailView: View {
     
     init(feed: Feed) {
         self.feed = feed
-        // Use predicate to filter at database level
+        // Filter at the database level, and cap it: the feed predicate alone still
+        // materialises a feed's entire history, which grows without bound.
         let feedId = feed.id
-        let predicate = #Predicate<Article> { article in
-            article.feed?.id == feedId
-        }
-        _articles = Query(
-            filter: predicate,
-            sort: \Article.publishedDate,
-            order: .reverse
+        var descriptor = FetchDescriptor<Article>(
+            predicate: #Predicate<Article> { article in
+                article.feed?.id == feedId
+            },
+            sortBy: [SortDescriptor(\Article.publishedDate, order: .reverse)]
         )
+        descriptor.fetchLimit = ArticleQuery.defaultFetchLimit
+        _articles = Query(descriptor)
     }
     
     private var filteredArticles: [Article] {

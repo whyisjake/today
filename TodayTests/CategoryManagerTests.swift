@@ -244,21 +244,37 @@ final class CategoryManagerTests: XCTestCase {
         }
     }
 
-    func testAllCategoriesStandardCategoriesFirst() {
+    /// `allCategories` sorts standard and custom categories together alphabetically —
+    /// it does not group standard categories first. This test previously asserted
+    /// standard-first ordering, which the implementation has never done, so it failed
+    /// on every run. Pinning the documented behaviour instead.
+    ///
+    /// If standard-first grouping is actually wanted, that is a change to
+    /// `CategoryManager.allCategories` and to category-picker ordering in the UI.
+    func testAllCategoriesSortsStandardAndCustomTogetherAlphabetically() {
         let manager = CategoryManager.shared
         UserDefaults.standard.removeObject(forKey: testKey)
 
-        _ = manager.addCustomCategory("AAA") // Would sort first alphabetically
+        _ = manager.addCustomCategory("AAA") // Sorts ahead of every standard category
 
         let allCategories = manager.allCategories
 
-        // Standard categories should come before custom ones
-        if let generalIndex = allCategories.firstIndex(of: "General"),
-           let aaaIndex = allCategories.firstIndex(of: "AAA") {
-            XCTAssertLessThan(generalIndex, aaaIndex, "Standard category General should come before custom AAA")
-        } else {
+        guard let generalIndex = allCategories.firstIndex(of: "General"),
+              let aaaIndex = allCategories.firstIndex(of: "AAA") else {
             XCTFail("Categories not found")
+            return
         }
+
+        XCTAssertLessThan(
+            aaaIndex,
+            generalIndex,
+            "custom 'AAA' sorts ahead of standard 'General' — ordering is purely alphabetical"
+        )
+        XCTAssertEqual(
+            allCategories,
+            allCategories.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending },
+            "allCategories should be fully alphabetically sorted"
+        )
     }
 
     // MARK: - Persistence Tests

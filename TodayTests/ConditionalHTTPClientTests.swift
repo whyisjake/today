@@ -17,6 +17,44 @@ class MockURLProtocol: URLProtocol {
         let headers: [String: String]
         let data: Data?
         let redirectURL: URL?
+        /// Simulated latency before responding. Used by SyncConcurrencyTests to model a slow
+        /// or hung feed; defaults to 0 so existing tests are unaffected.
+        var delay: TimeInterval = 0
+    }
+
+    /// Number of requests currently being served, and the high-water mark. Lets tests assert
+    /// that the sync pipeline honours its concurrency ceiling.
+    nonisolated(unsafe) static var inFlight = 0
+    nonisolated(unsafe) static var maxInFlight = 0
+    private static let counterLock = NSLock()
+
+    /// Lock-protected read. An unsynchronised read of `maxInFlight` returned 0 even while
+    /// requests were plainly overlapping — the writes happen on URL-loading threads, so the
+    /// read needs the same lock to see them.
+    static func peakConcurrency() -> Int {
+        counterLock.lock()
+        defer { counterLock.unlock() }
+        return maxInFlight
+    }
+
+    static func resetCounters() {
+        counterLock.lock()
+        inFlight = 0
+        maxInFlight = 0
+        counterLock.unlock()
+    }
+
+    private static func enter() {
+        counterLock.lock()
+        inFlight += 1
+        maxInFlight = max(maxInFlight, inFlight)
+        counterLock.unlock()
+    }
+
+    private static func leave() {
+        counterLock.lock()
+        inFlight -= 1
+        counterLock.unlock()
     }
 
     override class func canInit(with request: URLRequest) -> Bool {
@@ -28,6 +66,20 @@ class MockURLProtocol: URLProtocol {
     }
 
     override func startLoading() {
+        MockURLProtocol.enter()
+
+        // Deliver asynchronously rather than sleeping inline. `startLoading` is serviced on a
+        // shared queue, so blocking it serialises every mock request — which silently turned
+        // concurrency tests into tests of the mock. Scheduling the response instead lets
+        // requests genuinely overlap.
+        let delay = request.url.flatMap { MockURLProtocol.mockResponses[$0]?.delay } ?? 0
+        DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [weak self] in
+            self?.deliverResponse()
+            MockURLProtocol.leave()
+        }
+    }
+
+    private func deliverResponse() {
         guard let url = request.url,
               let mockResponse = MockURLProtocol.mockResponses[url] else {
             // Default 404 if no mock configured
@@ -96,17 +148,41 @@ class MockURLProtocol: URLProtocol {
 
 final class ConditionalHTTPClientTests: XCTestCase {
 
+    /// Session wired to MockURLProtocol.
+    ///
+    /// This must be injected into `conditionalFetch`. Building a configuration with
+    /// `protocolClasses` and not attaching it to a session is a no-op — which is what
+    /// this suite used to do, so every test silently hit the real network instead.
+    private var mockSession: URLSession!
+
     override func setUp() {
         super.setUp()
-        // Configure URLSession to use our mock protocol
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [MockURLProtocol.self]
+        mockSession = URLSession(configuration: config)
     }
 
     override func tearDown() {
-        // Clear mock responses
         MockURLProtocol.mockResponses.removeAll()
+        mockSession = nil
         super.tearDown()
+    }
+
+    /// Guard against this suite regressing to live network calls: if the mock is not
+    /// intercepting, an unmapped URL would fail some other way than a clean 404.
+    func testMockProtocolIsInterceptingRatherThanHittingTheNetwork() async throws {
+        let url = URL(string: "https://example.invalid/definitely-not-mapped.xml")!
+
+        let response = try await ConditionalHTTPClient.conditionalFetch(
+            url: url,
+            lastModified: nil,
+            etag: nil,
+            session: mockSession
+        )
+
+        // MockURLProtocol answers unmapped URLs with a synthetic 404 and no body.
+        XCTAssertTrue(response.wasModified)
+        XCTAssertEqual(response.data?.count ?? 0, 0, "a live network response would carry a body")
     }
 
     // MARK: - Basic Fetch Tests
@@ -128,7 +204,8 @@ final class ConditionalHTTPClientTests: XCTestCase {
         let response = try await ConditionalHTTPClient.conditionalFetch(
             url: url,
             lastModified: nil,
-            etag: nil
+            etag: nil,
+            session: mockSession
         )
 
         XCTAssertTrue(response.wasModified, "Should indicate content was modified")
@@ -156,7 +233,8 @@ final class ConditionalHTTPClientTests: XCTestCase {
         let response = try await ConditionalHTTPClient.conditionalFetch(
             url: url,
             lastModified: "Mon, 23 Oct 2023 10:00:00 GMT",
-            etag: "\"abc123\""
+            etag: "\"abc123\"",
+            session: mockSession
         )
 
         XCTAssertTrue(response.wasModified)
@@ -180,7 +258,8 @@ final class ConditionalHTTPClientTests: XCTestCase {
         let response = try await ConditionalHTTPClient.conditionalFetch(
             url: url,
             lastModified: "Mon, 23 Oct 2023 10:00:00 GMT",
-            etag: "\"abc123\""
+            etag: "\"abc123\"",
+            session: mockSession
         )
 
         XCTAssertFalse(response.wasModified, "Should indicate content was not modified")
@@ -219,7 +298,8 @@ final class ConditionalHTTPClientTests: XCTestCase {
         let response = try await ConditionalHTTPClient.conditionalFetch(
             url: originalURL,
             lastModified: nil,
-            etag: nil
+            etag: nil,
+            session: mockSession
         )
 
         XCTAssertTrue(response.wasModified)
@@ -256,7 +336,8 @@ final class ConditionalHTTPClientTests: XCTestCase {
         let response = try await ConditionalHTTPClient.conditionalFetch(
             url: originalURL,
             lastModified: nil,
-            etag: nil
+            etag: nil,
+            session: mockSession
         )
 
         XCTAssertTrue(response.wasModified)
@@ -289,7 +370,8 @@ final class ConditionalHTTPClientTests: XCTestCase {
         let response = try await ConditionalHTTPClient.conditionalFetch(
             url: originalURL,
             lastModified: "Mon, 23 Oct 2023 10:00:00 GMT",
-            etag: "\"abc123\""
+            etag: "\"abc123\"",
+            session: mockSession
         )
 
         XCTAssertFalse(response.wasModified, "304 means not modified")
@@ -317,7 +399,8 @@ final class ConditionalHTTPClientTests: XCTestCase {
             url: url,
             lastModified: nil,
             etag: nil,
-            additionalHeaders: ["User-Agent": "ios:com.today.app:v1.0"]
+            additionalHeaders: ["User-Agent": "ios:com.today.app:v1.0"],
+            session: mockSession
         )
 
         XCTAssertTrue(response.wasModified)
@@ -340,7 +423,8 @@ final class ConditionalHTTPClientTests: XCTestCase {
         let response = try await ConditionalHTTPClient.conditionalFetch(
             url: url,
             lastModified: nil,
-            etag: nil
+            etag: nil,
+            session: mockSession
         )
 
         XCTAssertTrue(response.wasModified)
@@ -363,7 +447,8 @@ final class ConditionalHTTPClientTests: XCTestCase {
         let response = try await ConditionalHTTPClient.conditionalFetch(
             url: url,
             lastModified: nil,
-            etag: nil
+            etag: nil,
+            session: mockSession
         )
 
         XCTAssertTrue(response.wasModified)
@@ -385,7 +470,8 @@ final class ConditionalHTTPClientTests: XCTestCase {
         let response = try await ConditionalHTTPClient.conditionalFetch(
             url: url,
             lastModified: nil,
-            etag: nil
+            etag: nil,
+            session: mockSession
         )
 
         XCTAssertTrue(response.wasModified)
