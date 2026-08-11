@@ -201,7 +201,11 @@ extension String {
     }
 
     /// Strip HTML tags from string (fallback)
-    var strippingHTML: String {
+    ///
+    /// `nonisolated` because this module builds with SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor,
+    /// which would otherwise confine this pure string transform to the main actor and make it
+    /// unusable from background work like the derived-field backfill.
+    nonisolated var strippingHTML: String {
         var result = self
 
         // Remove all HTML tags (including span, div, etc.)
@@ -272,7 +276,7 @@ extension String {
     }
 
     /// Get plain text from HTML (useful for AI processing)
-    var htmlToPlainText: String {
+    nonisolated var htmlToPlainText: String {
         return self.strippingHTML
     }
 }

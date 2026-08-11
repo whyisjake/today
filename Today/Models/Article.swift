@@ -39,6 +39,11 @@ final class Article {
     var link: String
     var articleDescription: String?
     var plainTextDescription: String? // Cached plain text version for list display
+
+    /// `hasMinimalContent` computed once at insert. Optional so articles written before this
+    /// field existed read as nil and fall back to computing it. Its inputs (content,
+    /// contentEncoded, articleDescription) do not change after insert.
+    var isMinimalContentCached: Bool?
     var content: String?
     var contentEncoded: String? // Full content from content:encoded
     var imageUrl: String? // Featured image URL
@@ -65,8 +70,14 @@ final class Article {
         self.title = title
         self.link = link
         self.articleDescription = articleDescription
-        // Pre-compute plain text version once for performance
+        // Pre-compute the derived text fields once, so the row view never has to strip HTML
+        // while scrolling.
         self.plainTextDescription = articleDescription?.htmlToPlainText
+        self.isMinimalContentCached = Self.computeIsMinimalContent(
+            contentEncoded: contentEncoded,
+            content: content,
+            articleDescription: articleDescription
+        )
         self.content = content
         self.contentEncoded = contentEncoded
         self.imageUrl = imageUrl
@@ -93,7 +104,34 @@ final class Article {
 
     /// Returns true if the article has minimal content (short summary only)
     /// These articles should open directly in web view for full content
+    ///
+    /// Reads the value computed at insert time. Falls back to computing it for articles
+    /// that predate `isMinimalContentCached`; `DatabaseMigration.backfillDerivedArticleFields`
+    /// fills those in off the main actor.
+    ///
+    /// The fallback matters because this is read per visible row while scrolling, and
+    /// computing it costs up to three `htmlToPlainText` passes — five regular expressions
+    /// and a dozen string replacements each.
     var hasMinimalContent: Bool {
+        if let cached = isMinimalContentCached { return cached }
+        return Self.computeIsMinimalContent(
+            contentEncoded: contentEncoded,
+            content: content,
+            articleDescription: articleDescription
+        )
+    }
+
+    /// The classification itself, kept as a pure function so the initializer, the backfill,
+    /// and the tests all agree by construction.
+    ///
+    /// Behaviour is deliberately unchanged from the original computed property, including
+    /// the quirk that an article with no `content` and no `contentEncoded` is minimal
+    /// regardless of how long its description is.
+    nonisolated static func computeIsMinimalContent(
+        contentEncoded: String?,
+        content: String?,
+        articleDescription: String?
+    ) -> Bool {
         // If we have contentEncoded or substantial content, it's not minimal
         if let encoded = contentEncoded?.htmlToPlainText, !encoded.isEmpty, encoded.count > 300 {
             return false

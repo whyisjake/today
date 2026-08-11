@@ -124,6 +124,14 @@ struct TodayApp: App {
                         }
                     }
 
+                    // Backfill derived article fields off the main actor. Guarded and
+                    // resumable, so this is a no-op on all launches after it completes.
+                    // Deferred past the migration above so the two don't contend.
+                    Task.detached(priority: .utility) {
+                        try? await Task.sleep(for: .seconds(5))
+                        await DatabaseMigration.shared.backfillDerivedArticleFields(container: container)
+                    }
+
                     // Check if we need to sync on launch (content older than 2 hours).
                     // Delay increased to 1500ms to ensure first frame and @Query fetches complete.
                     checkAndSyncIfNeeded()

@@ -137,6 +137,52 @@ a large store across launches and then stops scanning entirely. Two consecutive 
 the 40,000-article store show no backfill interval at all, with derivation steady at
 10.4–11.3 ms.
 
+## U6 result: derived fields computed once, not per row
+
+`hasMinimalContent` cost up to three `htmlToPlainText` passes — five regular expressions and
+a dozen string replacements each — and was read per visible row while scrolling. It is now
+computed at insert and stored in `isMinimalContentCached`, with the computation kept as a
+fallback for articles that predate the field.
+
+The backfill for those older articles moved out of `TodayView.task` (main actor, re-running
+on every appearance) into `DatabaseMigration.backfillDerivedArticleFields`, which runs once
+off the main actor from `TodayApp`.
+
+### The backfill was O(n²) on the first attempt
+
+The obvious implementation — batch on "field IS NULL" — re-scans the already-filled rows
+every batch, on an unindexed column. Measured on the 40,000-article store at roughly
+**240 rows/second**, i.e. minutes of background work, with a `@Query` invalidation after each
+batch that showed up as repeated `article-list-derivation` at 10–36 ms while the user reads.
+
+Replaced with keyset pagination over the indexed `publishedDate`, so each batch is an index
+seek and the whole backfill is one ordered pass. The test suite went from **19.7s to 3.0s**
+purely from this change, since the 1,100-row backfill test was doing the same quadratic work.
+
+Not re-measured on device: the completion flag cannot be reliably cleared from outside the
+app, because the live CFPreferences value shadows the on-disk plist — the same gotcha
+documented above for `lastGlobalSyncDate`. Correctness and termination are covered by tests
+(1,100 rows across batch boundaries, values checked against the computation).
+
+One accepted imprecision: the cursor advances by `publishedDate`, so articles sharing a
+batch boundary timestamp can be skipped. Harmless — a skipped article keeps computing on
+demand via the accessor's fallback.
+
+## Note: this module is main-actor by default
+
+`SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` is set, so **every unannotated declaration is
+main-actor isolated**. This is easy to miss and has two consequences:
+
+- Pure helpers usable from background work need explicit `nonisolated`. `String.strippingHTML`
+  and `htmlToPlainText` are now marked so, as is `Article.computeIsMinimalContent`.
+- More importantly, `BackgroundFeedSync.syncAllFeeds` and `insertArticlesInChunks` carry no
+  isolation annotations, so they are likely running **on the main actor** despite the earlier
+  plan having removed `@MainActor` from `BackgroundSyncManager`. The `withTaskGroup` fetch
+  closures do escape (U1 traces show `sync-feed-fetch` across several threads), but the
+  insert phase would not. `sync-insert` measured 438 ms at baseline; if that is main-actor
+  work it is a 438 ms main-thread block and probably the largest remaining sync win.
+  **Unverified — check before U9.**
+
 ## Known gap: indexes do not reach existing stores
 
 `#Index` declarations (U2) are applied when a store is **created**, not when one is

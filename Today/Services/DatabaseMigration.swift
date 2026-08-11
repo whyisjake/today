@@ -15,8 +15,109 @@ class DatabaseMigration {
     private let texturizerMigrationKey = "hasRunTexturizerMigration_v1"
     private let categoryMigrationKey = "hasRunCategoryMigration_v1"
     private let deduplicateFeedsMigrationKey = "hasRunDeduplicateFeedsMigration_v2"
+    private let derivedFieldsBackfillKey = "hasCompletedDerivedArticleFieldsBackfill_v1"
+
+    /// Rows per batch. Bounded so a large store is worked through incrementally rather than
+    /// in one long transaction, and large enough that a big store does not produce hundreds
+    /// of saves — each save invalidates the article `@Query` observers.
+    private let derivedFieldsBatchSize = 1_000
 
     private init() {}
+
+    // MARK: - Derived article fields
+
+    /// Fill in `plainTextDescription` and `isMinimalContentCached` for articles written
+    /// before those fields existed.
+    ///
+    /// Runs on a background `ModelContext` — this used to live in `TodayView.task`, where it
+    /// ran on the main actor on every appearance of the view and re-scanned the whole table
+    /// even when there was nothing to do. A view is the wrong owner for a data migration.
+    ///
+    /// Idempotent and resumable: the completion flag is only set after a full pass, so an
+    /// interrupted run simply starts over next launch and skips rows already filled in.
+    ///
+    /// One accepted imprecision: the cursor advances by `publishedDate`, so articles sharing
+    /// the exact timestamp of a batch's last row can be skipped. That is harmless — a skipped
+    /// article just keeps computing `hasMinimalContent` on demand via the accessor's
+    /// fallback, which is correct, only slower for that one row.
+    nonisolated func backfillDerivedArticleFields(container: ModelContainer) async {
+        guard !userDefaults.bool(forKey: derivedFieldsBackfillKey) else { return }
+
+        let interval = Perf.begin(.plainTextBackfill)
+        defer { Perf.end(interval) }
+
+        let context = ModelContext(container)
+        var updated = 0
+        var scanned = 0
+
+        // Keyset pagination over publishedDate, which U2 indexed.
+        //
+        // The obvious approach — filter on "field IS NULL" and fetch a batch at a time —
+        // is O(n²): every batch re-scans the rows already filled in, on an unindexed
+        // column. Measured at roughly 240 rows/second on a 40k store, i.e. minutes of
+        // background work with a @Query invalidation after each batch.
+        //
+        // Walking the indexed date column with a cursor instead makes each batch an index
+        // seek, so the whole backfill is a single ordered pass.
+        var cursor = Date.distantFuture
+
+        while true {
+            if Task.isCancelled {
+                Perf.log("↩️ [Backfill] Cancelled after \(updated) updates; will resume")
+                return
+            }
+
+            let upperBound = cursor
+            var descriptor = FetchDescriptor<Article>(
+                predicate: #Predicate { $0.publishedDate < upperBound },
+                sortBy: [SortDescriptor(\Article.publishedDate, order: .reverse)]
+            )
+            descriptor.fetchLimit = derivedFieldsBatchSize
+
+            let batch = (try? context.fetch(descriptor)) ?? []
+            guard !batch.isEmpty else { break }
+
+            var batchUpdated = 0
+            for article in batch {
+                if article.plainTextDescription == nil, let description = article.articleDescription {
+                    article.plainTextDescription = description.htmlToPlainText
+                    batchUpdated += 1
+                }
+                if article.isMinimalContentCached == nil {
+                    article.isMinimalContentCached = Article.computeIsMinimalContent(
+                        contentEncoded: article.contentEncoded,
+                        content: article.content,
+                        articleDescription: article.articleDescription
+                    )
+                    batchUpdated += 1
+                }
+            }
+
+            if batchUpdated > 0 {
+                do {
+                    try context.save()
+                } catch {
+                    Perf.logError("❌ [Backfill] Save failed: \(error.localizedDescription)")
+                    return // flag stays unset, so the next launch retries
+                }
+                updated += batchUpdated
+            }
+
+            scanned += batch.count
+            cursor = batch[batch.count - 1].publishedDate
+
+            if batch.count < derivedFieldsBatchSize { break }
+
+            // Yield between batches so a long backfill does not monopolise a core or fire
+            // @Query invalidations back to back while the user is reading.
+            await Task.yield()
+        }
+
+        userDefaults.set(true, forKey: derivedFieldsBackfillKey)
+        if updated > 0 {
+            Perf.log("✅ [Backfill] Filled \(updated) derived fields across \(scanned) articles")
+        }
+    }
 
     /// Run all pending migrations
     func runMigrations(modelContext: ModelContext) async {
