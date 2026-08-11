@@ -4,7 +4,7 @@
 
 **App Name:** Today - RSS Reader
 **Bundle ID:** jakespurlock.Today
-**Version:** 1.0
+**Version:** 1.13.0
 **Build:** 1
 **SKU:** today-rss-reader-001
 **Primary Language:** English
@@ -75,19 +75,28 @@ Download Today and take control of your reading list.
 rss,reader,news,feed,articles,opml,ai,summary,blogs,aggregator,subscribe
 
 ### What's New in This Version (4000 characters max)
-Welcome to Today v1.0!
+Version 1.13.0 — Faster, smoother, more reliable
 
-This is the first release of Today, a modern RSS reader for iOS featuring:
+FASTER, SMOOTHER SYNCING
+Today now stays responsive while your feeds refresh. Article processing used to happen on the same thread that draws the interface, so the app could stutter or stop responding mid-sync. That work now happens in the background.
 
-• Complete RSS feed management with OPML import/export
-• AI-powered article summaries and chat
-• Background sync to keep your feeds up to date
-• Clean, intuitive interface
-• Pull-to-refresh support
-• Mark as read/unread functionality
-• Fast, reliable performance
+Launch is also faster if you've built up a large library. Today used to load every article you'd ever downloaded just to show you today's list — now it loads only what you're looking at, so startup stays quick no matter how long you've been using it.
 
-We're excited to bring you a better way to read RSS feeds. More features coming soon!
+Syncing no longer stalls when one feed is slow or unreachable. Feeds refresh independently, and a feed that isn't responding gives up sooner instead of holding everything else up.
+
+SEARCH IS EASIER TO FIND
+The search field on the Today screen is now always visible, instead of hiding until you pulled the list down — a gesture that usually triggered a refresh instead.
+
+FIXED: FEEDS THAT QUIETLY STOPPED UPDATING
+If you subscribe to an OPML feed list, some of your feeds could be marked inactive without warning and stop fetching new articles, with nothing in the app to indicate it had happened. Those feeds are restored automatically the next time you sync.
+
+FIXED: SYNCING WHEN OFFLINE
+If a sync failed completely — no signal, airplane mode — Today treated it as successful and wouldn't try again for two hours. It now retries right away.
+
+FIXED: FEED ADDRESSES
+A feed that was temporarily redirected could have its saved address permanently overwritten. Only permanent redirects update it now.
+
+Thanks for reading with Today.
 
 ---
 
@@ -240,8 +249,8 @@ Video specs:
 
 From your Xcode project:
 - **Bundle Identifier:** jakespurlock.Today
-- **Version:** 1.0 (CFBundleShortVersionString)
-- **Build:** 1 (CFBundleVersion)
+- **Version:** 1.13.0 (CFBundleShortVersionString)
+- **Build:** 26 (CFBundleVersion)
 - **Minimum iOS Version:** 18.0 (iOS 26.0 SDK)
 - **Supported Devices:** iPhone and iPad
 - **Development Team:** 36ERVRQ23S
