@@ -84,20 +84,9 @@ class FeedManager: ObservableObject {
 
     /// Add a new RSS feed subscription
     func addFeed(url: String, category: String = "general") async throws -> Feed {
-        // Upgrade http:// to https:// — most servers support it and ATS blocks plain HTTP
-        // Skip domains known to not support HTTPS (have ATS exceptions in Info.plist)
-        let httpOnlyDomains: Set<String> = ["data.feedland.org", "scripting.com"]
-        var normalizedURL = url
-        if normalizedURL.lowercased().hasPrefix("http://") {
-            let host = URL(string: normalizedURL)?.host?.lowercased() ?? ""
-            let isHTTPOnly = httpOnlyDomains.contains(host) || httpOnlyDomains.contains(where: { host.hasSuffix(".\($0)") })
-            if !isHTTPOnly {
-                normalizedURL = "https://" + normalizedURL.dropFirst("http://".count)
-            }
-        }
-
-        // Convert Reddit URLs to JSON format
-        let feedURL = convertRedditURLToJSON(normalizedURL)
+        // Canonicalise via the shared normaliser. This logic previously lived only here, which
+        // is exactly why OPML matching drifted out of sync with it — see FeedURLNormalizer.
+        let feedURL = FeedURLNormalizer.canonical(url)
 
         // Check for existing feed by input URL (avoids unnecessary network fetch)
         let inputURL = feedURL
@@ -162,9 +151,12 @@ class FeedManager: ObservableObject {
             category: category
         )
 
-        // Store the original input URL if it differs from the final URL (redirect occurred)
-        if feedURL != actualURL {
-            feed.sourceURL = feedURL
+        // Store the URL this subscription was created from whenever it differs from what got
+        // stored — including a scheme upgrade or Reddit rewrite, not just a redirect. OPML
+        // matching looks feeds up by sourceURL, so dropping the original made an http-listed
+        // feed unfindable.
+        if url != actualURL {
+            feed.sourceURL = url
         }
 
         // Store initial cache headers
@@ -180,27 +172,6 @@ class FeedManager: ObservableObject {
         return feed
     }
 
-    /// Convert Reddit URLs to JSON format
-    /// Handles: reddit.com/r/subreddit.rss -> reddit.com/r/subreddit.json
-    /// Also: reddit.com/r/subreddit -> reddit.com/r/subreddit.json
-    private func convertRedditURLToJSON(_ url: String) -> String {
-        var urlString = url
-
-        // Convert .rss to .json
-        if urlString.contains("reddit.com/r/") && urlString.hasSuffix(".rss") {
-            urlString = urlString.replacingOccurrences(of: ".rss", with: ".json")
-        }
-        // Add .json if it's a subreddit URL without extension
-        else if urlString.contains("reddit.com/r/") && !urlString.hasSuffix(".json") {
-            // Remove trailing slash if present
-            if urlString.hasSuffix("/") {
-                urlString = String(urlString.dropLast())
-            }
-            urlString += ".json"
-        }
-
-        return urlString
-    }
 
     /// Fetch feed using appropriate parser (RSS, JSON Feed, or Reddit JSON)
     /// Supports conditional GET with If-Modified-Since and If-None-Match headers

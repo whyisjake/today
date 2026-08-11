@@ -117,6 +117,107 @@ final class OPMLDiffTests: XCTestCase {
         XCTAssertTrue(diff.feedIDsToDeactivate.isEmpty)
     }
 
+    // MARK: - Churn: the OPML lists a URL in a form addFeed does not store
+
+    /// Reproduces feed churn seen in a real device log: `+15 added, -15 deactivated` on every
+    /// single sync of the same unchanged subscription.
+    ///
+    /// `FeedManager.addFeed` upgrades `http://` to `https://` and stores the feed under the
+    /// https URL, but OPML matching compares against the URL as listed. So an http-listed feed
+    /// looks *missing* (deactivated) and its OPML entry looks *new* (re-added) forever. Worse,
+    /// the re-add is a no-op — `addFeed` returns the existing feed without clearing `isActive` —
+    /// so the feed stays deactivated and silently stops syncing.
+    func testHTTPListedFeedStoredAsHTTPSDoesNotChurn() throws {
+        let ids = try makeFeedIDs(1)
+        let diff = Manager.computeDiff(
+            fetched: fetched([Parsed(
+                url: "http://techcrunch.com/feed/", title: "TechCrunch", category: "all"
+            )]),
+            managed: [Manager.ManagedFeedSnapshot(
+                id: ids[0], url: "https://techcrunch.com/feed/", sourceURL: nil
+            )],
+            defaultCategory: "News"
+        )
+
+        XCTAssertTrue(
+            diff.feedsToAdd.isEmpty,
+            "an http-listed feed already stored as https must not be re-added"
+        )
+        XCTAssertTrue(
+            diff.feedIDsToDeactivate.isEmpty,
+            "…and must not be deactivated, which is what silently stops it syncing"
+        )
+    }
+
+    /// Same shape for Reddit, which addFeed rewrites to a .json URL.
+    func testRedditFeedStoredAsJSONDoesNotChurn() throws {
+        let ids = try makeFeedIDs(1)
+        let diff = Manager.computeDiff(
+            fetched: fetched([Parsed(
+                url: "https://www.reddit.com/r/swift", title: "r/swift", category: "all"
+            )]),
+            managed: [Manager.ManagedFeedSnapshot(
+                id: ids[0], url: "https://www.reddit.com/r/swift.json", sourceURL: nil
+            )],
+            defaultCategory: "News"
+        )
+        XCTAssertTrue(diff.feedsToAdd.isEmpty)
+        XCTAssertTrue(diff.feedIDsToDeactivate.isEmpty)
+    }
+
+    /// An http-only domain is exempt from the https upgrade, so it must still match as http.
+    func testHTTPOnlyDomainStillMatches() throws {
+        let ids = try makeFeedIDs(1)
+        let diff = Manager.computeDiff(
+            fetched: fetched([Parsed(
+                url: "http://scripting.com/rss.xml", title: "Scripting", category: "all"
+            )]),
+            managed: [Manager.ManagedFeedSnapshot(
+                id: ids[0], url: "http://scripting.com/rss.xml", sourceURL: nil
+            )],
+            defaultCategory: "News"
+        )
+        XCTAssertTrue(diff.feedsToAdd.isEmpty)
+        XCTAssertTrue(diff.feedIDsToDeactivate.isEmpty)
+    }
+
+    /// Repairing existing damage: a managed feed present in the remote OPML must be marked for
+    /// reactivation, otherwise feeds already stuck at isActive = false stay stuck even after
+    /// the matching bug is fixed.
+    func testManagedFeedPresentInRemoteIsMarkedForReactivation() throws {
+        let ids = try makeFeedIDs(1)
+        let diff = Manager.computeDiff(
+            fetched: fetched([Parsed(
+                url: "http://techcrunch.com/feed/", title: "TechCrunch", category: "all"
+            )]),
+            managed: [Manager.ManagedFeedSnapshot(
+                id: ids[0], url: "https://techcrunch.com/feed/", sourceURL: nil, isActive: false
+            )],
+            defaultCategory: "News"
+        )
+        XCTAssertEqual(
+            diff.feedIDsToReactivate, [ids[0]],
+            "a feed still listed in the OPML should be reactivated if it was deactivated"
+        )
+    }
+
+    func testActiveFeedStillListedIsNotMarkedForReactivation() throws {
+        let ids = try makeFeedIDs(1)
+        let diff = Manager.computeDiff(
+            fetched: fetched([Parsed(
+                url: "http://techcrunch.com/feed/", title: "TechCrunch", category: "all"
+            )]),
+            managed: [Manager.ManagedFeedSnapshot(
+                id: ids[0], url: "https://techcrunch.com/feed/", sourceURL: nil, isActive: true
+            )],
+            defaultCategory: "News"
+        )
+        XCTAssertTrue(
+            diff.feedIDsToReactivate.isEmpty,
+            "an already-active feed needs no write; this is what keeps a settled sync a no-op"
+        )
+    }
+
     // MARK: - Deactivating
 
     func testManagedFeedMissingFromRemoteIsDeactivated() throws {
@@ -253,8 +354,8 @@ final class OPMLDiffTests: XCTestCase {
         context.insert(drop)
         try context.save()
 
-        let count = await OPMLSubscriptionManager.deactivateFeeds(
-            ids: [drop.persistentModelID], container: container
+        let count = await OPMLSubscriptionManager.setFeedsActive(
+            false, ids: [drop.persistentModelID], container: container
         )
         XCTAssertEqual(count, 1)
 
@@ -264,13 +365,13 @@ final class OPMLDiffTests: XCTestCase {
         XCTAssertEqual(feeds.first { $0.title == "Keep" }?.isActive, true, "unrelated feeds untouched")
     }
 
-    func testDeactivateFeedsWithNoIDsIsANoOp() async throws {
+    func testSetFeedsActiveWithNoIDsIsANoOp() async throws {
         let schema = Schema([Feed.self, Article.self, OPMLSubscription.self])
         let container = try ModelContainer(
             for: schema,
             configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)]
         )
-        let count = await OPMLSubscriptionManager.deactivateFeeds(ids: [], container: container)
+        let count = await OPMLSubscriptionManager.setFeedsActive(false, ids: [], container: container)
         XCTAssertEqual(count, 0)
     }
 

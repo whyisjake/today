@@ -79,8 +79,9 @@ class OPMLSubscriptionManager: ObservableObject {
         for parsedFeed in parsedFeeds {
             let category = parsedFeed.category.lowercased() == "general" ? defaultCategory : parsedFeed.category
 
-            // Check if feed already exists (by stored URL or original source URL)
-            let feedURL = parsedFeed.url
+            // Match on the canonical form as well as the URL as listed, for the same reason
+            // syncSubscription does — a feed stored earlier is stored canonically.
+            let feedURL = FeedURLNormalizer.canonical(parsedFeed.url)
             let existingByURL = try modelContext.fetch(
                 FetchDescriptor<Feed>(predicate: #Predicate<Feed> { $0.url == feedURL })
             )
@@ -133,6 +134,9 @@ class OPMLSubscriptionManager: ObservableObject {
         let id: PersistentIdentifier
         let url: String
         let sourceURL: String?
+        /// Needed so reactivation targets only feeds that are actually inactive, which keeps a
+        /// settled subscription diffing to nothing.
+        var isActive: Bool = true
 
         /// Matching uses the original OPML URL when present, since `url` may have been
         /// rewritten by a redirect.
@@ -145,6 +149,10 @@ class OPMLSubscriptionManager: ObservableObject {
     struct OPMLDiff: Sendable, Equatable {
         var feedsToAdd: [OPMLParser.ParsedFeed] = []
         var feedIDsToDeactivate: [PersistentIdentifier] = []
+        /// Managed feeds still present in the remote OPML. They are reactivated in case an
+        /// earlier sync deactivated them — see `FeedURLNormalizer` for how that used to happen
+        /// on every sync, and why those feeds could never recover on their own.
+        var feedIDsToReactivate: [PersistentIdentifier] = []
         var newTitle: String?
     }
 
@@ -208,12 +216,15 @@ class OPMLSubscriptionManager: ObservableObject {
             diff.newTitle = opmlTitle
         }
 
-        let remoteURLs = Set(fetched.feeds.map(\.url))
-        let localMatchURLs = Set(managed.map(\.matchURL))
+        // Compare canonical forms on both sides. The remote document lists URLs however the
+        // publisher wrote them, while feeds are stored in the form addFeed normalises to — so
+        // comparing them raw made an http-listed feed perpetually look both missing and new.
+        let remoteURLs = Set(fetched.feeds.map { FeedURLNormalizer.canonical($0.url) })
+        let localMatchURLs = Set(managed.map { FeedURLNormalizer.canonical($0.matchURL) })
 
         let newURLs = remoteURLs.subtracting(localMatchURLs)
         diff.feedsToAdd = fetched.feeds
-            .filter { newURLs.contains($0.url) }
+            .filter { newURLs.contains(FeedURLNormalizer.canonical($0.url)) }
             .map { parsed in
                 let category = parsed.category.lowercased() == "general"
                     ? defaultCategory
@@ -223,7 +234,14 @@ class OPMLSubscriptionManager: ObservableObject {
 
         let removedURLs = localMatchURLs.subtracting(remoteURLs)
         diff.feedIDsToDeactivate = managed
-            .filter { removedURLs.contains($0.matchURL) }
+            .filter { removedURLs.contains(FeedURLNormalizer.canonical($0.matchURL)) }
+            .map(\.id)
+
+        // Everything still listed remotely is reactivated. Without this, feeds already
+        // deactivated by the churn bug would stay deactivated forever, since re-adding them is
+        // a no-op: addFeed finds the existing feed and returns it without touching isActive.
+        diff.feedIDsToReactivate = managed
+            .filter { !$0.isActive && !removedURLs.contains(FeedURLNormalizer.canonical($0.matchURL)) }
             .map(\.id)
 
         return diff
@@ -283,9 +301,12 @@ class OPMLSubscriptionManager: ObservableObject {
             subscription.title = newTitle
         }
 
-        // Deactivations run off-main; they need no main-actor state.
-        let deactivatedCount = await Self.deactivateFeeds(
-            ids: diff.feedIDsToDeactivate, container: container
+        // Activation changes run off-main; they need no main-actor state.
+        let deactivatedCount = await Self.setFeedsActive(
+            false, ids: diff.feedIDsToDeactivate, container: container
+        )
+        let reactivatedCount = await Self.setFeedsActive(
+            true, ids: diff.feedIDsToReactivate, container: container
         )
 
         // New feeds go through FeedManager on the main actor — see the note above.
@@ -304,20 +325,27 @@ class OPMLSubscriptionManager: ObservableObject {
         }
 
         try modelContext.save()
-        logger.info("Synced OPML '\(subscription.title)': +\(addedCount) added, -\(deactivatedCount) deactivated")
+        logger.info("Synced OPML '\(subscription.title)': +\(addedCount) added, -\(deactivatedCount) deactivated, \(reactivatedCount) reactivated")
     }
 
     /// True when a feed with this URL already exists, by stored URL or original source URL.
     /// Matches the previous behaviour, including that a user-added feed is left unclaimed.
     private func feedAlreadyExists(url: String) throws -> Bool {
-        let existingByURL = try modelContext.fetch(
-            FetchDescriptor<Feed>(predicate: #Predicate<Feed> { $0.url == url })
-        )
-        if !existingByURL.isEmpty { return true }
-        let existingBySource = try modelContext.fetch(
-            FetchDescriptor<Feed>(predicate: #Predicate<Feed> { $0.sourceURL == url })
-        )
-        return !existingBySource.isEmpty
+        // Check the canonical form as well as the URL as listed: a feed added earlier is stored
+        // canonically, so checking only the raw OPML URL misses it and pointlessly re-enters
+        // addFeed.
+        let candidates = Set([url, FeedURLNormalizer.canonical(url)])
+        for candidate in candidates {
+            let byURL = try modelContext.fetch(
+                FetchDescriptor<Feed>(predicate: #Predicate<Feed> { $0.url == candidate })
+            )
+            if !byURL.isEmpty { return true }
+            let bySource = try modelContext.fetch(
+                FetchDescriptor<Feed>(predicate: #Predicate<Feed> { $0.sourceURL == candidate })
+            )
+            if !bySource.isEmpty { return true }
+        }
+        return false
     }
 
     /// Snapshot this subscription's managed feeds on a background context.
@@ -330,12 +358,19 @@ class OPMLSubscriptionManager: ObservableObject {
             FetchDescriptor<Feed>(predicate: #Predicate<Feed> { $0.opmlSubscriptionURL == subscriptionURL })
         )) ?? []
         return feeds.map {
-            ManagedFeedSnapshot(id: $0.persistentModelID, url: $0.url, sourceURL: $0.sourceURL)
+            ManagedFeedSnapshot(
+                id: $0.persistentModelID,
+                url: $0.url,
+                sourceURL: $0.sourceURL,
+                isActive: $0.isActive
+            )
         }
     }
 
-    /// Deactivate feeds by identifier on a background context.
-    @concurrent nonisolated static func deactivateFeeds(
+    /// Set `isActive` on feeds by identifier, on a background context.
+    /// - Returns: the number of feeds whose value actually changed.
+    @concurrent nonisolated static func setFeedsActive(
+        _ isActive: Bool,
         ids: [PersistentIdentifier],
         container: ModelContainer
     ) async -> Int {
@@ -343,8 +378,11 @@ class OPMLSubscriptionManager: ObservableObject {
         let context = ModelContext(container)
         var count = 0
         for id in ids {
-            guard let feed = context.model(for: id) as? Feed else { continue }
-            feed.isActive = false
+            let matches = (try? context.fetch(FetchDescriptor<Feed>(
+                predicate: #Predicate<Feed> { $0.persistentModelID == id }
+            ))) ?? []
+            guard let feed = matches.first, feed.isActive != isActive else { continue }
+            feed.isActive = isActive
             count += 1
         }
         try? context.save()
