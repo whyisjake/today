@@ -96,17 +96,41 @@ class MockURLProtocol: URLProtocol {
 
 final class ConditionalHTTPClientTests: XCTestCase {
 
+    /// Session wired to MockURLProtocol.
+    ///
+    /// This must be injected into `conditionalFetch`. Building a configuration with
+    /// `protocolClasses` and not attaching it to a session is a no-op — which is what
+    /// this suite used to do, so every test silently hit the real network instead.
+    private var mockSession: URLSession!
+
     override func setUp() {
         super.setUp()
-        // Configure URLSession to use our mock protocol
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [MockURLProtocol.self]
+        mockSession = URLSession(configuration: config)
     }
 
     override func tearDown() {
-        // Clear mock responses
         MockURLProtocol.mockResponses.removeAll()
+        mockSession = nil
         super.tearDown()
+    }
+
+    /// Guard against this suite regressing to live network calls: if the mock is not
+    /// intercepting, an unmapped URL would fail some other way than a clean 404.
+    func testMockProtocolIsInterceptingRatherThanHittingTheNetwork() async throws {
+        let url = URL(string: "https://example.invalid/definitely-not-mapped.xml")!
+
+        let response = try await ConditionalHTTPClient.conditionalFetch(
+            url: url,
+            lastModified: nil,
+            etag: nil,
+            session: mockSession
+        )
+
+        // MockURLProtocol answers unmapped URLs with a synthetic 404 and no body.
+        XCTAssertTrue(response.wasModified)
+        XCTAssertEqual(response.data?.count ?? 0, 0, "a live network response would carry a body")
     }
 
     // MARK: - Basic Fetch Tests
@@ -128,7 +152,8 @@ final class ConditionalHTTPClientTests: XCTestCase {
         let response = try await ConditionalHTTPClient.conditionalFetch(
             url: url,
             lastModified: nil,
-            etag: nil
+            etag: nil,
+            session: mockSession
         )
 
         XCTAssertTrue(response.wasModified, "Should indicate content was modified")
@@ -156,7 +181,8 @@ final class ConditionalHTTPClientTests: XCTestCase {
         let response = try await ConditionalHTTPClient.conditionalFetch(
             url: url,
             lastModified: "Mon, 23 Oct 2023 10:00:00 GMT",
-            etag: "\"abc123\""
+            etag: "\"abc123\"",
+            session: mockSession
         )
 
         XCTAssertTrue(response.wasModified)
@@ -180,7 +206,8 @@ final class ConditionalHTTPClientTests: XCTestCase {
         let response = try await ConditionalHTTPClient.conditionalFetch(
             url: url,
             lastModified: "Mon, 23 Oct 2023 10:00:00 GMT",
-            etag: "\"abc123\""
+            etag: "\"abc123\"",
+            session: mockSession
         )
 
         XCTAssertFalse(response.wasModified, "Should indicate content was not modified")
@@ -219,7 +246,8 @@ final class ConditionalHTTPClientTests: XCTestCase {
         let response = try await ConditionalHTTPClient.conditionalFetch(
             url: originalURL,
             lastModified: nil,
-            etag: nil
+            etag: nil,
+            session: mockSession
         )
 
         XCTAssertTrue(response.wasModified)
@@ -256,7 +284,8 @@ final class ConditionalHTTPClientTests: XCTestCase {
         let response = try await ConditionalHTTPClient.conditionalFetch(
             url: originalURL,
             lastModified: nil,
-            etag: nil
+            etag: nil,
+            session: mockSession
         )
 
         XCTAssertTrue(response.wasModified)
@@ -289,7 +318,8 @@ final class ConditionalHTTPClientTests: XCTestCase {
         let response = try await ConditionalHTTPClient.conditionalFetch(
             url: originalURL,
             lastModified: "Mon, 23 Oct 2023 10:00:00 GMT",
-            etag: "\"abc123\""
+            etag: "\"abc123\"",
+            session: mockSession
         )
 
         XCTAssertFalse(response.wasModified, "304 means not modified")
@@ -317,7 +347,8 @@ final class ConditionalHTTPClientTests: XCTestCase {
             url: url,
             lastModified: nil,
             etag: nil,
-            additionalHeaders: ["User-Agent": "ios:com.today.app:v1.0"]
+            additionalHeaders: ["User-Agent": "ios:com.today.app:v1.0"],
+            session: mockSession
         )
 
         XCTAssertTrue(response.wasModified)
@@ -340,7 +371,8 @@ final class ConditionalHTTPClientTests: XCTestCase {
         let response = try await ConditionalHTTPClient.conditionalFetch(
             url: url,
             lastModified: nil,
-            etag: nil
+            etag: nil,
+            session: mockSession
         )
 
         XCTAssertTrue(response.wasModified)
@@ -363,7 +395,8 @@ final class ConditionalHTTPClientTests: XCTestCase {
         let response = try await ConditionalHTTPClient.conditionalFetch(
             url: url,
             lastModified: nil,
-            etag: nil
+            etag: nil,
+            session: mockSession
         )
 
         XCTAssertTrue(response.wasModified)
@@ -385,7 +418,8 @@ final class ConditionalHTTPClientTests: XCTestCase {
         let response = try await ConditionalHTTPClient.conditionalFetch(
             url: url,
             lastModified: nil,
-            etag: nil
+            etag: nil,
+            session: mockSession
         )
 
         XCTAssertTrue(response.wasModified)
