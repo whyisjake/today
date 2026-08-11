@@ -93,6 +93,17 @@ struct TodayApp: App {
         if ProcessInfo.processInfo.arguments.contains("-SeedLargeStore") {
             seedLargeStoreForTesting()
         }
+
+        // Force a sync on this launch without deleting anything.
+        //
+        // needsSync() gates on a 2-hour window, and the sync date cannot be cleared from
+        // outside the app: the live CFPreferences value shadows the on-disk plist, so
+        // `defaults write` from the host is silently ignored. Clearing it from in here is
+        // the only reliable way to measure the sync path repeatedly.
+        if ProcessInfo.processInfo.arguments.contains("-ForceSyncOnLaunch") {
+            UserDefaults.standard.removeObject(forKey: "com.today.lastGlobalSyncDate")
+            print("🔁 [Debug] Cleared sync date — this launch will sync")
+        }
         #endif
     }
 

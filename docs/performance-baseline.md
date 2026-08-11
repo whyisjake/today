@@ -168,6 +168,55 @@ One accepted imprecision: the cursor advances by `publishedDate`, so articles sh
 batch boundary timestamp can be skipped. Harmless — a skipped article keeps computing on
 demand via the accessor's fallback.
 
+## Confirmed: sync was running on the main thread
+
+Measured with `Thread.isMainThread` probes during a forced sync, before any change:
+
+| Phase | On main thread? |
+|---|---|
+| `syncAllFeeds` | **yes** |
+| `parseAllFeedsInBackground` | **yes** |
+| `insertArticlesInChunks` | **yes** |
+| `context.save()` | **yes** |
+| individual feed fetch tasks | no |
+
+Only the `withTaskGroup` fetch closures escaped, because `@Sendable` task-group closures do
+not inherit actor isolation. Everything else — including article insertion and the SwiftData
+save, measured at **438 ms** in the baseline — was main-thread work.
+
+The 2026-05-31 plan removed `@MainActor` from `BackgroundSyncManager` specifically to prevent
+this. That change was silently undone by `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`, which
+re-imposes main-actor isolation on every unannotated declaration, including
+`enum BackgroundFeedSync`.
+
+### `nonisolated` alone was not the fix
+
+Marking the pipeline `nonisolated` changed nothing — still `main=true`. The project also sets
+`SWIFT_APPROACHABLE_CONCURRENCY = YES`, under which a `nonisolated async` function runs on
+**the caller's** executor (`nonisolated(nonsending)` semantics). Since the caller was
+main-actor, so was the callee.
+
+`@concurrent` is the annotation that forces the global executor. With it, all three phases
+report `main=false`.
+
+Both settings are now recorded in `assert(!Thread.isMainThread, …)` guards at the top of
+`syncAllFeeds` and `insertArticlesInChunks`, so dropping `@concurrent` trips a debug
+assertion instead of quietly restoring a main-thread stall.
+
+### Side effect: the head-of-line problem became visible
+
+With the pipeline off-main, a forced sync where five dead feeds hung showed:
+
+```
+sync-feed-fetch  14634 ms  ×5   (the 15s request timeout)
+sync-feed-fetch    392–630 ms  ×3
+sync-fetch-parse 16299 ms
+```
+
+Five feeds timing out inside one `chunked(into: 5)` wave stall the entire phase. This is
+exactly what U8 removes, and it also confirms the U5 timeout works — 14.6 s against the
+configured 15 s cap, rather than `URLSession`'s 60 s default.
+
 ## Note: this module is main-actor by default
 
 `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` is set, so **every unannotated declaration is

@@ -25,7 +25,17 @@ enum BackgroundFeedSync {
 
     /// Sync all active feeds
     /// - Parsing and insertion both happen on background threads via a background ModelContext
-    static func syncAllFeeds(container: ModelContainer) async {
+    @concurrent nonisolated static func syncAllFeeds(container: ModelContainer) async {
+        #if DEBUG
+        // Guards the @concurrent annotations above. This module builds with
+        // SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor and SWIFT_APPROACHABLE_CONCURRENCY = YES,
+        // which together mean an unannotated — or merely `nonisolated` — async function runs
+        // on the caller's executor, i.e. the main thread. Both were true here until measured:
+        // parsing, article insertion and the SwiftData save were all main-thread work.
+        // If someone drops @concurrent, this trips immediately instead of silently
+        // reintroducing a main-thread stall during every sync.
+        assert(!Thread.isMainThread, "syncAllFeeds must not run on the main thread")
+        #endif
         let syncStartTime = Date()
         let syncInterval = Perf.begin(.syncTotal)
         defer { Perf.end(syncInterval) }
@@ -75,7 +85,7 @@ enum BackgroundFeedSync {
 
     /// Parse all feeds in background without any SwiftData access
     /// Limits concurrency to avoid overwhelming the system with many simultaneous requests
-    private static func parseAllFeedsInBackground(
+    @concurrent nonisolated private static func parseAllFeedsInBackground(
         feedInfos: [(id: PersistentIdentifier, url: String, lastModified: String?, etag: String?)]
     ) async -> [ParsedFeedData] {
         // Limit concurrent network requests to avoid overwhelming the system
@@ -139,7 +149,7 @@ enum BackgroundFeedSync {
     }
 
     /// Fetch and parse a single feed with conditional GET (runs on background thread)
-    private static func fetchAndParseFeed(
+    @concurrent nonisolated private static func fetchAndParseFeed(
         url: String,
         lastModified: String?,
         etag: String?
@@ -153,7 +163,7 @@ enum BackgroundFeedSync {
         }
     }
 
-    private static func isJSONFeed(_ url: String) -> Bool {
+    nonisolated private static func isJSONFeed(_ url: String) -> Bool {
         if url.contains("reddit.com") { return false }
         let lowercased = url.lowercased()
         return lowercased.hasSuffix(".json") ||
@@ -162,7 +172,7 @@ enum BackgroundFeedSync {
                lowercased.contains("/feeds/json")
     }
 
-    private static func fetchRedditFeed(
+    @concurrent nonisolated private static func fetchRedditFeed(
         url: String,
         lastModified: String?,
         etag: String?
@@ -198,7 +208,7 @@ enum BackgroundFeedSync {
         )
     }
 
-    private static func fetchJSONFeed(
+    @concurrent nonisolated private static func fetchJSONFeed(
         url: String,
         lastModified: String?,
         etag: String?
@@ -234,7 +244,7 @@ enum BackgroundFeedSync {
         )
     }
 
-    private static func fetchWithFallback(
+    @concurrent nonisolated private static func fetchWithFallback(
         url: String,
         lastModified: String?,
         etag: String?
@@ -286,7 +296,10 @@ enum BackgroundFeedSync {
     }
 
     /// Insert articles using a background ModelContext — does not touch the main actor
-    private static func insertArticlesInChunks(parsedResults: [ParsedFeedData], container: ModelContainer) async {
+    @concurrent nonisolated private static func insertArticlesInChunks(parsedResults: [ParsedFeedData], container: ModelContainer) async {
+        #if DEBUG
+        assert(!Thread.isMainThread, "insertArticlesInChunks must not run on the main thread")
+        #endif
         // Background context: all writes stay off the main thread.
         // SwiftData notifies @Query observers automatically on save.
         let context = ModelContext(container)
