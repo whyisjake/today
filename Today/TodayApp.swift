@@ -358,6 +358,20 @@ struct TodayApp: App {
         let windowDays = 90
 
         let context = ModelContext(sharedModelContainer)
+
+        // Idempotent: seeding runs in init(), so without this a second launch with the
+        // flag would double the store. Keeping it a no-op lets you seed once and then
+        // measure cold launch on subsequent runs with the same flag set.
+        let seededMarker = "https://example.invalid/seed/0/feed.xml"
+        let existing = try? context.fetch(
+            FetchDescriptor<Feed>(predicate: #Predicate<Feed> { $0.url == seededMarker })
+        )
+        if let existing, !existing.isEmpty {
+            let count = (try? context.fetchCount(FetchDescriptor<Article>())) ?? -1
+            print("🌱 [Debug] Store already seeded (\(count) articles) — skipping")
+            return
+        }
+
         let categories = ["Technology", "News", "Personal", "Social", "Comics", "Alt"]
         let start = Date()
         var inserted = 0
