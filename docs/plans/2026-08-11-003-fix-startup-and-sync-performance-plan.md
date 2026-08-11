@@ -1,7 +1,7 @@
 ---
 title: "fix: Startup speed, sync speed, and sync reliability"
 type: fix
-status: active
+status: completed
 date: 2026-08-11
 ---
 
