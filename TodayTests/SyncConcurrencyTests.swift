@@ -99,7 +99,7 @@ final class SyncConcurrencyTests: XCTestCase {
         )
         let elapsed = Date().timeIntervalSince(start)
 
-        XCTAssertEqual(results.count, 12, "every feed must still be fetched")
+        XCTAssertEqual(results.parsed.count, 12, "every feed must still be fetched")
         XCTAssertLessThan(
             elapsed, slowDelay * 2,
             "elapsed \(elapsed)s should track the single slow feed, not serialise behind it"
@@ -121,7 +121,7 @@ final class SyncConcurrencyTests: XCTestCase {
         )
         let elapsed = Date().timeIntervalSince(start)
 
-        XCTAssertEqual(results.count, slots)
+        XCTAssertEqual(results.parsed.count, slots)
         XCTAssertLessThan(
             elapsed, slowDelay * Double(slots),
             "all \(slots) slow feeds fit in one wave, so they must overlap rather than queue"
@@ -156,7 +156,7 @@ final class SyncConcurrencyTests: XCTestCase {
             requests: requests, session: mockSession
         )
         XCTAssertEqual(
-            Set(results.map(\.feedID)), Set(requests.map(\.id)),
+            Set(results.parsed.map(\.feedID)), Set(requests.map(\.id)),
             "the refill loop must schedule every feed exactly once"
         )
     }
@@ -167,7 +167,7 @@ final class SyncConcurrencyTests: XCTestCase {
         let results = await BackgroundFeedSync.parseAllFeedsInBackground(
             requests: [], session: mockSession
         )
-        XCTAssertTrue(results.isEmpty)
+        XCTAssertTrue(results.parsed.isEmpty)
     }
 
     func testSingleFeedWorks() async throws {
@@ -175,8 +175,8 @@ final class SyncConcurrencyTests: XCTestCase {
         let results = await BackgroundFeedSync.parseAllFeedsInBackground(
             requests: requests, session: mockSession
         )
-        XCTAssertEqual(results.count, 1)
-        XCTAssertTrue(results[0].wasModified)
+        XCTAssertEqual(results.parsed.count, 1)
+        XCTAssertTrue(results.parsed[0].wasModified)
     }
 
     /// A feed that fails must not abort the sync or drop its neighbours.
@@ -199,8 +199,12 @@ final class SyncConcurrencyTests: XCTestCase {
             requests: requests, session: mockSession
         )
 
-        XCTAssertEqual(results.count, 5, "the five healthy feeds must all survive")
-        XCTAssertFalse(results.contains { $0.feedID == broken.persistentModelID })
+        XCTAssertEqual(results.parsed.count, 5, "the five healthy feeds must all survive")
+        XCTAssertFalse(results.parsed.contains { $0.feedID == broken.persistentModelID })
+        XCTAssertEqual(
+            results.failures.map(\.id), [broken.persistentModelID],
+            "the failure must be reported, not silently dropped"
+        )
     }
 
     func testNotModifiedFeedsAreReportedAsUnmodified() async throws {
@@ -222,10 +226,11 @@ final class SyncConcurrencyTests: XCTestCase {
             session: mockSession
         )
 
-        XCTAssertEqual(results.count, 1)
-        XCTAssertFalse(results[0].wasModified)
-        XCTAssertTrue(results[0].articles.isEmpty)
-        XCTAssertEqual(results[0].newEtag, "\"abc\"", "304 preserves the cached validators")
+        XCTAssertEqual(results.parsed.count, 1)
+        XCTAssertFalse(results.parsed[0].wasModified)
+        XCTAssertTrue(results.parsed[0].articles.isEmpty)
+        XCTAssertEqual(results.parsed[0].newEtag, "\"abc\"", "304 preserves the cached validators")
+        XCTAssertTrue(results.hadAnySuccess, "a 304 counts as a successful sync")
     }
 
     // MARK: - Cancellation
@@ -247,11 +252,11 @@ final class SyncConcurrencyTests: XCTestCase {
         let results = await task.value
 
         XCTAssertLessThan(
-            results.count, requests.count,
+            results.parsed.count, requests.count,
             "cancellation should have prevented the remaining feeds from being scheduled"
         )
         XCTAssertGreaterThan(
-            results.count, 0,
+            results.parsed.count, 0,
             "feeds that already completed must be kept, not discarded"
         )
     }
@@ -269,8 +274,12 @@ final class SyncConcurrencyTests: XCTestCase {
         let results = await task.value
 
         XCTAssertTrue(
-            results.isEmpty,
+            results.parsed.isEmpty,
             "a sync cancelled before it began should not issue requests"
+        )
+        XCTAssertTrue(
+            results.failures.isEmpty,
+            "cancellation is not a feed failure and must not be recorded against feeds"
         )
     }
 }

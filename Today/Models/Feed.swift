@@ -24,6 +24,12 @@ final class Feed {
     var httpLastModified: String?  // Server's Last-Modified header value
     var httpEtag: String?          // Server's ETag header value
 
+    // Sync health. No UI reads these yet; they exist so a persistently broken feed is
+    // diagnosable instead of just being silently absent from every sync's results.
+    // Optional so existing stores migrate without a default.
+    var lastSyncError: String?
+    var consecutiveSyncFailureCount: Int?
+
     // OPML subscription tracking — if set, this feed is managed by an OPML subscription
     var opmlSubscriptionURL: String?
 

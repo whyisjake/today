@@ -283,6 +283,45 @@ The concurrency tests initially measured the mock, not the code:
 Both mattered: without fixing them, one test would have passed for the wrong reason and
 another would have failed against working code.
 
+## U9 result: honest sync outcomes, and insertion that scales
+
+Measured on a real inserting sync — 14 default feeds, 191 articles, 9 fetched / 5 failed:
+
+| Phase | Baseline (U1) | After U9 |
+|---|---|---|
+| `sync-insert` | 438 ms, **on main**, one save | **336 ms, off main, 14 per-feed saves** |
+| `sync-fetch-parse` | 4385 ms (31 feeds) | 2052 ms (14 feeds) |
+| `article-list-derivation` events during insert | — | **0 above the 10 ms threshold** |
+
+Per-feed saves did not make insertion slower and produced no measurable `@Query` churn, which
+settles the plan's open question about whether they would need batching. They would not.
+
+### The outcome bug
+
+The global sync timestamp was written whenever the sync function reached its end, including
+when every feed failed. `needsSync()` gates on that timestamp with a two-hour window, so a
+total failure — offline at launch, a DNS blip — made the app refuse to retry for two hours,
+exactly when it most needed to. It now only records a successful sync when at least one feed
+responded; a 304 counts, since the server confirmed freshness.
+
+The fetch phase carries failures rather than dropping them, which is what makes "nothing
+changed" distinguishable from "nothing worked". Failures are recorded per feed as
+`lastSyncError` and `consecutiveSyncFailureCount`, cleared on the feed's next success. No UI
+reads them yet; they exist so a persistently broken feed is diagnosable instead of merely
+absent from every result set.
+
+### Insertion no longer scales with feed history
+
+Dedup previously faulted in the feed's entire `articles` relationship, and the audio backfill
+then walked it again with a linear `first(where:)` inside the loop — O(existing × parsed),
+growing with everything the feed had ever published. Both now use a single targeted query for
+just the GUIDs the response could collide with, backed by the `guid` index from U2, and the
+audio backfill is one pass over a dictionary.
+
+`context.model(for:)` was also replaced with a fetch by identifier: the former can return an
+unrealised stub for a deleted identifier, and the `as? Feed` cast would then skip the feed
+silently. A miss is now logged as a mid-sync deletion.
+
 ## Note: this module is main-actor by default
 
 `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` is set, so **every unannotated declaration is

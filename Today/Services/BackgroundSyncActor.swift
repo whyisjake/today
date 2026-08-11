@@ -30,13 +30,33 @@ struct FeedFetchRequest: Sendable {
     let etag: String?
 }
 
+/// A feed whose fetch or parse failed. `Error` so it can ride in a `Result`.
+struct FeedFailure: Sendable, Error {
+    let id: PersistentIdentifier
+    let message: String
+}
+
+/// Everything the fetch phase learned. Failures are carried rather than dropped so the sync
+/// can tell "nothing changed" apart from "nothing worked".
+struct FetchPhaseResults: Sendable {
+    var parsed: [ParsedFeedData] = []
+    var failures: [FeedFailure] = []
+
+    /// At least one feed responded — a 304 counts, since the server confirmed freshness.
+    var hadAnySuccess: Bool { !parsed.isEmpty }
+}
+
 /// Service for background feed syncing
 /// Both parsing and database insertion run off the main thread
 enum BackgroundFeedSync {
 
     /// Sync all active feeds
     /// - Parsing and insertion both happen on background threads via a background ModelContext
-    @concurrent nonisolated static func syncAllFeeds(container: ModelContainer) async {
+    /// - Parameter session: injected by tests; production uses the timeout-configured default.
+    @concurrent nonisolated static func syncAllFeeds(
+        container: ModelContainer,
+        session: URLSession = ConditionalHTTPClient.defaultSession
+    ) async {
         #if DEBUG
         // Guards the @concurrent annotations above. This module builds with
         // SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor and SWIFT_APPROACHABLE_CONCURRENCY = YES,
@@ -76,24 +96,35 @@ enum BackgroundFeedSync {
 
             // PHASE 1: Parse all feeds in background (no SwiftData access)
             let parsedResults = await Perf.measureAsync(.syncFetchParse, "\(totalFeeds) feeds") {
-                await parseAllFeedsInBackground(requests: requests)
+                await parseAllFeedsInBackground(requests: requests, session: session)
             }
 
-            let notModifiedCount = parsedResults.filter { !$0.wasModified }.count
-            let successCount = parsedResults.filter { $0.wasModified && !$0.articles.isEmpty }.count
-            let failureCount = totalFeeds - parsedResults.count
-            Perf.log("📡 [Sync] \(successCount) fetched, \(notModifiedCount) not modified (304), \(failureCount) failed")
+            let notModifiedCount = parsedResults.parsed.filter { !$0.wasModified }.count
+            let successCount = parsedResults.parsed.filter { $0.wasModified && !$0.articles.isEmpty }.count
+            Perf.log("📡 [Sync] \(successCount) fetched, \(notModifiedCount) not modified (304), \(parsedResults.failures.count) failed")
 
             // PHASE 2: Insert articles using a background ModelContext
             await Perf.measureAsync(.syncInsert) {
-                await insertArticlesInChunks(parsedResults: parsedResults, container: container)
+                await insertArticlesInChunks(parsedResults: parsedResults.parsed, container: container)
             }
 
-            // Update last sync date
-            UserDefaults.standard.set(syncStartTime, forKey: "com.today.lastGlobalSyncDate")
+            // Record per-feed health so a persistently broken feed is diagnosable rather than
+            // just missing from the results.
+            await recordFeedHealth(results: parsedResults, container: container)
 
-            let duration = Date().timeIntervalSince(syncStartTime)
-            Perf.log("✅ [Sync] Completed in \(String(format: "%.1f", duration))s")
+            // Only claim a successful sync if at least one feed actually responded.
+            //
+            // needsSync() gates on this timestamp with a 2-hour window, so writing it after a
+            // total failure meant the app refused to retry for two hours precisely when it
+            // most needed to — offline at launch, or a DNS blip, and the feeds stay stale.
+            if parsedResults.hadAnySuccess {
+                UserDefaults.standard.set(syncStartTime, forKey: "com.today.lastGlobalSyncDate")
+                let duration = Date().timeIntervalSince(syncStartTime)
+                Perf.log("✅ [Sync] Completed in \(String(format: "%.1f", duration))s")
+            } else {
+                Perf.event(.syncTotal, "every feed failed — not recording a successful sync")
+                Perf.logError("❌ [Sync] All \(totalFeeds) feeds failed; leaving last-sync date untouched so the next launch retries")
+            }
 
         } catch {
             Perf.logError("❌ [Sync] Error: \(error.localizedDescription)")
@@ -118,13 +149,13 @@ enum BackgroundFeedSync {
     @concurrent nonisolated static func parseAllFeedsInBackground(
         requests: [FeedFetchRequest],
         session: URLSession = ConditionalHTTPClient.defaultSession
-    ) async -> [ParsedFeedData] {
-        guard !requests.isEmpty else { return [] }
+    ) async -> FetchPhaseResults {
+        guard !requests.isEmpty else { return FetchPhaseResults() }
 
-        var results: [ParsedFeedData] = []
-        results.reserveCapacity(requests.count)
+        var results = FetchPhaseResults()
+        results.parsed.reserveCapacity(requests.count)
 
-        await withTaskGroup(of: ParsedFeedData?.self) { group in
+        await withTaskGroup(of: Result<ParsedFeedData, FeedFailure>?.self) { group in
             var next = 0
 
             // Prime the group.
@@ -136,8 +167,10 @@ enum BackgroundFeedSync {
 
             // Refill as each completes, so the slot count stays constant.
             while let result = await group.next() {
-                if let data = result {
-                    results.append(data)
+                switch result {
+                case .success(let data): results.parsed.append(data)
+                case .failure(let failure): results.failures.append(failure)
+                case nil: break // cancelled before issuing
                 }
 
                 // On cancellation stop scheduling new work, but keep draining what is already
@@ -157,7 +190,7 @@ enum BackgroundFeedSync {
     @concurrent nonisolated private static func fetchOne(
         _ request: FeedFetchRequest,
         session: URLSession
-    ) async -> ParsedFeedData? {
+    ) async -> Result<ParsedFeedData, FeedFailure>? {
         // Cheap early exit so a cancelled sync stops issuing requests promptly.
         if Task.isCancelled { return nil }
 
@@ -171,17 +204,20 @@ enum BackgroundFeedSync {
                 etag: request.etag,
                 session: session
             )
-            return ParsedFeedData(
+            return .success(ParsedFeedData(
                 feedID: request.id,
                 articles: result.articles,
                 wasModified: result.wasModified,
                 newLastModified: result.lastModified,
                 newEtag: result.etag,
                 finalURL: result.finalURL
-            )
+            ))
+        } catch is CancellationError {
+            // Not a feed problem — do not record it against the feed's health.
+            return nil
         } catch {
             // Per-feed failure boundary: one bad feed must never abort the sync.
-            return nil
+            return .failure(FeedFailure(id: request.id, message: error.localizedDescription))
         }
     }
 
@@ -354,7 +390,9 @@ enum BackgroundFeedSync {
     }
 
     /// Insert articles using a background ModelContext — does not touch the main actor
-    @concurrent nonisolated private static func insertArticlesInChunks(parsedResults: [ParsedFeedData], container: ModelContainer) async {
+    /// Not private: SyncOutcomeTests drives this directly to exercise the deleted-feed path,
+    /// which cannot be produced through the normal sync entry point.
+    @concurrent nonisolated static func insertArticlesInChunks(parsedResults: [ParsedFeedData], container: ModelContainer) async {
         #if DEBUG
         assert(!Thread.isMainThread, "insertArticlesInChunks must not run on the main thread")
         #endif
@@ -363,34 +401,62 @@ enum BackgroundFeedSync {
         let context = ModelContext(container)
 
         for feedData in parsedResults {
-            // Stop between feeds rather than mid-feed, so whatever was already mutated is
-            // saved below and no feed is left half-updated.
+            // Stop between feeds rather than mid-feed, so no feed is left half-updated.
             if Task.isCancelled {
-                Perf.log("↩️ [Sync] Insertion cancelled; saving partial progress")
+                Perf.log("↩️ [Sync] Insertion cancelled; earlier feeds already saved")
                 break
             }
-            guard let feed = context.model(for: feedData.feedID) as? Feed else { continue }
+
+            let feedID = feedData.feedID
+            // Fetch rather than context.model(for:), which can hand back an unrealised stub
+            // for an identifier that no longer exists — the `as? Feed` cast would then skip
+            // the feed silently. A miss here means the feed was deleted mid-sync.
+            let matches = (try? context.fetch(FetchDescriptor<Feed>(
+                predicate: #Predicate<Feed> { $0.persistentModelID == feedID }
+            ))) ?? []
+            guard let feed = matches.first else {
+                Perf.log("⚠️ [Sync] Feed deleted mid-sync; skipping its results")
+                continue
+            }
 
             // Update cache headers regardless of modification status
             feed.httpLastModified = feedData.newLastModified
             feed.httpEtag = feedData.newEtag
 
-            // Update URL if there was a 301 permanent redirect
+            // Update URL only if there was a permanent redirect. `finalURL` is nil for
+            // 302/303/307 precisely so a temporary redirect cannot overwrite a subscription.
             if let newURL = feedData.finalURL {
                 feed.url = newURL.absoluteString
             }
 
+            // A response is a success even when unchanged, so clear any recorded failure.
+            feed.lastSyncError = nil
+            feed.consecutiveSyncFailureCount = 0
+
             // If feed wasn't modified, just update lastFetched and move on
             if !feedData.wasModified {
                 feed.lastFetched = Date()
+                Self.save(context, label: "304 for \(feed.url)")
                 continue
             }
 
-            // Get existing article GUIDs — validate relationship fault is populated
-            let existingGUIDs = Set((feed.articles ?? []).map { $0.guid })
+            // Look up only the articles this response could possibly collide with, instead of
+            // faulting in the feed's entire history. The old code walked `feed.articles` twice
+            // — once for GUID dedup and again for the audio backfill — so insertion cost grew
+            // with everything the feed had ever published. U2 indexed `guid` for this.
+            let parsedGUIDs = feedData.articles.map(\.guid)
+            let colliding = (try? context.fetch(FetchDescriptor<Article>(
+                predicate: #Predicate<Article> {
+                    $0.feed?.persistentModelID == feedID && parsedGUIDs.contains($0.guid)
+                }
+            ))) ?? []
+            let existingByGUID = Dictionary(
+                colliding.map { ($0.guid, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
 
             // Filter to only new articles
-            let newArticles = feedData.articles.filter { !existingGUIDs.contains($0.guid) }
+            let newArticles = feedData.articles.filter { existingByGUID[$0.guid] == nil }
 
             for parsedArticle in newArticles {
                 let article = Article(
@@ -414,22 +480,57 @@ enum BackgroundFeedSync {
                 context.insert(article)
             }
 
-            // Update audio data for existing articles
-            for existingArticle in feed.articles ?? [] {
-                if existingArticle.audioUrl == nil,
-                   let parsedArticle = feedData.articles.first(where: { $0.guid == existingArticle.guid }),
-                   let audioUrl = parsedArticle.audioUrl {
-                    existingArticle.audioUrl = audioUrl
-                    existingArticle.audioDuration = parsedArticle.audioDuration
-                    existingArticle.audioType = parsedArticle.audioType
-                }
+            // Backfill audio onto articles that already existed. One pass over the parsed
+            // articles using the GUID map, rather than the old nested loop over every
+            // existing article with a linear `first(where:)` inside it — that was
+            // O(existing × parsed) and grew with the feed's whole history.
+            for parsedArticle in feedData.articles {
+                guard let audioUrl = parsedArticle.audioUrl,
+                      let existing = existingByGUID[parsedArticle.guid],
+                      existing.audioUrl == nil else { continue }
+                existing.audioUrl = audioUrl
+                existing.audioDuration = parsedArticle.audioDuration
+                existing.audioType = parsedArticle.audioType
             }
 
             feed.lastFetched = Date()
+
+            // Save per feed rather than once at the end. A single terminal save produced one
+            // large @Query invalidation — the visible mid-sync stall — and meant a failure
+            // part-way through discarded every feed's work.
+            Self.save(context, label: feed.url)
+        }
+    }
+
+    /// Save, logging rather than throwing: one feed's save failure must not abort the rest.
+    private nonisolated static func save(_ context: ModelContext, label: String) {
+        do {
+            try context.save()
+        } catch {
+            Perf.logError("❌ [Sync] Save failed for \(label): \(error.localizedDescription)")
+        }
+    }
+
+    /// Record per-feed sync health: clear it on success, accumulate it on failure.
+    @concurrent nonisolated private static func recordFeedHealth(
+        results: FetchPhaseResults,
+        container: ModelContainer
+    ) async {
+        guard !results.failures.isEmpty else { return }
+        let context = ModelContext(container)
+
+        for failure in results.failures {
+            let feedID = failure.id
+            let matches = (try? context.fetch(FetchDescriptor<Feed>(
+                predicate: #Predicate<Feed> { $0.persistentModelID == feedID }
+            ))) ?? []
+            guard let feed = matches.first else { continue }
+
+            feed.lastSyncError = failure.message
+            feed.consecutiveSyncFailureCount = (feed.consecutiveSyncFailureCount ?? 0) + 1
         }
 
-        // Single save for all feeds — background context notifies @Query observers on completion
-        try? context.save()
+        save(context, label: "feed health")
     }
 
     enum SyncError: LocalizedError {
