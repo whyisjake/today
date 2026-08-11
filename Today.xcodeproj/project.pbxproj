@@ -61,6 +61,11 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		878278F0B28C44CFDEFF1539 /* TodayTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = TodayTests;
+			sourceTree = "<group>";
+		};
 		F54DF4042EA9AB9F00FBDC60 /* Today */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -128,11 +133,6 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		878278F0B28C44CFDEFF1539 /* TodayTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = TodayTests;
-			sourceTree = "<group>";
-		};
 		F52BB6252EAC23860054AEC5 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
