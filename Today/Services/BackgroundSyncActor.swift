@@ -19,6 +19,17 @@ struct ParsedFeedData: Sendable {
     let finalURL: URL?  // Non-nil if there was a 301 permanent redirect
 }
 
+/// One feed's inputs for a fetch, as Sendable values.
+///
+/// A struct rather than a labelled tuple so it can be handed to a task group task without
+/// destructuring it at every call site.
+struct FeedFetchRequest: Sendable {
+    let id: PersistentIdentifier
+    let url: String
+    let lastModified: String?
+    let etag: String?
+}
+
 /// Service for background feed syncing
 /// Both parsing and database insertion run off the main thread
 enum BackgroundFeedSync {
@@ -54,12 +65,18 @@ enum BackgroundFeedSync {
             }
 
             // Extract only Sendable values before leaving this context's scope
-            let feedInfos: [(id: PersistentIdentifier, url: String, lastModified: String?, etag: String?)] =
-                feeds.map { ($0.persistentModelID, $0.url, $0.httpLastModified, $0.httpEtag) }
+            let requests = feeds.map {
+                FeedFetchRequest(
+                    id: $0.persistentModelID,
+                    url: $0.url,
+                    lastModified: $0.httpLastModified,
+                    etag: $0.httpEtag
+                )
+            }
 
             // PHASE 1: Parse all feeds in background (no SwiftData access)
             let parsedResults = await Perf.measureAsync(.syncFetchParse, "\(totalFeeds) feeds") {
-                await parseAllFeedsInBackground(feedInfos: feedInfos)
+                await parseAllFeedsInBackground(requests: requests)
             }
 
             let notModifiedCount = parsedResults.filter { !$0.wasModified }.count
@@ -83,60 +100,89 @@ enum BackgroundFeedSync {
         }
     }
 
-    /// Parse all feeds in background without any SwiftData access
-    /// Limits concurrency to avoid overwhelming the system with many simultaneous requests
-    @concurrent nonisolated private static func parseAllFeedsInBackground(
-        feedInfos: [(id: PersistentIdentifier, url: String, lastModified: String?, etag: String?)]
+    /// Maximum feed requests in flight at once.
+    static let maxConcurrentRequests = 5
+
+    /// Fetch and parse every feed off the main thread, keeping a fixed number in flight.
+    ///
+    /// Previously this processed feeds in sequential chunks of five, which made the phase cost
+    /// the *sum of each chunk's slowest feed* rather than the slowest feed overall — one
+    /// unresponsive feed stalled every feed behind it. Measured on a 31-feed store: 4385ms for
+    /// the phase against a 1650ms slowest feed, and later 16.3s when five dead feeds landed in
+    /// one chunk and each burned the full 15s request timeout.
+    ///
+    /// This version starts a replacement task as each one finishes, so a hung feed occupies
+    /// one slot and never blocks the others.
+    ///
+    /// - Parameter session: injected by tests; production uses the timeout-configured default.
+    @concurrent nonisolated static func parseAllFeedsInBackground(
+        requests: [FeedFetchRequest],
+        session: URLSession = ConditionalHTTPClient.defaultSession
     ) async -> [ParsedFeedData] {
-        // Limit concurrent network requests to avoid overwhelming the system
-        let maxConcurrentRequests = 5
+        guard !requests.isEmpty else { return [] }
+
         var results: [ParsedFeedData] = []
+        results.reserveCapacity(requests.count)
 
-        // Process feeds in chunks to limit concurrency
-        let chunks = feedInfos.chunked(into: maxConcurrentRequests)
+        await withTaskGroup(of: ParsedFeedData?.self) { group in
+            var next = 0
 
-        for chunk in chunks {
-            let chunkResults = await withTaskGroup(of: ParsedFeedData?.self) { group in
-                for feedInfo in chunk {
-                    let feedID = feedInfo.id
-                    let feedURL = feedInfo.url
-                    let lastModified = feedInfo.lastModified
-                    let etag = feedInfo.etag
-
-                    group.addTask {
-                        let feedInterval = Perf.begin(.syncFeedFetch, feedURL)
-                        defer { Perf.end(feedInterval) }
-                        do {
-                            let result = try await fetchAndParseFeed(
-                                url: feedURL,
-                                lastModified: lastModified,
-                                etag: etag
-                            )
-                            return ParsedFeedData(
-                                feedID: feedID,
-                                articles: result.articles,
-                                wasModified: result.wasModified,
-                                newLastModified: result.lastModified,
-                                newEtag: result.etag,
-                                finalURL: result.finalURL
-                            )
-                        } catch {
-                            return nil
-                        }
-                    }
-                }
-
-                var chunkResults: [ParsedFeedData] = []
-                for await result in group {
-                    if let data = result {
-                        chunkResults.append(data)
-                    }
-                }
-                return chunkResults
+            // Prime the group.
+            while next < min(Self.maxConcurrentRequests, requests.count) {
+                let request = requests[next]
+                group.addTask { await fetchOne(request, session: session) }
+                next += 1
             }
-            results.append(contentsOf: chunkResults)
+
+            // Refill as each completes, so the slot count stays constant.
+            while let result = await group.next() {
+                if let data = result {
+                    results.append(data)
+                }
+
+                // On cancellation stop scheduling new work, but keep draining what is already
+                // in flight — feeds that already succeeded should not be thrown away.
+                guard !Task.isCancelled, next < requests.count else { continue }
+
+                let request = requests[next]
+                group.addTask { await fetchOne(request, session: session) }
+                next += 1
+            }
         }
+
         return results
+    }
+
+    /// One feed's fetch and parse, with the failure boundary and cancellation checks.
+    @concurrent nonisolated private static func fetchOne(
+        _ request: FeedFetchRequest,
+        session: URLSession
+    ) async -> ParsedFeedData? {
+        // Cheap early exit so a cancelled sync stops issuing requests promptly.
+        if Task.isCancelled { return nil }
+
+        let feedInterval = Perf.begin(.syncFeedFetch, request.url)
+        defer { Perf.end(feedInterval) }
+
+        do {
+            let result = try await fetchAndParseFeed(
+                url: request.url,
+                lastModified: request.lastModified,
+                etag: request.etag,
+                session: session
+            )
+            return ParsedFeedData(
+                feedID: request.id,
+                articles: result.articles,
+                wasModified: result.wasModified,
+                newLastModified: result.lastModified,
+                newEtag: result.etag,
+                finalURL: result.finalURL
+            )
+        } catch {
+            // Per-feed failure boundary: one bad feed must never abort the sync.
+            return nil
+        }
     }
 
     /// Result of fetching and parsing a feed with conditional GET support
@@ -152,14 +198,15 @@ enum BackgroundFeedSync {
     @concurrent nonisolated private static func fetchAndParseFeed(
         url: String,
         lastModified: String?,
-        etag: String?
+        etag: String?,
+        session: URLSession
     ) async throws -> FetchParseResult {
         if url.contains("reddit.com") && url.hasSuffix(".json") {
-            return try await fetchRedditFeed(url: url, lastModified: lastModified, etag: etag)
+            return try await fetchRedditFeed(url: url, lastModified: lastModified, etag: etag, session: session)
         } else if isJSONFeed(url) {
-            return try await fetchJSONFeed(url: url, lastModified: lastModified, etag: etag)
+            return try await fetchJSONFeed(url: url, lastModified: lastModified, etag: etag, session: session)
         } else {
-            return try await fetchWithFallback(url: url, lastModified: lastModified, etag: etag)
+            return try await fetchWithFallback(url: url, lastModified: lastModified, etag: etag, session: session)
         }
     }
 
@@ -175,7 +222,8 @@ enum BackgroundFeedSync {
     @concurrent nonisolated private static func fetchRedditFeed(
         url: String,
         lastModified: String?,
-        etag: String?
+        etag: String?,
+        session: URLSession
     ) async throws -> FetchParseResult {
         guard let feedURL = URL(string: url) else { throw SyncError.invalidURL }
 
@@ -183,8 +231,10 @@ enum BackgroundFeedSync {
             url: feedURL,
             lastModified: lastModified,
             etag: etag,
-            additionalHeaders: ["User-Agent": "ios:com.today.app:v1.0 (by /u/TodayApp)"]
+            additionalHeaders: ["User-Agent": "ios:com.today.app:v1.0 (by /u/TodayApp)"],
+            session: session
         )
+        try Task.checkCancellation()
 
         // Handle 304 Not Modified
         guard response.wasModified, let data = response.data else {
@@ -211,15 +261,19 @@ enum BackgroundFeedSync {
     @concurrent nonisolated private static func fetchJSONFeed(
         url: String,
         lastModified: String?,
-        etag: String?
+        etag: String?,
+        session: URLSession
     ) async throws -> FetchParseResult {
         guard let feedURL = URL(string: url) else { throw SyncError.invalidURL }
 
         let response = try await ConditionalHTTPClient.conditionalFetch(
             url: feedURL,
             lastModified: lastModified,
-            etag: etag
+            etag: etag,
+            session: session
         )
+        // Parsing is the expensive part; skip it if the sync was cancelled mid-flight.
+        try Task.checkCancellation()
 
         // Handle 304 Not Modified
         guard response.wasModified, let data = response.data else {
@@ -247,15 +301,19 @@ enum BackgroundFeedSync {
     @concurrent nonisolated private static func fetchWithFallback(
         url: String,
         lastModified: String?,
-        etag: String?
+        etag: String?,
+        session: URLSession
     ) async throws -> FetchParseResult {
         guard let feedURL = URL(string: url) else { throw SyncError.invalidURL }
 
         let response = try await ConditionalHTTPClient.conditionalFetch(
             url: feedURL,
             lastModified: lastModified,
-            etag: etag
+            etag: etag,
+            session: session
         )
+        // Parsing is the expensive part; skip it if the sync was cancelled mid-flight.
+        try Task.checkCancellation()
 
         // Handle 304 Not Modified
         guard response.wasModified, let data = response.data else {
@@ -305,6 +363,12 @@ enum BackgroundFeedSync {
         let context = ModelContext(container)
 
         for feedData in parsedResults {
+            // Stop between feeds rather than mid-feed, so whatever was already mutated is
+            // saved below and no feed is left half-updated.
+            if Task.isCancelled {
+                Perf.log("↩️ [Sync] Insertion cancelled; saving partial progress")
+                break
+            }
             guard let feed = context.model(for: feedData.feedID) as? Feed else { continue }
 
             // Update cache headers regardless of modification status
@@ -381,12 +445,3 @@ enum BackgroundFeedSync {
     }
 }
 
-// MARK: - Array Extension for Chunking
-
-extension Array {
-    func chunked(into size: Int) -> [[Element]] {
-        stride(from: 0, to: count, by: size).map {
-            Array(self[$0..<Swift.min($0 + size, count)])
-        }
-    }
-}

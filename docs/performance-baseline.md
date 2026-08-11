@@ -250,6 +250,39 @@ had produced duplicate feeds: matching on `sourceURL` so a redirected feed is no
 every sync, `general` resolving to the subscription default, user-added feeds never being
 claimed or deactivated, and the diff being empty once a subscription has settled.
 
+## U8 result: head-of-line blocking removed
+
+`parseAllFeedsInBackground` processed feeds in sequential `chunked(into: 5)` waves, so the
+phase cost the *sum of each wave's slowest feed*. The two measurements that show it:
+
+| Scenario | Phase | Slowest single feed |
+|---|---|---|
+| 31 feeds, mixed latency | 4385 ms | 1650 ms (2.7×) |
+| 5 dead feeds in one wave | 16299 ms | 14634 ms |
+
+Replaced with a task group that keeps a fixed number of requests in flight and starts a
+replacement as each finishes. A hung feed now occupies one slot instead of blocking a wave.
+
+Cancellation is honoured in three places: before issuing each request, between the HTTP
+response and parsing (`Task.checkCancellation()` — parsing is the expensive half), and between
+feeds during insertion. Cancelling stops *scheduling* but keeps draining what is already in
+flight, so completed feeds are not discarded. `Array.chunked(into:)` had no other callers and
+is gone.
+
+### Two testing traps worth recording
+
+The concurrency tests initially measured the mock, not the code:
+
+1. **`Thread.sleep` inside `URLProtocol.startLoading` serialises every request** — that method
+   is serviced on a shared queue. Five 0.6 s feeds took 3.8 s, which looks exactly like the
+   bug being tested for. Fixed by delivering responses via `DispatchQueue.asyncAfter`, after
+   which the same test drops to well under one wave and the suite went 9.4 s → 2.6 s.
+2. **An unsynchronised read of the in-flight counter returned 0** while requests were plainly
+   overlapping. The writes happen on URL-loading threads, so the read needs the same lock.
+
+Both mattered: without fixing them, one test would have passed for the wrong reason and
+another would have failed against working code.
+
 ## Note: this module is main-actor by default
 
 `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` is set, so **every unannotated declaration is

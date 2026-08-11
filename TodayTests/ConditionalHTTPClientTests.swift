@@ -17,6 +17,44 @@ class MockURLProtocol: URLProtocol {
         let headers: [String: String]
         let data: Data?
         let redirectURL: URL?
+        /// Simulated latency before responding. Used by SyncConcurrencyTests to model a slow
+        /// or hung feed; defaults to 0 so existing tests are unaffected.
+        var delay: TimeInterval = 0
+    }
+
+    /// Number of requests currently being served, and the high-water mark. Lets tests assert
+    /// that the sync pipeline honours its concurrency ceiling.
+    nonisolated(unsafe) static var inFlight = 0
+    nonisolated(unsafe) static var maxInFlight = 0
+    private static let counterLock = NSLock()
+
+    /// Lock-protected read. An unsynchronised read of `maxInFlight` returned 0 even while
+    /// requests were plainly overlapping — the writes happen on URL-loading threads, so the
+    /// read needs the same lock to see them.
+    static func peakConcurrency() -> Int {
+        counterLock.lock()
+        defer { counterLock.unlock() }
+        return maxInFlight
+    }
+
+    static func resetCounters() {
+        counterLock.lock()
+        inFlight = 0
+        maxInFlight = 0
+        counterLock.unlock()
+    }
+
+    private static func enter() {
+        counterLock.lock()
+        inFlight += 1
+        maxInFlight = max(maxInFlight, inFlight)
+        counterLock.unlock()
+    }
+
+    private static func leave() {
+        counterLock.lock()
+        inFlight -= 1
+        counterLock.unlock()
     }
 
     override class func canInit(with request: URLRequest) -> Bool {
@@ -28,6 +66,20 @@ class MockURLProtocol: URLProtocol {
     }
 
     override func startLoading() {
+        MockURLProtocol.enter()
+
+        // Deliver asynchronously rather than sleeping inline. `startLoading` is serviced on a
+        // shared queue, so blocking it serialises every mock request — which silently turned
+        // concurrency tests into tests of the mock. Scheduling the response instead lets
+        // requests genuinely overlap.
+        let delay = request.url.flatMap { MockURLProtocol.mockResponses[$0]?.delay } ?? 0
+        DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [weak self] in
+            self?.deliverResponse()
+            MockURLProtocol.leave()
+        }
+    }
+
+    private func deliverResponse() {
         guard let url = request.url,
               let mockResponse = MockURLProtocol.mockResponses[url] else {
             // Default 404 if no mock configured
