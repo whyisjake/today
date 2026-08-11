@@ -10,6 +10,31 @@ import SwiftData
 
 @Model
 final class Article {
+    // Indexes backing the bounded read-path queries.
+    //
+    // - publishedDate: the sort and the date-window predicate on every article query
+    // - guid: dedup lookup during sync insertion. NOT a uniqueness constraint — GUIDs are
+    //   only unique within a feed, and two feeds may legitimately carry the same GUID
+    // - (isRead, publishedDate) / (isFavorite, publishedDate): back the unread and favorite
+    //   fetchCount aggregates, which are windowed by date and filtered by flag
+    //
+    // IMPORTANT: these are created on a *fresh* store only. SwiftData's lightweight
+    // migration does not add indexes to a store that already exists, so upgrading users
+    // keep an unindexed store until a versioned SchemaMigrationPlan is introduced.
+    // Verified by inspecting sqlite_master: a fresh store has
+    // Z_Article_SwiftDataIndexOnBinary* entries, a migrated one has only the
+    // ZARTICLE_ZFEED_INDEX relationship index.
+    //
+    // The bounded queries are still a large win without them — they avoid materialising
+    // every Article and faulting its feed relationship in Swift — so this is a
+    // "less fast than it could be" gap, not a correctness or regression issue.
+    #Index<Article>(
+        [\.publishedDate],
+        [\.guid],
+        [\.isRead, \.publishedDate],
+        [\.isFavorite, \.publishedDate]
+    )
+
     var title: String
     var link: String
     var articleDescription: String?

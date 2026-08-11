@@ -10,6 +10,9 @@ import SwiftData
 
 @Model
 final class Feed {
+    // BackgroundFeedSync.syncAllFeeds fetches on exactly this predicate every sync.
+    #Index<Feed>([\.isActive])
+
     var title: String
     var url: String
     var feedDescription: String?

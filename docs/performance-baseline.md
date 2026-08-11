@@ -60,6 +60,29 @@ so the gap between the barrier design and bounded concurrency is wider in produc
 `sync-insert` at 438 ms is a single terminal `save()`, which invalidates every unbounded
 `@Query` at once — the mid-sync stall U9 spreads out.
 
+## Known gap: indexes do not reach existing stores
+
+`#Index` declarations (U2) are applied when a store is **created**, not when one is
+migrated. Confirmed by inspecting `sqlite_master` on both:
+
+| Store | Indexes on `ZARTICLE` / `ZFEED` |
+|---|---|
+| Fresh install | `ZARTICLE_ZFEED_INDEX`, `Z_Article_SwiftDataIndexOnBinarypublishedDate`, `…guid`, `…isReadpublishedDate`, `…isFavoritepublishedDate`, `Z_Feed_SwiftDataIndexOnBinaryisActive` |
+| Migrated from pre-U2 schema | `ZARTICLE_ZFEED_INDEX` only |
+
+The migrated store opens cleanly with no data loss (10,358 articles / 31 feeds before and
+after), so this is not a correctness problem — upgrading users simply run the new bounded
+predicates against an unindexed table.
+
+That is still much cheaper than what they do today: the current code materialises every
+`Article` and faults each one's `feed` relationship in Swift, whereas a bounded predicate
+without an index is a SQLite table scan that materialises only the window. Indexes make it
+better, not viable.
+
+Closing the gap requires a `VersionedSchema` plus `SchemaMigrationPlan`. That is a real
+migration on a shipping app, so it is a deliberate decision rather than a side effect of
+this performance work.
+
 ## Harness
 
 Seed a store (idempotent — safe to leave the flag on for later runs):
