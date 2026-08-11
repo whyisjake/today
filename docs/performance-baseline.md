@@ -60,6 +60,30 @@ so the gap between the barrier design and bounded concurrency is wider in produc
 `sync-insert` at 438 ms is a single terminal `save()`, which invalidates every unbounded
 `@Query` at once — the mid-sync stall U9 spreads out.
 
+## U3 result: article-list derivation
+
+A/B on the **same** 40,000-article store (20 feeds × 2,000, dates spread over 90 days),
+pre-U3 build vs post-U3 build installed over the same container so neither the data nor the
+schema differs.
+
+| | per render | renders logged during launch | main-thread total |
+|---|---|---|---|
+| Pre-U3 (`905246e`) | 28.6 – 33.9 ms | 11 | ≈ 330 ms |
+| Post-U3 (`605413a`) | 11.4 ms | 1 | < 100 ms |
+
+Only durations above the 10 ms threshold are logged, so the post-U3 figure is an upper
+bound: one render logged at 11.4 ms (which includes cold materialisation of the window and
+its prefetched feeds) and every later render fell below 10 ms.
+
+The scaling claim (R8) holds against the original baseline too: derivation was 11.0 ms at
+10,358 articles before U3 and is 11.4 ms at 40,000 articles after it. Roughly 4× the store
+for no change in cost, because the cost now tracks the size of the *window* — one day of
+articles — rather than the size of the store. Pre-U3 over the same range went 11.0 ms →
+~30 ms, which is the linear growth the plan set out to remove.
+
+The repeat-render count matters as much as the per-render figure: the pre-U3 view derived
+six independent full-array passes and did so on every render, 11 times during launch alone.
+
 ## Known gap: indexes do not reach existing stores
 
 `#Index` declarations (U2) are applied when a store is **created**, not when one is
