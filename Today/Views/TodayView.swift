@@ -12,7 +12,6 @@ struct TodayView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.openURL) private var openURL
 
-    @Query(sort: \Article.publishedDate, order: .reverse) private var allArticles: [Article]
     @ObservedObject private var categoryManager = CategoryManager.shared
     @ObservedObject private var syncManager = BackgroundSyncManager.shared
 
@@ -35,166 +34,56 @@ struct TodayView: View {
         let context: [PersistentIdentifier]
     }
 
-    // Cache expensive computations
-    // Show categories that have articles in the current time window OR are custom categories
-    private var categories: [String] {
-        // Apply time filter (same as filteredArticles)
-        let now = Date.now
-        let startOfToday = Calendar.current.startOfDay(for: now)
-        let cutoffDate = Calendar.current.date(byAdding: .day, value: -daysToLoad, to: startOfToday)!
-        let timeFilteredArticles = allArticles.filter { $0.publishedDate >= cutoffDate }
+    /// The selection driving both the fetch and the in-memory filters.
+    private var selection: ArticleSelection {
+        ArticleSelection.from(
+            selectedCategory: selectedCategory,
+            podcastsTitle: String(localized: "Podcasts")
+        )
+    }
 
-        // Get all unique categories from articles in the time window
-        var feedCategories = Set(timeFilteredArticles.compactMap { $0.feed?.category })
+    /// Chips: "All", the virtual Podcasts entry when the window has audio, then the
+    /// categories present in the window plus any custom ones the user has defined.
+    private func categoryChips(_ derived: ArticleQuery.Derived) -> [String] {
+        var feedCategories = derived.categories
 
-        // Add custom categories from CategoryManager (even if they don't have articles yet)
+        // Custom categories appear even before they have articles.
         for customCategory in categoryManager.customCategories {
             feedCategories.insert(customCategory)
         }
 
-        // Filter based on Alt category visibility
-        if showAltCategory {
-            // When showing Alt, only show Alt category
-            feedCategories = feedCategories.filter { $0.lowercased() == "alt" }
-        } else {
-            // When not showing Alt, exclude Alt category
-            feedCategories = feedCategories.filter { $0.lowercased() != "alt" }
-        }
+        // derived.categories is already alt-scoped, but custom categories are not.
+        feedCategories = showAltCategory
+            ? feedCategories.filter { $0.lowercased() == "alt" }
+            : feedCategories.filter { $0.lowercased() != "alt" }
 
         var result = ["All"]
-
-        // Add Podcasts category if there are podcast articles
-        if hasPodcastArticles {
+        if derived.hasPodcastArticles {
             result.append(String(localized: "Podcasts"))
         }
-
-        return result + feedCategories.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
-    }
-
-    // Count unread/favorites in the current time window and category
-    // (but not search/hideRead/showFavorites to avoid circular deps)
-    private var unreadCount: Int {
-        var articles = allArticles
-
-        // Apply same time filter as filteredArticles
-        let now = Date.now
-        let startOfToday = Calendar.current.startOfDay(for: now)
-        let cutoffDate = Calendar.current.date(byAdding: .day, value: -daysToLoad, to: startOfToday)!
-        articles = articles.filter { $0.publishedDate >= cutoffDate }
-
-        // Apply same category filter as filteredArticles
-        let podcastsCategory = String(localized: "Podcasts")
-        if selectedCategory == podcastsCategory {
-            articles = articles.filter { $0.hasPodcastAudio }
-        } else if selectedCategory != "All" {
-            articles = articles.filter { $0.feed?.category == selectedCategory }
+        return result + feedCategories.sorted {
+            $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
         }
-
-        return articles.lazy.filter { !$0.isRead }.count
     }
 
-    private var favoritesCount: Int {
-        var articles = allArticles
-
-        // Apply same time filter as filteredArticles
-        let now = Date.now
-        let startOfToday = Calendar.current.startOfDay(for: now)
-        let cutoffDate = Calendar.current.date(byAdding: .day, value: -daysToLoad, to: startOfToday)!
-        articles = articles.filter { $0.publishedDate >= cutoffDate }
-
-        // Apply same category filter as filteredArticles
-        let podcastsCategory = String(localized: "Podcasts")
-        if selectedCategory == podcastsCategory {
-            articles = articles.filter { $0.hasPodcastAudio }
-        } else if selectedCategory != "All" {
-            articles = articles.filter { $0.feed?.category == selectedCategory }
-        }
-
-        return articles.lazy.filter { $0.isFavorite }.count
+    private func activeFilterCount(_ derived: ArticleQuery.Derived) -> Int {
+        showFavoritesOnly ? derived.favoritesCount : derived.unreadCount
     }
 
-    private var activeFilterCount: Int {
-        showFavoritesOnly ? favoritesCount : unreadCount
-    }
-
-    // Total counts across all articles (for reference)
+    // Store-wide totals. Counted in SQLite rather than by materialising every Article —
+    // these only ever render a number.
     private var totalUnreadCount: Int {
-        allArticles.lazy.filter { !$0.isRead }.count
+        (try? modelContext.fetchCount(ArticleQuery.totalCountDescriptor(unreadOnly: true))) ?? 0
     }
 
     private var totalFavoritesCount: Int {
-        allArticles.lazy.filter { $0.isFavorite }.count
+        (try? modelContext.fetchCount(ArticleQuery.totalCountDescriptor(unreadOnly: false))) ?? 0
     }
 
-    // Check if there are any Alt articles
-    private var hasAltArticles: Bool {
-        allArticles.contains { $0.feed?.category.lowercased() == "alt" }
-    }
-
-    // Check if there are any podcast articles (ignores date filter since Podcasts shows all episodes)
-    private var hasPodcastArticles: Bool {
-        allArticles.contains { article in
-            article.hasPodcastAudio &&
-            // Respect Alt category visibility
-            (showAltCategory ? article.feed?.category.lowercased() == "alt" : article.feed?.category.lowercased() != "alt")
-        }
-    }
-
-    private var filteredArticles: [Article] {
-        Perf.measure(.articleListDerivation, "today: \(allArticles.count) articles") {
-            computeFilteredArticles()
-        }
-    }
-
-    private func computeFilteredArticles() -> [Article] {
-        var articles = allArticles
-        let podcastsCategory = String(localized: "Podcasts")
-
-        // Filter by date range based on daysToLoad
-        // Skip date filter for Podcasts - show all podcast episodes regardless of date
-        if selectedCategory != podcastsCategory {
-            let now = Date.now
-            let startOfToday = Calendar.current.startOfDay(for: now)
-            let cutoffDate = Calendar.current.date(byAdding: .day, value: -daysToLoad, to: startOfToday)!
-            articles = articles.filter { $0.publishedDate >= cutoffDate }
-        }
-
-        // Filter based on Alt category visibility
-        if showAltCategory {
-            // When showing Alt, only show Alt articles
-            articles = articles.filter { $0.feed?.category.lowercased() == "alt" }
-        } else {
-            // When not showing Alt, exclude Alt articles
-            articles = articles.filter { $0.feed?.category.lowercased() != "alt" }
-        }
-
-        // Filter by category
-        if selectedCategory == podcastsCategory {
-            // Special handling for Podcasts virtual category - shows all podcasts
-            articles = articles.filter { $0.hasPodcastAudio }
-        } else if selectedCategory != "All" {
-            articles = articles.filter { $0.feed?.category == selectedCategory }
-        }
-
-        // Filter by search text
-        if !searchText.isEmpty {
-            articles = articles.filter {
-                $0.title.localizedCaseInsensitiveContains(searchText) ||
-                $0.articleDescription?.localizedCaseInsensitiveContains(searchText) == true
-            }
-        }
-
-        // Filter by read status
-        if hideReadArticles {
-            articles = articles.filter { !$0.isRead }
-        }
-
-        // Filter by favorites
-        if showFavoritesOnly {
-            articles = articles.filter { $0.isFavorite }
-        }
-
-        return articles
+    /// Whether the store holds any articles at all, used to distinguish "no articles yet"
+    /// from "your filters hid everything".
+    private var storeHasArticles: Bool {
+        ((try? modelContext.fetchCount(FetchDescriptor<Article>())) ?? 0) > 0
     }
 
     // Computed property for the dynamic title
@@ -220,6 +109,29 @@ struct TodayView: View {
     }
 
     var body: some View {
+        // ArticleWindow owns the bounded @Query so the fetch can follow daysToLoad and the
+        // selected category, which live here as @State.
+        ArticleWindow(daysToLoad: daysToLoad, selection: selection) { window in
+            content(window: window)
+        }
+    }
+
+    @ViewBuilder
+    private func content(window: [Article]) -> some View {
+        // One pass over the window replaces six independent full-array passes.
+        let derived = Perf.measure(.articleListDerivation, "today: \(window.count) in window") {
+            ArticleQuery.derive(
+                window: window,
+                selection: selection,
+                altVisible: showAltCategory,
+                hideRead: hideReadArticles,
+                favoritesOnly: showFavoritesOnly,
+                searchText: searchText
+            )
+        }
+        let categories = categoryChips(derived)
+        let filteredArticles = derived.visible
+
         NavigationStack {
             VStack(spacing: 0) {
                 // Category filter
@@ -253,13 +165,13 @@ struct TodayView: View {
 
                 // Articles list
                 if filteredArticles.isEmpty {
-                    if showFavoritesOnly && !allArticles.isEmpty {
+                    if showFavoritesOnly && storeHasArticles {
                         ContentUnavailableView(
                             "No Favorites Yet",
                             systemImage: "star",
                             description: Text("Swipe left on articles to add them to favorites.")
                         )
-                    } else if hideReadArticles && !allArticles.isEmpty {
+                    } else if hideReadArticles && storeHasArticles {
                         ContentUnavailableView(
                             "No Unread Articles",
                             systemImage: "checkmark.circle",
@@ -475,11 +387,11 @@ struct TodayView: View {
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    filterMenu
+                    filterMenu(derived)
                 }
                 #else
                 ToolbarItem(placement: .primaryAction) {
-                    filterMenu
+                    filterMenu(derived)
                 }
                 ToolbarItem(placement: .navigation) {
                     if syncManager.isSyncInProgress {
@@ -491,8 +403,8 @@ struct TodayView: View {
             }
             .confirmationDialog(
                 selectedCategory == "All"
-                    ? "Mark all \(unreadCount) articles as read?"
-                    : "Mark all \(unreadCount) articles in \(selectedCategory) as read?",
+                    ? "Mark all \(derived.unreadCount) articles as read?"
+                    : "Mark all \(derived.unreadCount) articles in \(selectedCategory) as read?",
                 isPresented: $showMarkAllReadConfirmation,
                 titleVisibility: .visible
             ) {
@@ -514,7 +426,12 @@ struct TodayView: View {
         let interval = Perf.begin(.plainTextBackfill)
         defer { Perf.end(interval) }
 
-        let articlesNeedingCache = allArticles.filter { $0.plainTextDescription == nil && $0.articleDescription != nil }
+        // Store-wide, not window-scoped: this is a backfill, not a display concern. Fetched
+        // with a predicate so it no longer depends on a full-table query being in scope.
+        // U6 moves this off the main actor entirely.
+        let articlesNeedingCache = (try? modelContext.fetch(FetchDescriptor<Article>(
+            predicate: #Predicate { $0.plainTextDescription == nil && $0.articleDescription != nil }
+        ))) ?? []
 
         guard !articlesNeedingCache.isEmpty else { return }
 
@@ -529,7 +446,7 @@ struct TodayView: View {
         try? modelContext.save()
     }
 
-    private var filterMenu: some View {
+    private func filterMenu(_ derived: ArticleQuery.Derived) -> some View {
         Menu {
             Section("Read Status") {
                 Button {
@@ -583,11 +500,11 @@ struct TodayView: View {
 
             // Show filtered counts with total in parentheses
             if daysToLoad > 1 || selectedCategory != "All" {
-                Text("\(unreadCount) unread (\(totalUnreadCount) total) • \(favoritesCount) favorites (\(totalFavoritesCount) total)")
+                Text("\(derived.unreadCount) unread (\(totalUnreadCount) total) • \(derived.favoritesCount) favorites (\(totalFavoritesCount) total)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                Text("\(unreadCount) unread • \(favoritesCount) favorites")
+                Text("\(derived.unreadCount) unread • \(derived.favoritesCount) favorites")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -595,8 +512,8 @@ struct TodayView: View {
             HStack(spacing: 4) {
                 Image(systemName: (hideReadArticles || showFavoritesOnly) ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
                 if hideReadArticles || showFavoritesOnly {
-                    if activeFilterCount > 0 {
-                        Text("\(activeFilterCount)")
+                    if activeFilterCount(derived) > 0 {
+                        Text("\(activeFilterCount(derived))")
                             .font(.caption2)
                             .fontWeight(.semibold)
                     }
@@ -606,7 +523,12 @@ struct TodayView: View {
     }
 
     private func markAllAsRead() {
-        var articlesToMark = allArticles.filter { !$0.isRead }
+        // Deliberately store-wide and unwindowed, matching the previous behaviour: "mark all
+        // as read" clears every unread article in the category, not just the visible window.
+        // Fetched with a predicate rather than filtered from a full-table query.
+        var articlesToMark = (try? modelContext.fetch(FetchDescriptor<Article>(
+            predicate: #Predicate { !$0.isRead }
+        ))) ?? []
 
         // Filter by category if not "All"
         if selectedCategory != "All" {

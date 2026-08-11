@@ -176,13 +176,43 @@ final class ArticleQueryTests: XCTestCase {
             selectedCategory: selectedCategory,
             podcastsTitle: podcastsTitle
         )
+        // Mirrors TodayView: only the date window / podcast bypass is fetched; category
+        // filtering happens in Swift so the same fetch feeds the category switcher.
         let window = try context.fetch(ArticleQuery.windowDescriptor(
             daysToLoad: daysToLoad,
-            selection: selection,
+            selection: ArticleQuery.descriptorSelection(for: selection),
             now: now
         ))
         return ArticleQuery.applyInMemoryFilters(
             window,
+            selection: selection,
+            altVisible: showAltCategory,
+            hideRead: hideReadArticles,
+            favoritesOnly: showFavoritesOnly,
+            searchText: searchText
+        )
+    }
+
+    private func derived(
+        daysToLoad: Int,
+        selectedCategory: String,
+        showAltCategory: Bool,
+        searchText: String = "",
+        hideReadArticles: Bool = false,
+        showFavoritesOnly: Bool = false
+    ) throws -> ArticleQuery.Derived {
+        let selection = ArticleSelection.from(
+            selectedCategory: selectedCategory,
+            podcastsTitle: podcastsTitle
+        )
+        let window = try context.fetch(ArticleQuery.windowDescriptor(
+            daysToLoad: daysToLoad,
+            selection: ArticleQuery.descriptorSelection(for: selection),
+            now: now
+        ))
+        return ArticleQuery.derive(
+            window: window,
+            selection: selection,
             altVisible: showAltCategory,
             hideRead: hideReadArticles,
             favoritesOnly: showFavoritesOnly,
@@ -308,59 +338,117 @@ final class ArticleQueryTests: XCTestCase {
         XCTAssertEqual(limited.map(\.guid), Array(unlimited.prefix(5).map(\.guid)))
     }
 
-    func testDeriveCountsMatchReferenceWindowCounts() throws {
+    /// The counts must reproduce TodayView's unreadCount/favoritesCount, which apply the
+    /// date and category filters but NOT alt visibility. That asymmetry is preserved
+    /// deliberately, so the expected values here are alt-independent.
+    func testDeriveCountsMatchReferenceWindowCountsAndIgnoreAltVisibility() throws {
         let all = try allArticlesNewestFirst()
 
         for daysToLoad in [1, 2, 7, 13] {
             for selectedCategory in ["All", "Technology", "Alt"] {
-                let selection = ArticleSelection.from(
-                    selectedCategory: selectedCategory, podcastsTitle: podcastsTitle
+                let expectedUnread = referenceWindowCount(
+                    all, daysToLoad: daysToLoad,
+                    selectedCategory: selectedCategory, unread: true
                 )
-                let window = try context.fetch(ArticleQuery.windowDescriptor(
-                    daysToLoad: daysToLoad, selection: selection, now: now
-                ))
-                // Counts are alt-scoped in derive(); compare against the reference with the
-                // same alt setting applied to isolate the count logic itself.
+                let expectedFavorites = referenceWindowCount(
+                    all, daysToLoad: daysToLoad,
+                    selectedCategory: selectedCategory, unread: false
+                )
+
                 for showAlt in [false, true] {
-                    let derived = ArticleQuery.derive(
-                        window: window, altVisible: showAlt,
-                        hideRead: false, favoritesOnly: false, searchText: ""
-                    )
-                    let altScoped = all.filter {
-                        ArticleQuery.matchesAltVisibility($0, altVisible: showAlt)
-                    }
-                    let expectedUnread = referenceWindowCount(
-                        altScoped, daysToLoad: daysToLoad,
-                        selectedCategory: selectedCategory, unread: true
-                    )
-                    let expectedFavorites = referenceWindowCount(
-                        altScoped, daysToLoad: daysToLoad,
-                        selectedCategory: selectedCategory, unread: false
+                    let d = try derived(
+                        daysToLoad: daysToLoad,
+                        selectedCategory: selectedCategory,
+                        showAltCategory: showAlt
                     )
                     let label = "days=\(daysToLoad) cat=\(selectedCategory) alt=\(showAlt)"
-                    XCTAssertEqual(derived.unreadCount, expectedUnread, "unread \(label)")
-                    XCTAssertEqual(derived.favoritesCount, expectedFavorites, "favorites \(label)")
+                    XCTAssertEqual(d.unreadCount, expectedUnread, "unread \(label)")
+                    XCTAssertEqual(d.favoritesCount, expectedFavorites, "favorites \(label)")
                 }
             }
         }
     }
 
     func testDeriveVisibleMatchesApplyInMemoryFilters() throws {
-        let window = try context.fetch(ArticleQuery.windowDescriptor(
-            daysToLoad: 7, selection: .all, now: now
-        ))
-        for showAlt in [false, true] {
-            for hideRead in [false, true] {
-                let derived = ArticleQuery.derive(
-                    window: window, altVisible: showAlt,
-                    hideRead: hideRead, favoritesOnly: false, searchText: "needle"
-                )
-                let direct = ArticleQuery.applyInMemoryFilters(
-                    window, altVisible: showAlt,
-                    hideRead: hideRead, favoritesOnly: false, searchText: "needle"
-                )
-                XCTAssertEqual(derived.visible.map(\.guid), direct.map(\.guid))
+        for selectedCategory in ["All", "Technology", podcastsTitle] {
+            for showAlt in [false, true] {
+                for hideRead in [false, true] {
+                    let d = try derived(
+                        daysToLoad: 7, selectedCategory: selectedCategory,
+                        showAltCategory: showAlt, searchText: "needle",
+                        hideReadArticles: hideRead
+                    )
+                    let direct = try newPipeline(
+                        daysToLoad: 7, selectedCategory: selectedCategory,
+                        showAltCategory: showAlt, searchText: "needle",
+                        hideReadArticles: hideRead, showFavoritesOnly: false
+                    )
+                    XCTAssertEqual(
+                        d.visible.map(\.guid), direct.map(\.guid),
+                        "derive().visible must equal applyInMemoryFilters — cat=\(selectedCategory) alt=\(showAlt) hideRead=\(hideRead)"
+                    )
+                }
             }
+        }
+    }
+
+    /// The category switcher must keep every category in the window regardless of which
+    /// one is selected — otherwise selecting a category leaves one chip and no way back.
+    func testCategorySetIsIndependentOfCurrentSelection() throws {
+        let whenAll = try derived(daysToLoad: 13, selectedCategory: "All", showAltCategory: false)
+        let whenNarrowed = try derived(
+            daysToLoad: 13, selectedCategory: "Technology", showAltCategory: false
+        )
+
+        XCTAssertEqual(
+            whenNarrowed.categories, whenAll.categories,
+            "selecting a category must not shrink the switcher"
+        )
+        XCTAssertTrue(whenAll.categories.isSuperset(of: ["Technology", "News", "Personal"]))
+        XCTAssertFalse(
+            whenAll.categories.contains { $0.lowercased() == "alt" },
+            "alt categories stay out of the switcher when alt is hidden"
+        )
+    }
+
+    func testCategorySetMatchesReferenceComputation() throws {
+        let all = try allArticlesNewestFirst()
+
+        for daysToLoad in [1, 7, 13] {
+            for showAlt in [false, true] {
+                // Reference: pre-U3 TodayView.categories — date-filtered articles, collect
+                // feed categories, then filter that set by alt-ness.
+                let startOfToday = Calendar.current.startOfDay(for: now)
+                let cutoff = Calendar.current.date(byAdding: .day, value: -daysToLoad, to: startOfToday)!
+                var expected = Set(all.filter { $0.publishedDate >= cutoff }
+                    .compactMap { $0.feed?.category })
+                expected = showAlt
+                    ? expected.filter { $0.lowercased() == "alt" }
+                    : expected.filter { $0.lowercased() != "alt" }
+
+                let d = try derived(
+                    daysToLoad: daysToLoad, selectedCategory: "All", showAltCategory: showAlt
+                )
+                XCTAssertEqual(
+                    d.categories, expected,
+                    "categories diverged — days=\(daysToLoad) alt=\(showAlt)"
+                )
+            }
+        }
+    }
+
+    func testHasPodcastArticlesMatchesReference() throws {
+        let all = try allArticlesNewestFirst()
+        for showAlt in [false, true] {
+            let expected = all.contains { article in
+                article.hasPodcastAudio
+                    && ArticleQuery.matchesAltVisibility(article, altVisible: showAlt)
+            }
+            // Widest window so the derived flag sees the same articles the reference does.
+            let d = try derived(
+                daysToLoad: 3650, selectedCategory: "All", showAltCategory: showAlt
+            )
+            XCTAssertEqual(d.hasPodcastArticles, expected, "alt=\(showAlt)")
         }
     }
 
@@ -395,7 +483,7 @@ final class ArticleQueryTests: XCTestCase {
         XCTAssertTrue(window.isEmpty)
 
         let derived = ArticleQuery.derive(
-            window: window, altVisible: false,
+            window: window, selection: .all, altVisible: false,
             hideRead: false, favoritesOnly: false, searchText: ""
         )
         XCTAssertTrue(derived.visible.isEmpty)
