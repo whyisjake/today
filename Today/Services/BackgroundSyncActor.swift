@@ -27,6 +27,8 @@ enum BackgroundFeedSync {
     /// - Parsing and insertion both happen on background threads via a background ModelContext
     static func syncAllFeeds(container: ModelContainer) async {
         let syncStartTime = Date()
+        let syncInterval = Perf.begin(.syncTotal)
+        defer { Perf.end(syncInterval) }
 
         do {
             // Fetch active feeds using a background context
@@ -46,24 +48,28 @@ enum BackgroundFeedSync {
                 feeds.map { ($0.persistentModelID, $0.url, $0.httpLastModified, $0.httpEtag) }
 
             // PHASE 1: Parse all feeds in background (no SwiftData access)
-            let parsedResults = await parseAllFeedsInBackground(feedInfos: feedInfos)
+            let parsedResults = await Perf.measureAsync(.syncFetchParse, "\(totalFeeds) feeds") {
+                await parseAllFeedsInBackground(feedInfos: feedInfos)
+            }
 
             let notModifiedCount = parsedResults.filter { !$0.wasModified }.count
             let successCount = parsedResults.filter { $0.wasModified && !$0.articles.isEmpty }.count
             let failureCount = totalFeeds - parsedResults.count
-            print("📡 [Sync] \(successCount) fetched, \(notModifiedCount) not modified (304), \(failureCount) failed")
+            Perf.log("📡 [Sync] \(successCount) fetched, \(notModifiedCount) not modified (304), \(failureCount) failed")
 
             // PHASE 2: Insert articles using a background ModelContext
-            await insertArticlesInChunks(parsedResults: parsedResults, container: container)
+            await Perf.measureAsync(.syncInsert) {
+                await insertArticlesInChunks(parsedResults: parsedResults, container: container)
+            }
 
             // Update last sync date
             UserDefaults.standard.set(syncStartTime, forKey: "com.today.lastGlobalSyncDate")
 
             let duration = Date().timeIntervalSince(syncStartTime)
-            print("✅ [Sync] Completed in \(String(format: "%.1f", duration))s")
+            Perf.log("✅ [Sync] Completed in \(String(format: "%.1f", duration))s")
 
         } catch {
-            print("❌ [Sync] Error: \(error.localizedDescription)")
+            Perf.logError("❌ [Sync] Error: \(error.localizedDescription)")
         }
     }
 
@@ -88,6 +94,8 @@ enum BackgroundFeedSync {
                     let etag = feedInfo.etag
 
                     group.addTask {
+                        let feedInterval = Perf.begin(.syncFeedFetch, feedURL)
+                        defer { Perf.end(feedInterval) }
                         do {
                             let result = try await fetchAndParseFeed(
                                 url: feedURL,

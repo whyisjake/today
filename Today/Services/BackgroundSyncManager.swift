@@ -126,8 +126,11 @@ class BackgroundSyncManager: ObservableObject {
         // BackgroundFeedSync runs parsing and insertion entirely off the main thread
         await BackgroundFeedSync.syncAllFeeds(container: container)
 
-        // OPML sync requires FeedManager (@MainActor); run it on the main actor
-        await syncOPMLSubscriptions(container: container)
+        // OPML sync requires FeedManager (@MainActor); run it on the main actor.
+        // This is the largest remaining main-thread block during sync — U7 moves it off.
+        await Perf.measureAsync(.syncOPML) {
+            await syncOPMLSubscriptions(container: container)
+        }
 
         await MainActor.run { isSyncInProgress = false }
     }

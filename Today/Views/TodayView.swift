@@ -141,6 +141,12 @@ struct TodayView: View {
     }
 
     private var filteredArticles: [Article] {
+        Perf.measure(.articleListDerivation, "today: \(allArticles.count) articles") {
+            computeFilteredArticles()
+        }
+    }
+
+    private func computeFilteredArticles() -> [Article] {
         var articles = allArticles
         let podcastsCategory = String(localized: "Podcasts")
 
@@ -505,6 +511,9 @@ struct TodayView: View {
     }
 
     private func populatePlainTextCache() async {
+        let interval = Perf.begin(.plainTextBackfill)
+        defer { Perf.end(interval) }
+
         let articlesNeedingCache = allArticles.filter { $0.plainTextDescription == nil && $0.articleDescription != nil }
 
         guard !articlesNeedingCache.isEmpty else { return }

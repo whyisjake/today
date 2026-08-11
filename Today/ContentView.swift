@@ -248,17 +248,13 @@ struct SidebarContentView: View {
 
     // Compute filtered articles - only called when data actually changes
     private func computeRecentArticles() -> [Article] {
-        let start = CFAbsoluteTimeGetCurrent()
-        let sevenDaysAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
-        let result = allArticles.filter { article in
-            article.publishedDate >= sevenDaysAgo &&
-            (showAltFeeds ? article.feed?.category.lowercased() == "alt" : article.feed?.category.lowercased() != "alt")
+        Perf.measure(.articleListDerivation, "sidebar: \(allArticles.count) articles") {
+            let sevenDaysAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+            return allArticles.filter { article in
+                article.publishedDate >= sevenDaysAgo &&
+                (showAltFeeds ? article.feed?.category.lowercased() == "alt" : article.feed?.category.lowercased() != "alt")
+            }
         }
-        let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000
-        if elapsed > 10 {
-            logger.info("📊 recentArticles computed in \(elapsed, format: .fixed(precision: 1))ms for \(self.allArticles.count) articles → \(result.count) results")
-        }
-        return result
     }
 
     // Update cached articles when underlying data changes
@@ -525,23 +521,13 @@ struct ArticleListColumn: View {
     @State private var sort: ArticleSort = .newest
 
     private var processedArticles: [Article] {
-        let start = CFAbsoluteTimeGetCurrent()
-        var result = articles
-
-        // Apply filter
-        result = applyFilter(to: result)
-        
-        // Apply search
-        result = applySearch(to: result)
-        
-        // Apply sort
-        result = applySort(to: result)
-
-        let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000
-        if elapsed > 10 {
-            logger.warning("⚠️ processedArticles took \(elapsed, format: .fixed(precision: 1))ms for \(self.articles.count) articles")
+        Perf.measure(.articleListDerivation, "list column: \(articles.count) articles") {
+            var result = articles
+            result = applyFilter(to: result)
+            result = applySearch(to: result)
+            result = applySort(to: result)
+            return result
         }
-        return result
     }
     
     private func applyFilter(to articles: [Article]) -> [Article] {
