@@ -38,24 +38,21 @@ open Today.xcodeproj
 
 ```bash
 # Run all tests
-xcodebuild test -project Today.xcodeproj -scheme Today -destination 'platform=iOS Simulator,name=iPhone 15'
+xcodebuild test -project Today.xcodeproj -scheme Today -destination 'platform=iOS Simulator,name=iPhone 17'
 
 # Run specific test suite
-xcodebuild test -project Today.xcodeproj -scheme Today -destination 'platform=iOS Simulator,name=iPhone 15' -only-testing:TodayTests/TexturizerTests
+xcodebuild test -project Today.xcodeproj -scheme Today -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:TodayTests/TexturizerTests
 
 # List available simulators
 xcrun simctl list devices available
 ```
 
-**Available Test Suites:**
-- `TodayTests/RSSParserTests` - RSS feed parsing tests
-- `TodayTests/AtomFeedTests` - Atom feed format tests
-- `TodayTests/JSONFeedTests` - JSON feed format tests
-- `TodayTests/RedditRSSTests` - Reddit JSON API tests
-- `TodayTests/TexturizerTests` - Typography/text processing tests
-- `TodayTests/CategoryManagerTests` - Category management tests
-- `TodayTests/ConditionalHTTPClientTests` - HTTP client tests
-- `TodayTests/HTMLHelperTests` - HTML parsing helper tests
+**Test suites**: `ls TodayTests/` — this list is not enumerated here because it goes stale
+(it sat at 8 suites while the real count reached 18).
+
+`TodayTests` is a **synchronized folder group**, so a new `.swift` file there joins the target
+automatically. That was not always true: two test files sat on disk for months without being
+target members, and one had never passed.
 
 ### Version Management
 
@@ -86,7 +83,7 @@ Models are located in `Today/Models/`:
 
 - **Feed.swift**: RSS feed subscriptions with title, URL, category, and relationship to articles. Uses `@Relationship(deleteRule: .cascade)` to auto-delete articles when feed is deleted.
 - **Article.swift**: Individual RSS articles with metadata (title, link, description, published date, author, guid). Includes `isRead`, `isFavorite`, and `aiSummary` properties.
-- **ModelContainer**: Initialized in `TodayApp.swift` with schema containing `Feed` and `Article`. Configured for persistent storage.
+- **ModelContainer**: Initialized in `TodayApp.swift` with schema containing `Feed`, `Article` and `OPMLSubscription`. Configured for persistent storage.
 
 ### Service Layer
 
@@ -126,12 +123,40 @@ Views are located in `Today/Views/`:
 - **Delete**: `modelContext.delete(object)` - cascade rules handle related objects
 - **No explicit save needed** for @Query views - SwiftData autosaves
 - **For background work**: Create separate ModelContext from shared ModelContainer
+- **Bound every `Article` query** — predicate *and* `fetchLimit`. Build descriptors with
+  `ArticleQuery`, not by hand, so filter semantics stay identical across views. Add
+  `relationshipKeyPathsForPrefetching: [\.feed]` when results touch `article.feed`.
+- **`#Predicate` is limited**: `lowercased()` is a compile error; `contains()` with
+  `flatMap`/`??` fails SQL generation at runtime; and SQL NULL semantics differ from Swift —
+  `feed?.category != "Alt"` silently drops rows where `feed` is nil, so admit nil explicitly.
+  See `TodayTests/PredicateCapabilityProbeTests.swift`.
+- **`#Index` applies to newly created stores only** — a migrated store gets none. Verify schema
+  changes against a *pre-existing* store, not just a fresh one.
+- **Comparing a feed URL to a stored feed?** Canonicalise both sides through
+  `FeedURLNormalizer`. Skipping this deactivated OPML feeds on every sync.
 
-### Swift Concurrency
+### Swift Concurrency — this project is counter-intuitive here
 
-- All network operations use async/await
-- FeedManager and BackgroundSyncManager use `@MainActor` for thread-safe UI updates
-- Use `Task` for concurrent operations
+The project builds with:
+
+```
+SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor
+SWIFT_APPROACHABLE_CONCURRENCY = YES
+```
+
+- **Every unannotated declaration is main-actor isolated** — a plain `func`, a `static func`
+  on an enum, a `String` extension. Removing `@MainActor` from a class does *not* move its
+  work off the main thread; the setting puts it straight back. This silently undid an earlier
+  fix and left article insertion and SwiftData saves on the main thread for months.
+- **`nonisolated` is not enough for `async` work** — under approachable concurrency a
+  `nonisolated async` function runs on the *caller's* executor. Use **`@concurrent`** to force
+  the global executor.
+- Pure helpers used from background code need plain `nonisolated` (see `String.strippingHTML`,
+  `Article.computeIsMinimalContent`).
+- New background work should carry `assert(!Thread.isMainThread)` in DEBUG, as
+  `BackgroundFeedSync` does — annotations that look correct but do nothing are the failure
+  mode here.
+- All network operations use async/await; use `Task` for concurrent operations.
 
 ### Background Tasks
 
@@ -147,7 +172,7 @@ Views are located in `Today/Views/`:
 
 When adding new SwiftData models:
 1. Create the model class with `@Model` macro
-2. Add it to the schema array in `TodayApp.swift:14-17`
+2. Add it to the `Schema([...])` array in `TodayApp.swift`
 3. The ModelContainer will handle migrations automatically for simple schema changes
 
 ### Working with RSS Feeds
@@ -192,7 +217,7 @@ Tests are located in `TodayTests/` directory:
 ### Running Tests in Xcode
 
 1. Open project: `open Today.xcodeproj`
-2. Select a simulator device (iPhone 15 or later)
+2. Select an available simulator (check `xcrun simctl list devices available`)
 3. Press `Cmd+U` to run all tests
 4. Use Test Navigator (Cmd+6) to run individual tests
 
@@ -215,11 +240,13 @@ When modifying or adding code:
 - **macOS Required**: This is an iOS project that requires Xcode on macOS
 - **Xcode 16.0+**: Required for iOS 18.0+ development
 - **iOS Simulator**: Tests and development require iOS Simulator
-- **No CI/CD**: This project uses manual Xcode builds and App Store Connect for releases
+- **CI**: GitHub Actions in `.github/workflows/` (Claude review, agent-ready triggers, issue
+  screening). Archiving and App Store submission are still manual via Xcode — see
+  RELEASE_PROCESS.md
 
 ### Common Tasks
 
-- **Manually trigger sync**: Call `FeedManager.syncAllFeeds()` from any view
+- **Manually trigger sync**: `BackgroundSyncManager.shared.triggerManualSync()` (`FeedManager.syncAllFeeds()` is the legacy path)
 - **Simulate background fetch**: Debug menu > Simulate Background Fetch (app must be running)
 - **Reset all data**: Delete app and reinstall, or clear in Settings > General > iPhone Storage
 
@@ -237,6 +264,8 @@ When modifying or adding code:
 - **Tests timeout**: Some tests may need longer timeout for network operations
 - **Background fetch not triggering**: iOS controls when background tasks run; use Debug > Simulate Background Fetch for testing
 - **SwiftData migration issues**: For complex schema changes, may need to delete app and reinstall during development
+- **Downgrades are not supported**: once a release adds model properties, an older build cannot
+  open the store and `TodayApp` calls `fatalError`. Test upgrades forward only
 
 ### Code Style
 
@@ -275,7 +304,7 @@ Before committing changes, validate:
 
 2. **Tests pass**: All test suites complete successfully
    ```bash
-   xcodebuild test -project Today.xcodeproj -scheme Today -destination 'platform=iOS Simulator,name=iPhone 15'
+   xcodebuild test -project Today.xcodeproj -scheme Today -destination 'platform=iOS Simulator,name=iPhone 17'
    ```
 
 3. **Manual testing**: Run app in simulator and verify:
@@ -289,7 +318,10 @@ Before committing changes, validate:
 ## Additional Resources
 
 - [README.md](../README.md) - User-facing documentation
-- [CLAUDE.md](../CLAUDE.md) - Detailed architecture guide for Claude AI
+- [CLAUDE.md](../CLAUDE.md) - Fuller architecture guide, including the concurrency and
+  SwiftData constraints summarised above
+- [docs/performance-baseline.md](../docs/performance-baseline.md) - Measured baselines and the
+  re-runnable measurement harness
 - [RELEASE_PROCESS.md](../RELEASE_PROCESS.md) - Detailed release and App Store submission guide
 - [PROJECT_SUMMARY.md](../PROJECT_SUMMARY.md) - Feature documentation
 - [SETUP.md](../SETUP.md) - Initial setup instructions for new developers
