@@ -234,6 +234,30 @@ Today respects your privacy:
 
 ## Version History
 
+### v1.13.0 (Build 26) - August 2026
+**Performance & Sync Reliability**
+- 🧵 **Sync no longer blocks the UI** - Article insertion, feed parsing and OPML sync all ran on the main thread; they now run off it
+- ⚡️ **Launch scales with the window, not the library** - Article queries are bounded rather than loading everything ever synced; list state derives in one pass instead of six
+- 🔀 **One slow feed no longer stalls the rest** - Bounded continuous concurrency plus a 15s request timeout, replacing sequential batches and URLSession's 60s default
+- 🔎 **Search is visible again** - The Today search field was collapsed behind a pull gesture that pull-to-refresh usually won
+- 🐛 **Fixed: OPML feeds silently deactivating** - Feed URLs were compared as the OPML listed them rather than as stored, so http-listed feeds were deactivated every sync and stopped updating. Affected feeds reactivate automatically
+- 🐛 **Fixed: failed syncs blocked retries** - A sync where every feed failed recorded itself as successful and refused to retry for two hours
+- 🐛 **Fixed: temporary redirects** - A 302 could permanently overwrite a stored feed URL; only 301/308 do now
+- 🧪 **Test suite 145 → 277**, including the first end-to-end sync tests
+- ⚠️ New database indexes apply to fresh installations only; existing stores stay unindexed until a versioned migration lands
+
+### v1.12.0 (Build 25) - February 2026
+**OPML Subscriptions & macOS Polish**
+- 📥 **Remote OPML subscriptions** - Subscribe to an OPML URL and keep the feed list in sync automatically
+- ☁️ **RSS Cloud element parsing**
+- 🖥️ **macOS improvements** - Feed management UI, sorted categories, keyboard navigation, gallery fixes, toolbar consistency
+- 🔴 **Reddit** - OP comment highlighting, fullscreen gallery on iPad, flattened comment fixes
+- 🐛 Fixed OPML duplicate feed creation, macOS crashes in feed management, and article text width on iOS
+- 🚀 **Faster cold launch** - Moved sync orchestration and article insertion off the launch critical path
+
+### v1.9.1 (Build 15) - December 2025
+- 🐛 Fixed a crash when an article has no link
+
 ### v1.9.0 (Build 14) - December 2025
 **Podcast Support**
 - 🎧 **Native Podcast Playback** - Stream and play podcast episodes directly in-app

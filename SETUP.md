@@ -1,130 +1,102 @@
 # Setup Instructions for Today RSS Reader
 
-I've created all the necessary code files for your RSS reader app with AI summarization. However, since I created files outside of Xcode, you'll need to add them to your Xcode project manually.
+Getting a development build running locally.
 
-## Files Created
+## Requirements
 
-### Models (Today/Models/)
-- `Feed.swift` - RSS feed subscriptions
-- `Article.swift` - Individual articles from feeds
+- **macOS with Xcode 16 or later** — the project builds against the iOS 26 SDK
+- **iOS 18.0+** deployment target (iPhone and iPad)
+- **macOS 15.6+** for the macOS target
+- No package manager step: the only dependency, [OutcastID3](https://github.com/CrunchyBagel/OutcastID3), resolves automatically through Swift Package Manager on first open
 
-### Services (Today/Services/)
-- `RSSParser.swift` - RSS feed parsing logic
-- `FeedManager.swift` - Feed subscription management and syncing
-- `AIService.swift` - Local AI summarization using Apple's NaturalLanguage framework
-- `BackgroundSyncManager.swift` - Background fetch for automatic updates
-
-### Views (Today/Views/)
-- `TodayView.swift` - Main view showing recent articles with category filtering
-- `FeedListView.swift` - Manage RSS feed subscriptions
-- `AIChatView.swift` - Chat interface for AI summaries
-
-### Updated Files
-- `TodayApp.swift` - Updated to use new data models and background sync
-- `ContentView.swift` - Updated to use tab-based navigation
-
-## Adding Files to Xcode Project
-
-1. **Open the project in Xcode:**
-   ```bash
-   open Today.xcodeproj
-   ```
-
-2. **Add the new files:**
-   - Right-click on the "Today" folder in Xcode's Project Navigator
-   - Select "Add Files to Today..."
-   - Navigate to the Today folder and:
-     - Add the `Models` folder
-     - Add the `Services` folder
-     - Add the `Views` folder
-   - Make sure "Copy items if needed" is UNCHECKED (files are already in the right location)
-   - Make sure "Today" target is checked
-   - Click "Add"
-
-3. **Configure Background Modes:**
-   - Select the Today project in Project Navigator
-   - Select the "Today" target
-   - Go to "Signing & Capabilities" tab
-   - Click "+ Capability"
-   - Add "Background Modes"
-   - Check "Background fetch"
-
-4. **Update Info.plist:**
-   - Add this key to enable background tasks:
-   - Key: `Permitted background task scheduler identifiers`
-   - Type: Array
-   - Add item: `com.today.feedsync`
-
-## Testing the App
-
-You can now build and run the app:
+## Build and run
 
 ```bash
-# Open in Xcode and press Cmd+R to run
+git clone git@github.com:whyisjake/today.git
+cd today
 open Today.xcodeproj
 ```
 
-Or use command line:
+Press `Cmd+R` to run, `Cmd+U` to test.
+
+From the command line:
+
 ```bash
-# List available simulators
+# See which simulators you actually have
 xcrun simctl list devices available
 
-# Build for a specific simulator (replace with your device)
-xcodebuild -project Today.xcodeproj -scheme Today -destination 'platform=iOS Simulator,name=iPhone 15 Pro' build
+# Build and test (substitute a simulator from the list above)
+xcodebuild build -project Today.xcodeproj -scheme Today \
+  -destination 'platform=iOS Simulator,name=iPhone 17'
+
+xcodebuild test -project Today.xcodeproj -scheme Today \
+  -destination 'platform=iOS Simulator,name=iPhone 17'
+
+# The macOS target shares most of the source — build it too before pushing
+xcodebuild build -project Today.xcodeproj -scheme "Today MacOS" \
+  -destination 'platform=macOS'
 ```
 
-## Getting Started with the App
+## Adding files
 
-1. **Add RSS Feeds:**
-   - Go to the "Feeds" tab
-   - Tap the "+" button
-   - Enter an RSS feed URL (try these):
-     - Daring Fireball: `https://daringfireball.net/feeds/main`
-     - Hacker News: `https://news.ycombinator.com/rss`
-     - The Verge: `https://www.theverge.com/rss/index.xml`
+**You don't need to add files to the Xcode project.** `Today/`, `TodayTests/` and the macOS
+targets are all *synchronized folder groups*, so anything you create on disk in those
+directories joins the target automatically.
 
-2. **View Articles:**
-   - Go to the "Today" tab
-   - Browse articles from the last 7 days
-   - Filter by category using the buttons at the top
-   - Swipe left to favorite, swipe right to mark as read
+Manually adding files through Xcode's "Add Files to Today…" will create duplicate references.
+If a new file genuinely isn't being compiled, check it's inside one of the synchronized
+directories rather than reaching for the project navigator.
 
-3. **Chat with AI:**
-   - Go to the "AI Summary" tab
-   - Ask questions like:
-     - "Summarize today's articles"
-     - "What should I read?"
-     - "What are the trending topics?"
+## Background fetch
 
-## Features Implemented
+Already configured — the `com.today.feedsync` task identifier and the Background Modes
+capability are part of the project. Nothing to set up.
 
-✅ RSS feed management (add/remove feeds with categories)
-✅ Automatic feed syncing
-✅ Today view with last 7 days of articles
-✅ Category/thread filtering (work, social, tech, etc.)
-✅ AI-powered content summarization using Apple's NaturalLanguage framework
-✅ Chat interface for interacting with AI
-✅ Background sync capability (syncs feeds in the background)
-✅ Mark articles as read/favorite
-✅ Search functionality
+To exercise it: run the app, then in Xcode use **Debug → Simulate Background Fetch**. iOS
+decides when real background tasks run, so this is the only reliable way to trigger one on
+demand.
 
-## Notes
+For the sync path more generally, the DEBUG launch arguments are usually more useful — see
+`CLAUDE.md` under "Measuring performance" for `-ForceSyncOnLaunch`, `-SeedLargeStore` and
+`-ResetArticlesOnLaunch`.
 
-- **AI Model**: Currently uses Apple's built-in NaturalLanguage framework for basic text analysis and keyword extraction. For more advanced AI features, you could integrate:
-  - Core ML models
-  - MLX Swift for on-device LLMs
-  - OpenAI API (requires internet)
+## Getting started with the app
 
-- **Background Sync**: iOS limits background fetch to preserve battery. The app will attempt to sync every hour, but iOS controls when this actually happens.
+1. **Add RSS feeds** — "Feeds" tab → "+" → paste a feed URL. Some to try:
+   - Daring Fireball: `https://daringfireball.net/feeds/main`
+   - Hacker News: `https://news.ycombinator.com/rss`
+   - The Verge: `https://www.theverge.com/rss/index.xml`
+2. **Add a subreddit** — choose "Reddit" in the feed picker and enter just the name
+   (`swift`, not a full URL)
+3. **Import an OPML file** — Settings → Import, or subscribe to a remote OPML URL that stays
+   in sync
+4. **Pull to refresh** on the Today tab, or `Cmd+R` on macOS
 
-- **Testing Background Sync**: In Xcode, you can simulate background fetch:
-  - Run the app
-  - Go to Debug menu > Simulate Background Fetch
+A first launch with no feeds seeds a default set, then syncs.
+
+## Before you push
+
+```bash
+xcodebuild test -project Today.xcodeproj -scheme Today \
+  -destination 'platform=iOS Simulator,name=iPhone 17'
+xcodebuild build -project Today.xcodeproj -scheme "Today MacOS" -destination 'platform=macOS'
+```
+
+Read **CLAUDE.md** first if you're touching background work or SwiftData queries. This project
+builds with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` and `SWIFT_APPROACHABLE_CONCURRENCY`,
+which make isolation behave unintuitively — `nonisolated` alone does *not* move `async` work
+off the main thread, and that has silently caused a regression before.
 
 ## Troubleshooting
 
-If you get build errors:
-1. Make sure all files are added to the Today target
-2. Check that file references are correct (not red in Project Navigator)
-3. Clean build folder: Shift+Cmd+K
-4. Try closing and reopening Xcode
+- **"No such simulator"** — the destination name is wrong for your machine. Run
+  `xcrun simctl list devices available` and use one from the list.
+- **A new file isn't compiling** — it's probably outside a synchronized folder. Move it under
+  `Today/` or `TodayTests/` rather than adding it via Xcode.
+- **Stale data or a schema error after switching branches** — delete the app from the
+  simulator and rerun. Note that model changes are forward-only: a build with fewer model
+  properties cannot open a store written by a newer one, and the app calls `fatalError` if the
+  container fails to open.
+- **Package resolution fails** — File → Packages → Reset Package Caches.
+
+See `TROUBLESHOOTING.md` for runtime issues, and `RELEASE_PROCESS.md` for shipping.
