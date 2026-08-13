@@ -96,5 +96,9 @@ untrusted markup to an HTML engine that resolves remote subresources.
   copies previously drifted apart and two of them reconstructed live markup.
 - **Never feed untrusted HTML to `NSAttributedString`'s HTML importer.** That is the
   bug this document now describes in the past tense.
-- **Every new `WKWebView` needs a navigation delegate.** A test walks the rendered view
-  tree and fails if one is missing.
+- **Every new `WKWebView` needs a navigation delegate.**
+  `WebViewNavigationPolicyTests.testEveryConstructedWebViewHasANavigationDelegate` hosts each
+  WebView-bearing view for real and fails if a constructed `WKWebView` lacks one — but it
+  iterates a **hand-maintained list**, and covers only the iOS variants (the macOS AppKit halves
+  cannot be hosted from the iOS test target). Add your view to that list when you add one; the
+  test cannot discover it for you.

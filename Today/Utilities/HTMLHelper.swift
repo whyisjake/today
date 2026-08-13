@@ -62,7 +62,13 @@ extension String {
             let bodyStart = self.index(after: ampersand)
             // Longest reference we accept is a hex/decimal code point; bound the scan so a
             // stray `&` in prose does not drag the search across the whole document.
-            let windowEnd = self.index(bodyStart, offsetBy: HTMLEntities.maxReferenceLength,
+            //
+            // The window is maxReferenceLength + 1 because the slice below is half-open: the
+            // terminating `;` sits one past the longest body we accept. Without the +1 the
+            // effective budget is 9, and a zero-padded reference whose body is exactly
+            // maxReferenceLength — `&#x0001F600;`, a legal way to write an emoji — silently
+            // fails to decode and renders as literal text.
+            let windowEnd = self.index(bodyStart, offsetBy: HTMLEntities.maxReferenceLength + 1,
                                        limitedBy: self.endIndex) ?? self.endIndex
 
             if let semicolon = self[bodyStart..<windowEnd].firstIndex(of: ";"),
@@ -83,7 +89,12 @@ extension String {
 /// Entity table and reference decoding for `String.decodeHTMLEntities()`.
 enum HTMLEntities {
     /// Character budget for the text between `&` and `;`.
-    nonisolated static let maxReferenceLength = 10
+    ///
+    /// Generous rather than tight. The bound exists only so a stray `&` in prose cannot drag
+    /// the scan across a whole document; it is not a validity check. Sized at 10 it silently
+    /// dropped zero-padded numeric references like `&#0000000039;` — legal HTML that some
+    /// publishing systems emit, and which the four regex decoders this replaced all handled.
+    nonisolated static let maxReferenceLength = 32
 
     /// The union of the named entities the four previous decoders supported.
     nonisolated static let named: [String: String] = [

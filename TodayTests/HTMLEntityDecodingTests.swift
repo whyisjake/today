@@ -44,6 +44,29 @@ final class HTMLEntityDecodingTests: XCTestCase {
         )
     }
 
+    /// Zero-padded numeric references are legal HTML and some publishing systems emit them.
+    /// Two bugs lived here: the lookahead window is half-open, so the terminating `;` sits one
+    /// past the longest body accepted (the budget was silently one short), and the budget itself
+    /// was sized at 10, which is narrower than the padding real feeds use. The four regex
+    /// decoders this replaced handled both, so undersizing the window was a regression.
+    func testDecodesZeroPaddedNumericReferences() {
+        XCTAssertEqual("&#x1F600;".decodeHTMLEntities(), "\u{1F600}")
+        XCTAssertEqual("&#x0001F600;".decodeHTMLEntities(), "\u{1F600}")
+        XCTAssertEqual("&#128512;".decodeHTMLEntities(), "\u{1F600}")
+        XCTAssertEqual("&#000128512;".decodeHTMLEntities(), "\u{1F600}")
+        XCTAssertEqual("&#0000000039;".decodeHTMLEntities(), "'")
+    }
+
+    /// The window still has to be bounded, or a stray `&` in prose drags the scan onward and a
+    /// distant unrelated `;` gets treated as a terminator.
+    func testUnterminatedReferenceBeyondTheWindowStaysLiteral() {
+        let strayAmpersandThenDistantSemicolon = "AT&T " + String(repeating: "x", count: 40) + "; done"
+        XCTAssertEqual(
+            strayAmpersandThenDistantSemicolon.decodeHTMLEntities(),
+            strayAmpersandThenDistantSemicolon
+        )
+    }
+
     func testLeavesUnknownAndMalformedEntitiesAlone() {
         XCTAssertEqual("5 &frobnicate; 6".decodeHTMLEntities(), "5 &frobnicate; 6")
         XCTAssertEqual("bare & ampersand".decodeHTMLEntities(), "bare & ampersand")

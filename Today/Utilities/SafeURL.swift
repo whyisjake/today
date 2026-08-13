@@ -40,8 +40,13 @@ enum SafeURL {
     /// The URL to hand to `openURL` / `UIApplication.open` / `NSWorkspace.open` /
     /// `webView.load(URLRequest:)`, or nil if it must not be acted on.
     nonisolated static func webOpenable(_ string: String?) -> URL? {
-        guard let string, !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              let url = URL(string: string) else { return nil }
+        // Parse the *trimmed* value, not the original. Trimming only for the emptiness check
+        // made this gate disagree with `feedIngestable` on the same input: a URL pasted with a
+        // trailing newline parsed fine there and failed here, so whether it was accepted
+        // depended on which gate the call site happened to use.
+        guard let string else { return nil }
+        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let url = URL(string: trimmed) else { return nil }
         return webOpenable(url)
     }
 
