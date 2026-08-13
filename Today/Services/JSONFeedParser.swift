@@ -303,7 +303,7 @@ class JSONFeedService {
     private init() {}
     
     func fetchFeed(url: String) async throws -> (feedTitle: String, feedDescription: String, articles: [RSSParser.ParsedArticle]) {
-        guard let feedURL = URL(string: url) else {
+        guard let feedURL = SafeURL.webOpenable(url) else {
             throw JSONFeedParser.JSONFeedError.invalidFormat
         }
         

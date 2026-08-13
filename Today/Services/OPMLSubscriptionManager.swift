@@ -24,7 +24,7 @@ class OPMLSubscriptionManager: ObservableObject {
 
     /// Subscribe to a remote OPML URL. Fetches the OPML immediately and adds all feeds.
     func addSubscription(url: String, title: String? = nil, defaultCategory: String = "General") async throws -> OPMLSubscription {
-        guard let opmlURL = URL(string: url) else {
+        guard let opmlURL = SafeURL.webOpenable(url) else {
             throw NSError(domain: "OPMLSubscription", code: -1, userInfo: [
                 NSLocalizedDescriptionKey: "Invalid OPML URL"
             ])
@@ -80,8 +80,13 @@ class OPMLSubscriptionManager: ObservableObject {
             let category = parsedFeed.category.lowercased() == "general" ? defaultCategory : parsedFeed.category
 
             // Match on the canonical form as well as the URL as listed, for the same reason
-            // syncSubscription does — a feed stored earlier is stored canonically.
-            let feedURL = FeedURLNormalizer.canonical(parsedFeed.url)
+            // syncSubscription does — a feed stored earlier is stored canonically. The
+            // canonical form is produced by the scheme guard, so an `xmlUrl` of
+            // `file:///etc/passwd` is dropped instead of being looked up and fetched.
+            guard let feedURL = SafeURL.feedIngestable(parsedFeed.url) else {
+                logger.warning("Dropping OPML entry with disallowed URL scheme: \(parsedFeed.url)")
+                continue
+            }
             let existingByURL = try modelContext.fetch(
                 FetchDescriptor<Feed>(predicate: #Predicate<Feed> { $0.url == feedURL })
             )
@@ -167,7 +172,7 @@ class OPMLSubscriptionManager: ObservableObject {
         assert(!Thread.isMainThread, "OPML fetch/parse must not run on the main thread")
         #endif
 
-        guard let opmlURL = URL(string: snapshot.url) else {
+        guard let opmlURL = SafeURL.webOpenable(snapshot.url) else {
             throw NSError(domain: "OPMLSubscription", code: -1, userInfo: [
                 NSLocalizedDescriptionKey: "Invalid OPML URL"
             ])
@@ -216,14 +221,20 @@ class OPMLSubscriptionManager: ObservableObject {
             diff.newTitle = opmlTitle
         }
 
+        // Entries whose scheme is not allow-listed are dropped before anything else looks at
+        // them: an OPML document is attacker-controlled, and a `file://`/`data:` `xmlUrl` must
+        // never be stored or fetched. Dropping them here also keeps them out of `remoteURLs`,
+        // so they cannot influence the deactivation set either.
+        let remoteFeeds = fetched.feeds.filter { SafeURL.feedIngestable($0.url) != nil }
+
         // Compare canonical forms on both sides. The remote document lists URLs however the
         // publisher wrote them, while feeds are stored in the form addFeed normalises to — so
         // comparing them raw made an http-listed feed perpetually look both missing and new.
-        let remoteURLs = Set(fetched.feeds.map { FeedURLNormalizer.canonical($0.url) })
+        let remoteURLs = Set(remoteFeeds.map { FeedURLNormalizer.canonical($0.url) })
         let localMatchURLs = Set(managed.map { FeedURLNormalizer.canonical($0.matchURL) })
 
         let newURLs = remoteURLs.subtracting(localMatchURLs)
-        diff.feedsToAdd = fetched.feeds
+        diff.feedsToAdd = remoteFeeds
             .filter { newURLs.contains(FeedURLNormalizer.canonical($0.url)) }
             .map { parsed in
                 let category = parsed.category.lowercased() == "general"

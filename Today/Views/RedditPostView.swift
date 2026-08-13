@@ -340,7 +340,9 @@ struct RedditPostView: View {
 
         do {
             let jsonURL = commentsUrl.hasSuffix("/") ? commentsUrl + ".json" : commentsUrl + ".json"
-            guard let requestURL = URL(string: jsonURL) else {
+            // `redditCommentsUrl` is feed-supplied; refuse anything that is not http(s)
+            // rather than handing it to URLSession.
+            guard let requestURL = SafeURL.webOpenable(jsonURL) else {
                 throw RedditError.invalidURL
             }
 
@@ -625,7 +627,7 @@ struct PostWebView: UIViewRepresentable {
 
             // Handle link taps - open in Safari
             if navigationAction.navigationType == .linkActivated {
-                if let url = navigationAction.request.url {
+                if let url = SafeURL.webOpenable(navigationAction.request.url) {
                     UIApplication.shared.open(url)
                 }
                 decisionHandler(.cancel)
@@ -794,7 +796,7 @@ struct PostWebView: NSViewRepresentable {
 
             // Handle link taps - open in browser
             if navigationAction.navigationType == .linkActivated {
-                if let url = navigationAction.request.url {
+                if let url = SafeURL.webOpenable(navigationAction.request.url) {
                     NSWorkspace.shared.open(url)
                 }
                 decisionHandler(.cancel)
@@ -1536,7 +1538,9 @@ struct EmbeddedMediaView: View {
             if urlString.hasPrefix("//") {
                 urlString = "https:" + urlString
             }
-            return URL(string: urlString)
+            // The src comes from Reddit-supplied embed HTML, so it is scheme-checked before
+            // it can be opened externally.
+            return SafeURL.webOpenable(urlString)
         }
         return nil
     }
@@ -1976,7 +1980,7 @@ struct CommentWebView: UIViewRepresentable {
 
             // Handle link taps - open in Safari
             if navigationAction.navigationType == .linkActivated {
-                if let url = navigationAction.request.url {
+                if let url = SafeURL.webOpenable(navigationAction.request.url) {
                     UIApplication.shared.open(url)
                 }
                 decisionHandler(.cancel)
@@ -2169,7 +2173,7 @@ struct CommentWebView: NSViewRepresentable {
 
             // Handle link taps - open in browser
             if navigationAction.navigationType == .linkActivated {
-                if let url = navigationAction.request.url {
+                if let url = SafeURL.webOpenable(navigationAction.request.url) {
                     NSWorkspace.shared.open(url)
                 }
                 decisionHandler(.cancel)

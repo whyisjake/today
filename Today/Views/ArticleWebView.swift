@@ -67,8 +67,10 @@ struct ArticleWebView: UIViewRepresentable {
 
     func updateUIView(_ webView: WKWebView, context: Context) {
         // Only load if not already loading this URL
-        if webView.url != url {
-            let request = URLRequest(url: url)
+        // The URL comes from feed content — never load a non-http(s) scheme (a `file://`
+        // link would give the page access to the container).
+        if webView.url != url, let safeURL = SafeURL.webOpenable(url) {
+            let request = URLRequest(url: safeURL)
             webView.load(request)
         }
     }
@@ -87,8 +89,8 @@ struct SafariView: NSViewRepresentable {
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
-        if webView.url != url {
-            webView.load(URLRequest(url: url))
+        if webView.url != url, let safeURL = SafeURL.webOpenable(url) {
+            webView.load(URLRequest(url: safeURL))
         }
     }
 }
@@ -106,8 +108,10 @@ struct ArticleWebView: NSViewRepresentable {
 
     func updateNSView(_ webView: WKWebView, context: Context) {
         // Only load if not already loading this URL
-        if webView.url != url {
-            let request = URLRequest(url: url)
+        // The URL comes from feed content — never load a non-http(s) scheme (a `file://`
+        // link would give the page access to the container).
+        if webView.url != url, let safeURL = SafeURL.webOpenable(url) {
+            let request = URLRequest(url: safeURL)
             webView.load(request)
         }
     }

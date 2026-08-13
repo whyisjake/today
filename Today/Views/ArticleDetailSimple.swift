@@ -409,8 +409,9 @@ struct WebViewRepresentable: UIViewRepresentable {
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
-        if webView.url != url {
-            webView.load(URLRequest(url: url))
+        // Feed-controlled URL: only http(s) may be loaded.
+        if webView.url != url, let safeURL = SafeURL.webOpenable(url) {
+            webView.load(URLRequest(url: safeURL))
         }
     }
 }
@@ -426,8 +427,9 @@ struct WebViewRepresentable: NSViewRepresentable {
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
-        if webView.url != url {
-            webView.load(URLRequest(url: url))
+        // Feed-controlled URL: only http(s) may be loaded.
+        if webView.url != url, let safeURL = SafeURL.webOpenable(url) {
+            webView.load(URLRequest(url: safeURL))
         }
     }
 }
@@ -571,7 +573,7 @@ struct ScrollableWebView: NSViewRepresentable {
             }
 
             if navigationAction.navigationType == .linkActivated {
-                if let url = navigationAction.request.url {
+                if let url = SafeURL.webOpenable(navigationAction.request.url) {
                     NSWorkspace.shared.open(url)
                 }
                 decisionHandler(.cancel)
@@ -956,7 +958,7 @@ struct WebViewWithHeight: UIViewRepresentable {
             }
 
             if navigationAction.navigationType == .linkActivated {
-                if let url = navigationAction.request.url {
+                if let url = SafeURL.webOpenable(navigationAction.request.url) {
                     DispatchQueue.main.async {
                         self.parent.selectedURL = url
                     }
@@ -1063,7 +1065,7 @@ struct WebViewWithHeight: NSViewRepresentable {
             }
 
             if navigationAction.navigationType == .linkActivated {
-                if let url = navigationAction.request.url {
+                if let url = SafeURL.webOpenable(navigationAction.request.url) {
                     DispatchQueue.main.async {
                         self.parent.selectedURL = url
                     }

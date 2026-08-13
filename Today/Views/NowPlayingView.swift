@@ -494,7 +494,9 @@ struct ChapterRowView: View {
             // Chapter info
             VStack(alignment: .leading, spacing: 4) {
                 // Chapter title with optional link
-                if let urlString = chapter.url, let url = URL(string: urlString) {
+                // Chapter URLs come from the podcast's ID3 tag — attacker-controlled, so they
+                // are scheme-checked before becoming a tappable link.
+                if let url = SafeURL.webOpenable(chapter.url) {
                     // Tappable link title
                     Button {
                         openURL(url)

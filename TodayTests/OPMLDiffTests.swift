@@ -84,6 +84,45 @@ final class OPMLDiffTests: XCTestCase {
         )
     }
 
+    /// U3: an OPML document is attacker-controlled, so an `xmlUrl` with a non-web scheme is
+    /// dropped at the diff rather than being stored and handed to URLSession.
+    func testEntryWithDisallowedSchemeIsNotAdded() throws {
+        let diff = Manager.computeDiff(
+            fetched: fetched([
+                Parsed(url: "file:///etc/passwd", title: "Hostile", category: "Tech"),
+                Parsed(url: "data:text/xml,<opml/>", title: "Hostile", category: "Tech"),
+                Parsed(url: "javascript:alert(1)", title: "Hostile", category: "Tech"),
+                Parsed(url: "ftp://evil.example.com/feed", title: "Hostile", category: "Tech"),
+                Parsed(url: "https://a.example.com/feed", title: "A", category: "Tech"),
+            ]),
+            managed: [],
+            defaultCategory: "News"
+        )
+        XCTAssertEqual(
+            diff.feedsToAdd.map(\.url),
+            ["https://a.example.com/feed"],
+            "only the http(s) entry survives the scheme allow-list"
+        )
+    }
+
+    /// The dropped entries must not affect the deactivation set either — a hostile `xmlUrl`
+    /// should be invisible to the diff, not a way to keep something alive or kill it.
+    func testDisallowedSchemeEntriesDoNotAffectDeactivation() throws {
+        let ids = try makeFeedIDs(1)
+        let diff = Manager.computeDiff(
+            fetched: fetched([Parsed(url: "file:///etc/passwd", title: "Hostile", category: "Tech")]),
+            managed: [Manager.ManagedFeedSnapshot(
+                id: ids[0], url: "https://a.example.com/feed", sourceURL: nil
+            )],
+            defaultCategory: "News"
+        )
+        XCTAssertTrue(diff.feedsToAdd.isEmpty)
+        XCTAssertEqual(
+            diff.feedIDsToDeactivate, [ids[0]],
+            "the managed feed is still missing from the (effectively empty) remote list"
+        )
+    }
+
     func testAlreadyManagedFeedIsNotAddedAgain() throws {
         let ids = try makeFeedIDs(1)
         let diff = Manager.computeDiff(

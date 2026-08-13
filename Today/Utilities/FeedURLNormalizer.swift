@@ -28,6 +28,12 @@ enum FeedURLNormalizer {
     /// Applies the same two transforms `FeedManager.addFeed` applies before persisting a feed:
     /// an `http://` → `https://` upgrade (except for the exempt domains above), and Reddit's
     /// `.json` rewrite.
+    ///
+    /// This is a pure string transform and says nothing about whether the URL is safe to
+    /// fetch — it is also used to compare URLs, where returning nil would be wrong. Anything
+    /// *ingesting* a URL (OPML `xmlUrl`, `addFeed`) must go through
+    /// `SafeURL.feedIngestable(_:)` instead, which applies the scheme allow-list and then
+    /// canonicalises through here.
     nonisolated static func canonical(_ url: String) -> String {
         convertRedditURLToJSON(upgradingScheme(url))
     }
