@@ -100,11 +100,22 @@ final class SafeURLTests: XCTestCase {
     // MARK: - feedIngestable
 
     func testFeedIngestableCanonicalisesAllowedURLs() {
-        // Same transforms as FeedURLNormalizer.canonical: scheme upgrade + Reddit .json.
+        // Same transforms as FeedURLNormalizer.canonical: scheme upgrade + Reddit .rss.
         XCTAssertEqual(SafeURL.feedIngestable("http://example.com/feed"), "https://example.com/feed")
+        // Reddit is fetched as RSS: unauthenticated .json is 403 and being shut down.
         XCTAssertEqual(
             SafeURL.feedIngestable("https://www.reddit.com/r/swift"),
-            "https://www.reddit.com/r/swift.json"
+            "https://www.reddit.com/r/swift.rss"
+        )
+        XCTAssertEqual(
+            SafeURL.feedIngestable("https://www.reddit.com/r/swift.json"),
+            "https://www.reddit.com/r/swift.rss",
+            "a legacy .json subscription must be repointed, not preserved"
+        )
+        XCTAssertEqual(
+            SafeURL.feedIngestable("https://www.reddit.com/r/swift/.json"),
+            "https://www.reddit.com/r/swift.rss",
+            "the /.json shape the default feeds shipped with must normalise too"
         )
         XCTAssertEqual(
             SafeURL.feedIngestable("  https://example.com/feed  "),

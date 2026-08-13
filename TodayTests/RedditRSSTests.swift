@@ -144,6 +144,20 @@ final class RedditRSSTests: XCTestCase {
         }
     }
     
+    /// Switching feeds back to `.rss` revives `Feed.isRedditFeed`, which requires that suffix.
+    /// While Reddit feeds were stored as `.json` the property — and `Feed.redditSubreddit`,
+    /// which is gated on it — was dead for every feed the app itself created.
+    func testStoredRedditFeedIsRecognisedAsRedditAgain() {
+        let feed = Feed(
+            title: "r/baseball",
+            url: FeedURLNormalizer.canonical("https://www.reddit.com/r/baseball"),
+            category: "sports"
+        )
+        XCTAssertEqual(feed.url, "https://www.reddit.com/r/baseball.rss")
+        XCTAssertTrue(feed.isRedditFeed, "a canonical Reddit feed URL must be recognised as one")
+        XCTAssertEqual(feed.redditSubreddit, "baseball")
+    }
+
     func testRedditPostIdExtractionFromLink() {
         let redditRSSXML = """
         <?xml version="1.0" encoding="UTF-8"?>

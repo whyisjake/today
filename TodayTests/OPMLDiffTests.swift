@@ -188,15 +188,15 @@ final class OPMLDiffTests: XCTestCase {
         )
     }
 
-    /// Same shape for Reddit, which addFeed rewrites to a .json URL.
-    func testRedditFeedStoredAsJSONDoesNotChurn() throws {
+    /// Same shape for Reddit, which addFeed rewrites to a .rss URL.
+    func testRedditFeedStoredAsRSSDoesNotChurn() throws {
         let ids = try makeFeedIDs(1)
         let diff = Manager.computeDiff(
             fetched: fetched([Parsed(
                 url: "https://www.reddit.com/r/swift", title: "r/swift", category: "all"
             )]),
             managed: [Manager.ManagedFeedSnapshot(
-                id: ids[0], url: "https://www.reddit.com/r/swift.json", sourceURL: nil
+                id: ids[0], url: "https://www.reddit.com/r/swift.rss", sourceURL: nil
             )],
             defaultCategory: "News"
         )
