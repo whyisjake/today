@@ -100,6 +100,13 @@ struct FeedListView: View {
 
     // OPML Subscription
     @Query(sort: \OPMLSubscription.title) private var opmlSubscriptions: [OPMLSubscription]
+
+    #if os(iOS)
+    /// Article pushed from a feed's article list. Held here, at the NavigationStack root,
+    /// because a navigationDestination declared inside the already-pushed FeedArticlesView
+    /// is not reliably registered with the stack.
+    @State private var articleNavigation: FeedArticlesView.NavigationState?
+    #endif
     @State private var showingSubscribeOPML = false
     @State private var subscribeOPMLURL = ""
     @State private var subscribeOPMLCategory = "General"
@@ -177,6 +184,9 @@ struct FeedListView: View {
                 }
                 .overlay {
                     syncingOverlay
+                }
+                .navigationDestination(item: $articleNavigation) { state in
+                    FeedArticleDestination(state: state, navigationState: $articleNavigation)
                 }
             #endif
         }
@@ -312,7 +322,7 @@ struct FeedListView: View {
         #else
         // iOS: Use NavigationLink for proper push navigation
         NavigationLink {
-            FeedArticlesView(feed: feed)
+            FeedArticlesView(feed: feed, navigationState: $articleNavigation)
         } label: {
             feedRowLabel(for: feed)
         }
@@ -1778,7 +1788,10 @@ struct FeedArticlesView: View {
 
     @State private var showReadArticles = false
     @State private var searchText = ""
-    @State private var navigationState: NavigationState?
+    #if os(iOS)
+    /// Owned by `FeedListView` so the destination can be declared at the stack root.
+    @Binding var navigationState: NavigationState?
+    #endif
     @AppStorage("fontOption") private var fontOption: FontOption = .serif
 
     /// No date window: this is a feed browser, where the whole history is the point.
@@ -1804,8 +1817,9 @@ struct FeedArticlesView: View {
         _feedArticles = Query(Self.articlesQuery(for: feed))
     }
     #else
-    init(feed: Feed) {
+    init(feed: Feed, navigationState: Binding<NavigationState?>) {
         self.feed = feed
+        _navigationState = navigationState
         _feedArticles = Query(Self.articlesQuery(for: feed))
     }
     #endif
@@ -1835,14 +1849,22 @@ struct FeedArticlesView: View {
         return articles
     }
 
-    /// Counted in the database so the answer stays exact regardless of the fetch limit —
-    /// deriving it from the fetched array would silently cap it.
+    /// Derived from the already-fetched articles rather than a separate `fetchCount`.
+    ///
+    /// This view owns a `@Query`, and `feedDetailMenu` — which reads this — is built in the
+    /// toolbar on every body pass. A fetch against the same `modelContext` during body
+    /// touches the context that `@Query` observes, invalidating the view and re-running body,
+    /// which fetches again: the list froze, taps and scrolling stopped registering, and the
+    /// view eventually died.
+    ///
+    /// `TodayView` does the same kind of counting safely only because its `@Query` lives in a
+    /// child view (`ArticleWindow`), so its counts cannot invalidate their own query.
+    ///
+    /// Counting the array caps at the query's `fetchLimit`, which is what shipped before this
+    /// view was bounded. For a badge on a single feed that ceiling is not reachable in
+    /// practice, and a slightly low badge is vastly preferable to a frozen screen.
     private var unreadCount: Int {
-        let feedId = feed.id
-        let descriptor = FetchDescriptor<Article>(
-            predicate: #Predicate<Article> { $0.feed?.id == feedId && !$0.isRead }
-        )
-        return (try? modelContext.fetchCount(descriptor)) ?? 0
+        feedArticles.lazy.filter { !$0.isRead }.count
     }
 
     var body: some View {
@@ -1937,83 +1959,6 @@ struct FeedArticlesView: View {
             }
             #endif
         }
-        #if os(iOS)
-        .navigationDestination(item: $navigationState) { state in
-            if let article = modelContext.model(for: state.articleID) as? Article {
-                // For Reddit posts, show combined post + comments view
-                if article.isRedditPost {
-                    if !state.context.isEmpty,
-                       let currentIndex = state.context.firstIndex(of: state.articleID) {
-                        let previousIndex = currentIndex - 1
-                        let nextIndex = currentIndex + 1
-                        let previousArticleID = previousIndex >= 0 ? state.context[previousIndex] : nil
-                        let nextArticleID = nextIndex < state.context.count ? state.context[nextIndex] : nil
-
-                        RedditPostView(
-                            article: article,
-                            previousArticleID: previousArticleID,
-                            nextArticleID: nextArticleID,
-                            onNavigateToPrevious: { prevID in
-                                Task { @MainActor in
-                                    try? await Task.sleep(nanoseconds: 50_000_000)
-                                    navigationState = NavigationState(articleID: prevID, context: state.context)
-                                }
-                            },
-                            onNavigateToNext: { nextID in
-                                Task { @MainActor in
-                                    try? await Task.sleep(nanoseconds: 50_000_000)
-                                    navigationState = NavigationState(articleID: nextID, context: state.context)
-                                }
-                            }
-                        )
-                        .id(state.articleID)  // Force view refresh when article changes
-                    } else {
-                        RedditPostView(
-                            article: article,
-                            previousArticleID: nil,
-                            nextArticleID: nil,
-                            onNavigateToPrevious: { _ in },
-                            onNavigateToNext: { _ in }
-                        )
-                    }
-                }
-                // Use the captured navigation context
-                else if !state.context.isEmpty,
-                   let currentIndex = state.context.firstIndex(of: state.articleID) {
-                    let previousIndex = currentIndex - 1
-                    let nextIndex = currentIndex + 1
-                    let previousArticleID = previousIndex >= 0 ? state.context[previousIndex] : nil
-                    let nextArticleID = nextIndex < state.context.count ? state.context[nextIndex] : nil
-
-                    ArticleDetailSimple(
-                        article: article,
-                        previousArticleID: previousArticleID,
-                        nextArticleID: nextArticleID,
-                        onNavigateToPrevious: { prevID in
-                            Task { @MainActor in
-                                try? await Task.sleep(nanoseconds: 50_000_000)
-                                navigationState = NavigationState(articleID: prevID, context: state.context)
-                            }
-                        },
-                        onNavigateToNext: { nextID in
-                            Task { @MainActor in
-                                try? await Task.sleep(nanoseconds: 50_000_000)
-                                navigationState = NavigationState(articleID: nextID, context: state.context)
-                            }
-                        }
-                    )
-                } else {
-                    ArticleDetailSimple(
-                        article: article,
-                        previousArticleID: nil,
-                        nextArticleID: nil,
-                        onNavigateToPrevious: { _ in },
-                        onNavigateToNext: { _ in }
-                    )
-                }
-            }
-        }
-        #endif
     }
 
     private var feedDetailMenu: some View {
@@ -2348,4 +2293,85 @@ struct FeedNewsletterView: View {
     }
 }
 
+#if os(iOS)
+/// The article destination pushed from a feed's article list.
+///
+/// Declared at the `NavigationStack` root in `FeedListView` rather than inside
+/// `FeedArticlesView`. A `navigationDestination` declared inside a view that has itself
+/// already been pushed onto the stack is not reliably registered, which left taps in the
+/// per-feed article list doing nothing at all. Keeping the state and the destination at the
+/// root also preserves in-place replacement for previous/next, which pushing a fresh
+/// `NavigationLink` per article would not.
+private struct FeedArticleDestination: View {
+    let state: FeedArticlesView.NavigationState
+    @Binding var navigationState: FeedArticlesView.NavigationState?
+    @Environment(\.modelContext) private var modelContext
 
+    /// `model(for:)` first: it is a cheap identity-map lookup and does not touch the store.
+    /// Only if that fails do we fall back to a fetch, because `model(for:)` can hand back an
+    /// unrealised stub whose `as? Article` cast fails — which is how this destination used to
+    /// end up rendering nothing at all.
+    ///
+    /// Order matters. Fetching unconditionally would run a store query on every body pass, and
+    /// a fetch during body is what froze `FeedArticlesView` (see `unreadCount` there).
+    private var article: Article? {
+        let id = state.articleID
+        if let resolved = modelContext.model(for: id) as? Article {
+            return resolved
+        }
+        let fetched = try? modelContext.fetch(
+            FetchDescriptor<Article>(predicate: #Predicate<Article> { $0.persistentModelID == id })
+        )
+        return fetched?.first
+    }
+
+    /// Sibling IDs either side of the current article, for previous/next.
+    private var siblings: (previous: PersistentIdentifier?, next: PersistentIdentifier?) {
+        guard let index = state.context.firstIndex(of: state.articleID) else { return (nil, nil) }
+        return (
+            index > 0 ? state.context[index - 1] : nil,
+            index + 1 < state.context.count ? state.context[index + 1] : nil
+        )
+    }
+
+    /// Replaces the pushed article in place rather than stacking another push.
+    private func navigate(to id: PersistentIdentifier) {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            navigationState = FeedArticlesView.NavigationState(articleID: id, context: state.context)
+        }
+    }
+
+    var body: some View {
+        if let article {
+            if article.isRedditPost {
+                RedditPostView(
+                    article: article,
+                    previousArticleID: siblings.previous,
+                    nextArticleID: siblings.next,
+                    onNavigateToPrevious: navigate(to:),
+                    onNavigateToNext: navigate(to:)
+                )
+                .id(state.articleID)  // Force view refresh when article changes
+            } else {
+                ArticleDetailSimple(
+                    article: article,
+                    previousArticleID: siblings.previous,
+                    nextArticleID: siblings.next,
+                    onNavigateToPrevious: navigate(to:),
+                    onNavigateToNext: navigate(to:)
+                )
+                .id(state.articleID)
+            }
+        } else {
+            // Previously this branch did not exist, so a failed lookup pushed a blank screen
+            // with no indication of what went wrong.
+            ContentUnavailableView(
+                "Article Unavailable",
+                systemImage: "doc.questionmark",
+                description: Text("This article could no longer be found. It may have been removed by a sync.")
+            )
+        }
+    }
+}
+#endif
