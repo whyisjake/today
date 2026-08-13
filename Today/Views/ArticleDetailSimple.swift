@@ -50,6 +50,97 @@ enum WebViewSecurity {
     static func makeContentConfiguration() -> WKWebViewConfiguration {
         disableContentJavaScript(WKWebViewConfiguration())
     }
+
+    // MARK: - Navigation policy
+
+    /// True for the in-memory document produced by `loadHTMLString(_:baseURL: nil)`.
+    ///
+    /// WebKit reports that navigation with a nil or `about:blank` request URL. It is the one
+    /// `.other` navigation a content WebView legitimately performs, and the only one allowed.
+    static func isInMemoryDocument(_ url: URL?) -> Bool {
+        guard let url else { return true }
+        guard let scheme = url.scheme?.lowercased() else { return url.absoluteString.isEmpty }
+        return scheme == "about"
+    }
+
+    /// The single navigation policy every `decidePolicyFor` handler in the app defers to.
+    ///
+    /// Deny by default. The old handlers all began with
+    /// `if navigationType == .other { allow }`, which is the permissive end of this decision:
+    /// JavaScript-initiated navigations, `<meta http-equiv="refresh">`, iframe loads and
+    /// auto-submitted forms are *all* classified `.other`, so any of them could reach
+    /// `file:///` and read the app container.
+    ///
+    /// Two shapes, because the two kinds of WebView have genuinely different jobs:
+    ///
+    /// - `isContentView == true` — the WebViews that render untrusted feed / Reddit HTML from
+    ///   memory. They have exactly one legitimate navigation, the initial `loadHTMLString`.
+    ///   Everything else is cancelled; `.linkActivated` is cancelled here and re-opened
+    ///   externally by the caller (see `externalOpenURL(for:url:isContentView:)`).
+    /// - `isContentView == false` — the in-app browser (`WebViewRepresentable`, `ArticleWebView`)
+    ///   and the oEmbed player frame (`EmbeddedMediaWebView`). These render a live external site
+    ///   with JavaScript on by design, so blanket-cancelling `.other` would break normal
+    ///   browsing and stop the player iframe from loading. Their rule is a scheme check on every
+    ///   navigation instead: `http(s)` (or the in-memory wrapper document) allowed, `file:`,
+    ///   `data:` and custom app schemes cancelled.
+    static func policy(
+        for navigationType: WKNavigationType,
+        url: URL?,
+        isContentView: Bool
+    ) -> WKNavigationActionPolicy {
+        if isInMemoryDocument(url) {
+            // The wrapper document itself. Only ever arrives as `.other`; a link tap or form
+            // post that resolves to `about:` is not something either view type should follow.
+            return navigationType == .other ? .allow : .cancel
+        }
+
+        if isContentView {
+            // Nothing else is legitimate: page script is off and the CSP frames nothing, so any
+            // remaining navigation is either a link tap (handled externally) or an attack.
+            return .cancel
+        }
+
+        return SafeURL.webOpenable(url) == nil ? .cancel : .allow
+    }
+
+    /// The URL a content WebView should hand to `openURL` / `NSWorkspace` / `selectedURL`, or
+    /// nil if the navigation must not be opened at all.
+    ///
+    /// Only link taps open externally, and only `http(s)` ones — `SafeURL` is applied here so no
+    /// caller has to remember to. Non-content WebViews return nil: they are browsers, and follow
+    /// their links in place under `policy(for:url:isContentView:)`.
+    static func externalOpenURL(
+        for navigationType: WKNavigationType,
+        url: URL?,
+        isContentView: Bool
+    ) -> URL? {
+        guard isContentView, navigationType == .linkActivated else { return nil }
+        return SafeURL.webOpenable(url)
+    }
+}
+
+/// The navigation delegate for every WebView that shows a live external site: the in-app
+/// browser (`WebViewRepresentable`, `ArticleWebView`, macOS `SafariView`) and the oEmbed player
+/// frame (`EmbeddedMediaWebView`).
+///
+/// These views set no `navigationDelegate` at all before U2, which meant `SafeURL` only ever
+/// validated the *first* URL — a JS redirect or an in-page link on the live page could then
+/// navigate to any scheme unchecked. This is stateless and holds no reference to its view, so a
+/// single class serves all of them.
+final class ExternalSiteNavigationDelegate: NSObject, WKNavigationDelegate {
+    func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationAction: WKNavigationAction,
+        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+    ) {
+        decisionHandler(
+            WebViewSecurity.policy(
+                for: navigationAction.navigationType,
+                url: navigationAction.request.url,
+                isContentView: false
+            )
+        )
+    }
 }
 
 // Shared WebView configuration to speed up initialization
@@ -440,10 +531,17 @@ struct ArticleWebViewSimple: View {
 struct WebViewRepresentable: UIViewRepresentable {
     let url: URL
 
+    func makeCoordinator() -> ExternalSiteNavigationDelegate {
+        ExternalSiteNavigationDelegate()
+    }
+
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.allowsBackForwardNavigationGestures = true
+        // Live external site with JavaScript on: every navigation is scheme-checked, so a JS
+        // redirect or in-page link cannot reach `file://` after the initial load.
+        webView.navigationDelegate = context.coordinator
         return webView
     }
 
@@ -458,10 +556,17 @@ struct WebViewRepresentable: UIViewRepresentable {
 struct WebViewRepresentable: NSViewRepresentable {
     let url: URL
 
+    func makeCoordinator() -> ExternalSiteNavigationDelegate {
+        ExternalSiteNavigationDelegate()
+    }
+
     func makeNSView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.allowsBackForwardNavigationGestures = true
+        // Live external site with JavaScript on: every navigation is scheme-checked, so a JS
+        // redirect or in-page link cannot reach `file://` after the initial load.
+        webView.navigationDelegate = context.coordinator
         return webView
     }
 
@@ -606,20 +711,14 @@ struct ScrollableWebView: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            if navigationAction.navigationType == .other {
-                decisionHandler(.allow)
-                return
+            let navigationType = navigationAction.navigationType
+            let url = navigationAction.request.url
+
+            if let openable = WebViewSecurity.externalOpenURL(for: navigationType, url: url, isContentView: true) {
+                NSWorkspace.shared.open(openable)
             }
 
-            if navigationAction.navigationType == .linkActivated {
-                if let url = SafeURL.webOpenable(navigationAction.request.url) {
-                    NSWorkspace.shared.open(url)
-                }
-                decisionHandler(.cancel)
-                return
-            }
-
-            decisionHandler(.allow)
+            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true))
         }
     }
 }
@@ -992,22 +1091,16 @@ struct WebViewWithHeight: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            if navigationAction.navigationType == .other {
-                decisionHandler(.allow)
-                return
-            }
+            let navigationType = navigationAction.navigationType
+            let url = navigationAction.request.url
 
-            if navigationAction.navigationType == .linkActivated {
-                if let url = SafeURL.webOpenable(navigationAction.request.url) {
-                    DispatchQueue.main.async {
-                        self.parent.selectedURL = url
-                    }
+            if let openable = WebViewSecurity.externalOpenURL(for: navigationType, url: url, isContentView: true) {
+                DispatchQueue.main.async {
+                    self.parent.selectedURL = openable
                 }
-                decisionHandler(.cancel)
-                return
             }
 
-            decisionHandler(.allow)
+            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true))
         }
     }
 }
@@ -1099,22 +1192,16 @@ struct WebViewWithHeight: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            if navigationAction.navigationType == .other {
-                decisionHandler(.allow)
-                return
-            }
+            let navigationType = navigationAction.navigationType
+            let url = navigationAction.request.url
 
-            if navigationAction.navigationType == .linkActivated {
-                if let url = SafeURL.webOpenable(navigationAction.request.url) {
-                    DispatchQueue.main.async {
-                        self.parent.selectedURL = url
-                    }
+            if let openable = WebViewSecurity.externalOpenURL(for: navigationType, url: url, isContentView: true) {
+                DispatchQueue.main.async {
+                    self.parent.selectedURL = openable
                 }
-                decisionHandler(.cancel)
-                return
             }
 
-            decisionHandler(.allow)
+            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true))
         }
     }
 }

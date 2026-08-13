@@ -55,12 +55,19 @@ struct SafariView: UIViewControllerRepresentable {
 struct ArticleWebView: UIViewRepresentable {
     let url: URL
 
+    func makeCoordinator() -> ExternalSiteNavigationDelegate {
+        ExternalSiteNavigationDelegate()
+    }
+
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.dataDetectorTypes = [.link, .phoneNumber]
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.allowsBackForwardNavigationGestures = true
+        // `SafeURL` below only gates the *initial* URL; the delegate scheme-checks every
+        // subsequent navigation the live page starts.
+        webView.navigationDelegate = context.coordinator
 
         return webView
     }
@@ -81,10 +88,17 @@ struct SafariView: NSViewRepresentable {
     let url: URL
     @Environment(\.dismiss) private var dismiss
 
+    func makeCoordinator() -> ExternalSiteNavigationDelegate {
+        ExternalSiteNavigationDelegate()
+    }
+
     func makeNSView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.allowsBackForwardNavigationGestures = true
+        // `SafeURL` below only gates the *initial* URL; the delegate scheme-checks every
+        // subsequent navigation the live page starts.
+        webView.navigationDelegate = context.coordinator
         return webView
     }
 
@@ -99,10 +113,17 @@ struct SafariView: NSViewRepresentable {
 struct ArticleWebView: NSViewRepresentable {
     let url: URL
 
+    func makeCoordinator() -> ExternalSiteNavigationDelegate {
+        ExternalSiteNavigationDelegate()
+    }
+
     func makeNSView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.allowsBackForwardNavigationGestures = true
+        // `SafeURL` below only gates the *initial* URL; the delegate scheme-checks every
+        // subsequent navigation the live page starts.
+        webView.navigationDelegate = context.coordinator
         return webView
     }
 

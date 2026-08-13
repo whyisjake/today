@@ -621,21 +621,15 @@ struct PostWebView: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            if navigationAction.navigationType == .other {
-                decisionHandler(.allow)
-                return
+            let navigationType = navigationAction.navigationType
+            let url = navigationAction.request.url
+
+            // Link taps open in Safari; everything else is denied by the shared policy.
+            if let openable = WebViewSecurity.externalOpenURL(for: navigationType, url: url, isContentView: true) {
+                UIApplication.shared.open(openable)
             }
 
-            // Handle link taps - open in Safari
-            if navigationAction.navigationType == .linkActivated {
-                if let url = SafeURL.webOpenable(navigationAction.request.url) {
-                    UIApplication.shared.open(url)
-                }
-                decisionHandler(.cancel)
-                return
-            }
-
-            decisionHandler(.allow)
+            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true))
         }
     }
 
@@ -792,21 +786,15 @@ struct PostWebView: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            if navigationAction.navigationType == .other {
-                decisionHandler(.allow)
-                return
+            let navigationType = navigationAction.navigationType
+            let url = navigationAction.request.url
+
+            // Link taps open in the default browser; everything else is denied by the shared policy.
+            if let openable = WebViewSecurity.externalOpenURL(for: navigationType, url: url, isContentView: true) {
+                NSWorkspace.shared.open(openable)
             }
 
-            // Handle link taps - open in browser
-            if navigationAction.navigationType == .linkActivated {
-                if let url = SafeURL.webOpenable(navigationAction.request.url) {
-                    NSWorkspace.shared.open(url)
-                }
-                decisionHandler(.cancel)
-                return
-            }
-
-            decisionHandler(.allow)
+            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true))
         }
     }
 
@@ -1585,6 +1573,10 @@ struct EmbeddedMediaWebView: UIViewRepresentable {
     let html: String
     let colorScheme: ColorScheme
 
+    func makeCoordinator() -> ExternalSiteNavigationDelegate {
+        ExternalSiteNavigationDelegate()
+    }
+
     func makeUIView(context: Context) -> WKWebView {
         // NOTE: page JavaScript stays ENABLED here, deliberately. This view frames third-party
         // oEmbed players (YouTube, redditmedia) whose own cross-origin document needs script to
@@ -1607,6 +1599,9 @@ struct EmbeddedMediaWebView: UIViewRepresentable {
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear
         webView.scrollView.isScrollEnabled = false
+        // Page script stays on for the player iframe, so the delegate is what keeps the wrapper
+        // document from navigating anywhere but `http(s)`.
+        webView.navigationDelegate = context.coordinator
 
         return webView
     }
@@ -1669,6 +1664,10 @@ struct EmbeddedMediaWebView: NSViewRepresentable {
     let html: String
     let colorScheme: ColorScheme
 
+    func makeCoordinator() -> ExternalSiteNavigationDelegate {
+        ExternalSiteNavigationDelegate()
+    }
+
     func makeNSView(context: Context) -> ScrollPassthroughWebView {
         // NOTE: page JavaScript stays ENABLED here, deliberately. This view frames third-party
         // oEmbed players (YouTube, redditmedia) whose own cross-origin document needs script to
@@ -1681,6 +1680,9 @@ struct EmbeddedMediaWebView: NSViewRepresentable {
         configuration.preferences.isElementFullscreenEnabled = true
 
         let webView = ScrollPassthroughWebView(frame: .zero, configuration: configuration)
+        // Page script stays on for the player iframe, so the delegate is what keeps the wrapper
+        // document from navigating anywhere but `http(s)`.
+        webView.navigationDelegate = context.coordinator
         return webView
     }
 
@@ -1992,21 +1994,15 @@ struct CommentWebView: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            if navigationAction.navigationType == .other {
-                decisionHandler(.allow)
-                return
+            let navigationType = navigationAction.navigationType
+            let url = navigationAction.request.url
+
+            // Link taps open in Safari; everything else is denied by the shared policy.
+            if let openable = WebViewSecurity.externalOpenURL(for: navigationType, url: url, isContentView: true) {
+                UIApplication.shared.open(openable)
             }
 
-            // Handle link taps - open in Safari
-            if navigationAction.navigationType == .linkActivated {
-                if let url = SafeURL.webOpenable(navigationAction.request.url) {
-                    UIApplication.shared.open(url)
-                }
-                decisionHandler(.cancel)
-                return
-            }
-
-            decisionHandler(.allow)
+            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true))
         }
     }
 
@@ -2187,21 +2183,15 @@ struct CommentWebView: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            if navigationAction.navigationType == .other {
-                decisionHandler(.allow)
-                return
+            let navigationType = navigationAction.navigationType
+            let url = navigationAction.request.url
+
+            // Link taps open in the default browser; everything else is denied by the shared policy.
+            if let openable = WebViewSecurity.externalOpenURL(for: navigationType, url: url, isContentView: true) {
+                NSWorkspace.shared.open(openable)
             }
 
-            // Handle link taps - open in browser
-            if navigationAction.navigationType == .linkActivated {
-                if let url = SafeURL.webOpenable(navigationAction.request.url) {
-                    NSWorkspace.shared.open(url)
-                }
-                decisionHandler(.cancel)
-                return
-            }
-
-            decisionHandler(.allow)
+            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true))
         }
     }
 
