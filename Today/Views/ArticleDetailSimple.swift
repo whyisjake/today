@@ -15,6 +15,43 @@ import UIKit
 import AppKit
 #endif
 
+/// Hardening applied to every WebView that renders untrusted feed / Reddit HTML.
+///
+/// Article bodies and Reddit selftext are attacker-controlled strings that get interpolated
+/// into an HTML template and handed to `loadHTMLString(_:baseURL: nil)`. Two independent
+/// controls close that off:
+///
+/// 1. `allowsContentJavaScript = false` — page-authored script never runs. Host-initiated
+///    `evaluateJavaScript` (used to measure content height in `didFinish`) is *not* affected;
+///    that separation is what makes this safe to turn off.
+/// 2. A `Content-Security-Policy` meta tag with **no `script-src` directive**, so
+///    `default-src 'none'` blocks every script source — inline `<script>` and inline event
+///    handlers such as `onerror` alike. This holds even where JavaScript stays enabled.
+enum WebViewSecurity {
+    /// CSP for documents built out of untrusted feed / Reddit HTML.
+    static let contentSecurityPolicyMeta =
+        "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src http: https: data:; style-src 'unsafe-inline'; media-src http: https:; font-src http: https: data:\">"
+
+    /// Same lockdown plus `frame-src https:`, for the embedded-media wrapper. Reddit / oEmbed
+    /// players live inside a cross-origin iframe that carries its own CSP and runs its own
+    /// JavaScript, so framing them costs nothing here: the wrapper document — the only part
+    /// built from attacker-supplied HTML — still has no script capability at all.
+    static let embeddedMediaSecurityPolicyMeta =
+        "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; frame-src https:; img-src http: https: data:; style-src 'unsafe-inline'; media-src http: https:; font-src http: https: data:\">"
+
+    /// Disables page-authored JavaScript on a content WebView configuration.
+    @discardableResult
+    static func disableContentJavaScript(_ configuration: WKWebViewConfiguration) -> WKWebViewConfiguration {
+        configuration.defaultWebpagePreferences.allowsContentJavaScript = false
+        return configuration
+    }
+
+    /// A fresh configuration for a WebView that renders untrusted HTML.
+    static func makeContentConfiguration() -> WKWebViewConfiguration {
+        disableContentJavaScript(WKWebViewConfiguration())
+    }
+}
+
 // Shared WebView configuration to speed up initialization
 class WebViewPool {
     static let shared = WebViewPool()
@@ -24,6 +61,8 @@ class WebViewPool {
         #if os(iOS)
         config.dataDetectorTypes = [.link, .phoneNumber]
         #endif
+        // Untrusted feed HTML is rendered here — no page-authored script may run.
+        WebViewSecurity.disableContentJavaScript(config)
         // iOS 15+ automatically shares process pools, no need to set manually
         return config
     }()
@@ -588,7 +627,7 @@ struct ScrollableWebView: NSViewRepresentable {
 
 // Shared HTML styling function for WebViewWithHeight
 // Uses Tailwind Typography-inspired styles embedded locally (no network request)
-private func createStyledHTML(from html: String, colorScheme: ColorScheme, accentColor: Color, fontOption: FontOption) -> String {
+func createStyledHTML(from html: String, colorScheme: ColorScheme, accentColor: Color, fontOption: FontOption) -> String {
     // Convert SwiftUI Color to hex string
     let accentColorHex = accentColor.toHex()
     let isDark = colorScheme == .dark
@@ -618,6 +657,7 @@ private func createStyledHTML(from html: String, colorScheme: ColorScheme, accen
     <html>
     <head>
         <meta charset="utf-8">
+        \(WebViewSecurity.contentSecurityPolicyMeta)
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
         <style>
             /* Tailwind Typography-inspired prose styles (embedded locally) */

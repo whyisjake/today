@@ -582,7 +582,8 @@ struct PostWebView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
+        // Untrusted Reddit HTML is rendered here — no page-authored script may run.
+        let configuration = WebViewSecurity.makeContentConfiguration()
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.isOpaque = false
         webView.backgroundColor = .clear
@@ -648,6 +649,7 @@ struct PostWebView: UIViewRepresentable {
         <html>
         <head>
             <meta charset="utf-8">
+            \(WebViewSecurity.contentSecurityPolicyMeta)
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
             <style>
                 body {
@@ -728,7 +730,8 @@ struct PostWebView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
+        // Untrusted Reddit HTML is rendered here — no page-authored script may run.
+        let configuration = WebViewSecurity.makeContentConfiguration()
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         // macOS-specific: disable drawing background for dark mode transparency
@@ -817,6 +820,7 @@ struct PostWebView: NSViewRepresentable {
         <html>
         <head>
             <meta charset="utf-8">
+            \(WebViewSecurity.contentSecurityPolicyMeta)
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
             <style>
                 body {
@@ -1582,6 +1586,12 @@ struct EmbeddedMediaWebView: UIViewRepresentable {
     let colorScheme: ColorScheme
 
     func makeUIView(context: Context) -> WKWebView {
+        // NOTE: page JavaScript stays ENABLED here, deliberately. This view frames third-party
+        // oEmbed players (YouTube, redditmedia) whose own cross-origin document needs script to
+        // run, and `allowsContentJavaScript` is a page-wide setting that would also kill the
+        // subframe. The untrusted half — the wrapper document built from `media_embed` HTML — is
+        // instead locked down by `embeddedMediaSecurityPolicyMeta`, which omits `script-src`
+        // entirely, so no inline `<script>` or `onerror=` in that HTML can execute.
         let configuration = WKWebViewConfiguration()
         configuration.allowsInlineMediaPlayback = true
         configuration.allowsPictureInPictureMediaPlayback = true
@@ -1613,6 +1623,7 @@ struct EmbeddedMediaWebView: UIViewRepresentable {
         <html>
         <head>
             <meta charset="utf-8">
+            \(WebViewSecurity.embeddedMediaSecurityPolicyMeta)
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
             <style>
                 * {
@@ -1659,6 +1670,12 @@ struct EmbeddedMediaWebView: NSViewRepresentable {
     let colorScheme: ColorScheme
 
     func makeNSView(context: Context) -> ScrollPassthroughWebView {
+        // NOTE: page JavaScript stays ENABLED here, deliberately. This view frames third-party
+        // oEmbed players (YouTube, redditmedia) whose own cross-origin document needs script to
+        // run, and `allowsContentJavaScript` is a page-wide setting that would also kill the
+        // subframe. The untrusted half — the wrapper document built from `media_embed` HTML — is
+        // instead locked down by `embeddedMediaSecurityPolicyMeta`, which omits `script-src`
+        // entirely, so no inline `<script>` or `onerror=` in that HTML can execute.
         let configuration = WKWebViewConfiguration()
         configuration.mediaTypesRequiringUserActionForPlayback = []
         configuration.preferences.isElementFullscreenEnabled = true
@@ -1675,6 +1692,7 @@ struct EmbeddedMediaWebView: NSViewRepresentable {
         <html>
         <head>
             <meta charset="utf-8">
+            \(WebViewSecurity.embeddedMediaSecurityPolicyMeta)
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
             <style>
                 * {
@@ -1923,7 +1941,8 @@ struct CommentWebView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
+        // Untrusted Reddit HTML is rendered here — no page-authored script may run.
+        let configuration = WebViewSecurity.makeContentConfiguration()
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.isOpaque = false
         webView.backgroundColor = .clear
@@ -2001,6 +2020,7 @@ struct CommentWebView: UIViewRepresentable {
         <html>
         <head>
             <meta charset="utf-8">
+            \(WebViewSecurity.contentSecurityPolicyMeta)
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
             <style>
                 html, body {
@@ -2093,7 +2113,8 @@ struct CommentWebView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
+        // Untrusted Reddit HTML is rendered here — no page-authored script may run.
+        let configuration = WebViewSecurity.makeContentConfiguration()
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         // macOS-specific: disable drawing background for dark mode transparency
@@ -2194,6 +2215,7 @@ struct CommentWebView: NSViewRepresentable {
         <html>
         <head>
             <meta charset="utf-8">
+            \(WebViewSecurity.contentSecurityPolicyMeta)
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
             <style>
                 html, body {
