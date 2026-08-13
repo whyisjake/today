@@ -178,8 +178,14 @@ struct ArticleDetailViewEnhanced: View {
 
                         Divider()
 
-                        if let description = article.articleDescription {
-                            Text(description.htmlToAttributedString)
+                        // Plain text only. The WebKit HTML importer this used to call parses
+                        // feed markup on the main actor and synchronously fetches externally
+                        // referenced subresources, so a feed could turn a render into an
+                        // outbound request. Prefer the value computed at insert; the fallback
+                        // covers rows that predate the cache and have not been backfilled.
+                        if let description = article.plainTextDescription
+                            ?? article.articleDescription?.htmlToPlainText {
+                            Text(description)
                                 .font(.body)
                         }
 
