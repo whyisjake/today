@@ -1849,14 +1849,22 @@ struct FeedArticlesView: View {
         return articles
     }
 
-    /// Counted in the database so the answer stays exact regardless of the fetch limit —
-    /// deriving it from the fetched array would silently cap it.
+    /// Derived from the already-fetched articles rather than a separate `fetchCount`.
+    ///
+    /// This view owns a `@Query`, and `feedDetailMenu` — which reads this — is built in the
+    /// toolbar on every body pass. A fetch against the same `modelContext` during body
+    /// touches the context that `@Query` observes, invalidating the view and re-running body,
+    /// which fetches again: the list froze, taps and scrolling stopped registering, and the
+    /// view eventually died.
+    ///
+    /// `TodayView` does the same kind of counting safely only because its `@Query` lives in a
+    /// child view (`ArticleWindow`), so its counts cannot invalidate their own query.
+    ///
+    /// Counting the array caps at the query's `fetchLimit`, which is what shipped before this
+    /// view was bounded. For a badge on a single feed that ceiling is not reachable in
+    /// practice, and a slightly low badge is vastly preferable to a frozen screen.
     private var unreadCount: Int {
-        let feedId = feed.id
-        let descriptor = FetchDescriptor<Article>(
-            predicate: #Predicate<Article> { $0.feed?.id == feedId && !$0.isRead }
-        )
-        return (try? modelContext.fetchCount(descriptor)) ?? 0
+        feedArticles.lazy.filter { !$0.isRead }.count
     }
 
     var body: some View {
@@ -2299,15 +2307,22 @@ private struct FeedArticleDestination: View {
     @Binding var navigationState: FeedArticlesView.NavigationState?
     @Environment(\.modelContext) private var modelContext
 
-    /// Resolve by fetch rather than `model(for:)`, which can hand back an unrealised stub for
-    /// an identifier that no longer resolves — the `as? Article` cast would then fail and the
-    /// destination would render nothing at all.
+    /// `model(for:)` first: it is a cheap identity-map lookup and does not touch the store.
+    /// Only if that fails do we fall back to a fetch, because `model(for:)` can hand back an
+    /// unrealised stub whose `as? Article` cast fails — which is how this destination used to
+    /// end up rendering nothing at all.
+    ///
+    /// Order matters. Fetching unconditionally would run a store query on every body pass, and
+    /// a fetch during body is what froze `FeedArticlesView` (see `unreadCount` there).
     private var article: Article? {
         let id = state.articleID
+        if let resolved = modelContext.model(for: id) as? Article {
+            return resolved
+        }
         let fetched = try? modelContext.fetch(
             FetchDescriptor<Article>(predicate: #Predicate<Article> { $0.persistentModelID == id })
         )
-        return fetched?.first ?? modelContext.model(for: id) as? Article
+        return fetched?.first
     }
 
     /// Sibling IDs either side of the current article, for previous/next.
