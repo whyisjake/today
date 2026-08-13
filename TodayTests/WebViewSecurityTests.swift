@@ -113,9 +113,18 @@ final class WebViewSecurityTests: XCTestCase {
             XCTAssertFalse(policy.contains("script-src"), "Policy must not grant any script source: \(policy)")
             XCTAssertFalse(policy.contains("'unsafe-eval'"), "Policy must not allow eval: \(policy)")
         }
-        // The embedded-media wrapper additionally frames third-party players.
-        XCTAssertTrue(WebViewSecurity.embeddedMediaSecurityPolicyMeta.contains("frame-src https:"))
-        XCTAssertFalse(WebViewSecurity.contentSecurityPolicyMeta.contains("frame-src"), "Article/Reddit text wrappers must not frame anything")
+        // Both wrappers frame third-party players over https only.
+        //
+        // The article/Reddit wrapper originally framed nothing. That blanked every
+        // YouTube/Vimeo/Spotify embed in an ordinary WordPress feed, so `frame-src https:` was
+        // added deliberately. The concession is bounded: only https frames, the framed document
+        // is cross-origin under its own CSP, the wrapper itself still grants no script source,
+        // and `WebViewSecurity.policy` allows the load only for a genuine subframe — a
+        // main-frame navigation or a popup is still cancelled.
+        for policy in [WebViewSecurity.contentSecurityPolicyMeta, WebViewSecurity.embeddedMediaSecurityPolicyMeta] {
+            XCTAssertTrue(policy.contains("frame-src https:"), "Embeds must load over https: \(policy)")
+            XCTAssertFalse(policy.contains("frame-src *"), "Framing must stay scheme-restricted: \(policy)")
+        }
     }
 
     // MARK: - Edge case: every content configuration factory disables page JavaScript

@@ -624,13 +624,15 @@ struct PostWebView: UIViewRepresentable {
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             let navigationType = navigationAction.navigationType
             let url = navigationAction.request.url
+            // nil targetFrame means a new-window/popup navigation, which is not a subframe.
+            let isSubframe = navigationAction.targetFrame?.isMainFrame == false
 
             // Link taps open in Safari; everything else is denied by the shared policy.
             if let openable = WebViewSecurity.externalOpenURL(for: navigationType, url: url, isContentView: true) {
                 UIApplication.shared.open(openable)
             }
 
-            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true))
+            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true, isSubframe: isSubframe))
         }
     }
 
@@ -790,13 +792,15 @@ struct PostWebView: NSViewRepresentable {
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             let navigationType = navigationAction.navigationType
             let url = navigationAction.request.url
+            // nil targetFrame means a new-window/popup navigation, which is not a subframe.
+            let isSubframe = navigationAction.targetFrame?.isMainFrame == false
 
             // Link taps open in the default browser; everything else is denied by the shared policy.
             if let openable = WebViewSecurity.externalOpenURL(for: navigationType, url: url, isContentView: true) {
                 NSWorkspace.shared.open(openable)
             }
 
-            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true))
+            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true, isSubframe: isSubframe))
         }
     }
 
@@ -1999,13 +2003,15 @@ struct CommentWebView: UIViewRepresentable {
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             let navigationType = navigationAction.navigationType
             let url = navigationAction.request.url
+            // nil targetFrame means a new-window/popup navigation, which is not a subframe.
+            let isSubframe = navigationAction.targetFrame?.isMainFrame == false
 
             // Link taps open in Safari; everything else is denied by the shared policy.
             if let openable = WebViewSecurity.externalOpenURL(for: navigationType, url: url, isContentView: true) {
                 UIApplication.shared.open(openable)
             }
 
-            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true))
+            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true, isSubframe: isSubframe))
         }
     }
 
@@ -2189,13 +2195,15 @@ struct CommentWebView: NSViewRepresentable {
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             let navigationType = navigationAction.navigationType
             let url = navigationAction.request.url
+            // nil targetFrame means a new-window/popup navigation, which is not a subframe.
+            let isSubframe = navigationAction.targetFrame?.isMainFrame == false
 
             // Link taps open in the default browser; everything else is denied by the shared policy.
             if let openable = WebViewSecurity.externalOpenURL(for: navigationType, url: url, isContentView: true) {
                 NSWorkspace.shared.open(openable)
             }
 
-            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true))
+            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true, isSubframe: isSubframe))
         }
     }
 

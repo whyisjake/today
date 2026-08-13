@@ -29,8 +29,14 @@ import AppKit
 ///    handlers such as `onerror` alike. This holds even where JavaScript stays enabled.
 enum WebViewSecurity {
     /// CSP for documents built out of untrusted feed / Reddit HTML.
+    ///
+    /// `frame-src https:` is present because article bodies legitimately embed players —
+    /// omitting it blanked every YouTube/Vimeo/Spotify iframe in an ordinary WordPress feed.
+    /// It costs little: the framed document is cross-origin under its own CSP, the article
+    /// document around it still has no `script-src`, and `policy(...)` only lets a frame load
+    /// over http(s) while continuing to refuse any navigation of the article itself.
     static let contentSecurityPolicyMeta =
-        "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src http: https: data:; style-src 'unsafe-inline'; media-src http: https:; font-src http: https: data:\">"
+        "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; frame-src https:; img-src http: https: data:; style-src 'unsafe-inline'; media-src http: https:; font-src http: https: data:\">"
 
     /// Same lockdown plus `frame-src https:`, for the embedded-media wrapper. Reddit / oEmbed
     /// players live inside a cross-origin iframe that carries its own CSP and runs its own
@@ -99,7 +105,8 @@ enum WebViewSecurity {
     static func policy(
         for navigationType: WKNavigationType,
         url: URL?,
-        isContentView: Bool
+        isContentView: Bool,
+        isSubframe: Bool = false
     ) -> WKNavigationActionPolicy {
         if isInMemoryDocument(url) {
             // The wrapper document itself. Only ever arrives as `.other`; a link tap or form
@@ -108,8 +115,22 @@ enum WebViewSecurity {
         }
 
         if isContentView {
-            // Nothing else is legitimate: page script is off and the CSP frames nothing, so any
-            // remaining navigation is either a link tap (handled externally) or an attack.
+            // Embeds. `content:encoded` in ordinary WordPress feeds routinely carries a
+            // YouTube/Vimeo/Spotify `<iframe>`, and cancelling every non-initial navigation
+            // blanked all of them. A subframe load is not a navigation *of the article*: the
+            // framed document is a separate cross-origin page under its own CSP, and the
+            // article document around it still cannot script it.
+            //
+            // Deliberately narrow. `isSubframe` is false when `targetFrame` is nil, which is
+            // how WebKit reports a new-window/popup navigation — those stay cancelled. Only
+            // http(s) frames load, and only the frame moves; anything trying to navigate the
+            // article itself is still refused below.
+            if isSubframe, SafeURL.webOpenable(url) != nil {
+                return .allow
+            }
+
+            // Nothing else is legitimate: page script is off, so any remaining navigation of
+            // the article document is either a link tap (handled externally) or an attack.
             return .cancel
         }
 
@@ -726,12 +747,14 @@ struct ScrollableWebView: NSViewRepresentable {
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             let navigationType = navigationAction.navigationType
             let url = navigationAction.request.url
+            // nil targetFrame means a new-window/popup navigation, which is not a subframe.
+            let isSubframe = navigationAction.targetFrame?.isMainFrame == false
 
             if let openable = WebViewSecurity.externalOpenURL(for: navigationType, url: url, isContentView: true) {
                 NSWorkspace.shared.open(openable)
             }
 
-            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true))
+            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true, isSubframe: isSubframe))
         }
     }
 }
@@ -1106,6 +1129,8 @@ struct WebViewWithHeight: UIViewRepresentable {
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             let navigationType = navigationAction.navigationType
             let url = navigationAction.request.url
+            // nil targetFrame means a new-window/popup navigation, which is not a subframe.
+            let isSubframe = navigationAction.targetFrame?.isMainFrame == false
 
             if let openable = WebViewSecurity.externalOpenURL(for: navigationType, url: url, isContentView: true) {
                 DispatchQueue.main.async {
@@ -1113,7 +1138,7 @@ struct WebViewWithHeight: UIViewRepresentable {
                 }
             }
 
-            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true))
+            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true, isSubframe: isSubframe))
         }
     }
 }
@@ -1207,6 +1232,8 @@ struct WebViewWithHeight: NSViewRepresentable {
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             let navigationType = navigationAction.navigationType
             let url = navigationAction.request.url
+            // nil targetFrame means a new-window/popup navigation, which is not a subframe.
+            let isSubframe = navigationAction.targetFrame?.isMainFrame == false
 
             if let openable = WebViewSecurity.externalOpenURL(for: navigationType, url: url, isContentView: true) {
                 DispatchQueue.main.async {
@@ -1214,7 +1241,7 @@ struct WebViewWithHeight: NSViewRepresentable {
                 }
             }
 
-            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true))
+            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true, isSubframe: isSubframe))
         }
     }
 }

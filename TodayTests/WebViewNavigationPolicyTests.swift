@@ -88,6 +88,59 @@ final class WebViewNavigationPolicyTests: XCTestCase {
         }
     }
 
+    // MARK: - Content WebViews: embeds may load in a subframe
+
+    /// `content:encoded` in ordinary feeds carries YouTube/Vimeo/Spotify iframes. Cancelling
+    /// every non-initial navigation blanked all of them, so an http(s) *subframe* load is
+    /// allowed — the framed page is cross-origin under its own CSP, and the article document
+    /// around it still cannot script it.
+    func testContentViewAllowsHTTPSSubframeLoadForEmbeds() {
+        XCTAssertEqual(
+            WebViewSecurity.policy(for: .other, url: httpsLink, isContentView: true, isSubframe: true),
+            .allow,
+            "an https iframe in an article body must load, or every embed renders blank"
+        )
+    }
+
+    /// The concession is for frames only. Anything trying to navigate the article document
+    /// itself stays cancelled, which is the property the whole policy exists for.
+    func testContentViewStillCancelsMainFrameNavigation() {
+        for type in allNavigationTypes {
+            XCTAssertEqual(
+                WebViewSecurity.policy(for: type, url: httpsLink, isContentView: true, isSubframe: false),
+                .cancel,
+                "main-frame navigation \(type.rawValue) must stay cancelled on a content view"
+            )
+        }
+    }
+
+    /// A subframe is not a blank cheque: the scheme allow-list still applies, so a framed
+    /// `file://` cannot read the container.
+    func testContentViewCancelsNonWebSubframeSchemes() {
+        let nonWebURLs = [
+            localFile,
+            URL(string: "data:text/html,<h1>x</h1>")!,
+            URL(string: "javascript:alert(1)")!,
+        ]
+        for url in nonWebURLs {
+            XCTAssertEqual(
+                WebViewSecurity.policy(for: .other, url: url, isContentView: true, isSubframe: true),
+                .cancel,
+                "\(url) must not load even as a subframe"
+            )
+        }
+    }
+
+    /// WebKit reports a new-window/popup navigation with a nil `targetFrame`, which the
+    /// delegates map to `isSubframe == false` — so a popup cannot ride the embed exception.
+    func testPopupNavigationIsNotTreatedAsASubframe() {
+        XCTAssertEqual(
+            WebViewSecurity.policy(for: .other, url: httpsLink, isContentView: true, isSubframe: false),
+            .cancel,
+            "a nil targetFrame is a popup, not a frame, and must stay cancelled"
+        )
+    }
+
     // MARK: - Content WebViews: link taps open externally, http(s) only
 
     func testLinkTapCancelsInPlaceAndSurfacesHTTPSURLForExternalOpen() {
