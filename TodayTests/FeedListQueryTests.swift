@@ -127,6 +127,35 @@ final class FeedListQueryTests: XCTestCase {
         XCTAssertEqual(try context.fetch(read).count, 15)
     }
 
+    /// The navigation round-trip: FeedArticlesView hands `article.persistentModelID` to
+    /// `.navigationDestination`, which resolves it back with
+    /// `modelContext.model(for:) as? Article`. If that resolution fails the destination
+    /// renders nothing and the tap appears to do nothing — the reported symptom.
+    func testPersistentIDFromPrefetchedQueryResolvesBack() throws {
+        let feed = try seedFeed(title: "Alpha", articles: 5)
+        let feedId = feed.id
+
+        var descriptor = FetchDescriptor<Article>(
+            predicate: #Predicate<Article> { $0.feed?.id == feedId },
+            sortBy: [SortDescriptor(\Article.publishedDate, order: .reverse)]
+        )
+        descriptor.fetchLimit = ArticleQuery.defaultFetchLimit
+        descriptor.relationshipKeyPathsForPrefetching = [\.feed]
+
+        let fetched = try context.fetch(descriptor)
+        XCTAssertFalse(fetched.isEmpty)
+
+        for article in fetched {
+            let id = article.persistentModelID
+            let resolved = context.model(for: id) as? Article
+            XCTAssertNotNil(
+                resolved,
+                "model(for:) must resolve an ID taken from a prefetched, limited query"
+            )
+            XCTAssertEqual(resolved?.guid, article.guid)
+        }
+    }
+
     /// A feed with no articles must return empty rather than trap.
     func testEmptyFeedReturnsNoArticles() throws {
         let feed = try seedFeed(title: "Empty", articles: 0)
