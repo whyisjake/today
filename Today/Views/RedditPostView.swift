@@ -359,10 +359,22 @@ struct RedditPostView: View {
             var request = URLRequest(url: requestURL)
             request.setValue("ios:com.today.app:v1.0 (by /u/TodayApp)", forHTTPHeaderField: "User-Agent")
 
+            // This fetch does not go through ConditionalHTTPClient, so it has to observe the
+            // same pacing itself — otherwise opening posts competes with the sync for Reddit's
+            // budget and both get 429s.
+            await HostThrottle.shared.waitForTurn(requestURL)
+
             let (data, response) = try await URLSession.shared.data(for: request)
-            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+            let http = response as? HTTPURLResponse
+            let status = http?.statusCode ?? -1
             Perf.log("🔵 [Reddit] HTTP \(status), \(data.count) bytes")
             guard status == 200 else {
+                if status == 429 {
+                    await HostThrottle.shared.penalize(
+                        requestURL,
+                        retryAfter: http?.value(forHTTPHeaderField: "Retry-After")
+                    )
+                }
                 Perf.logError("🔴 [Reddit] non-200; body starts: \(String(data: data.prefix(160), encoding: .utf8) ?? "<non-utf8>")")
                 throw HTTPError.unexpectedStatus(code: status, url: requestURL)
             }
@@ -491,13 +503,8 @@ struct PostContentView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.up")
-                        .font(.caption)
-                    Text("\(post.score)")
-                        .font(.subheadline)
-                }
-                .foregroundStyle(.secondary)
+                // Score intentionally omitted: Reddit's RSS carries no vote counts, so this
+                // would always read 0. Recovering it needs the authenticated Data API.
 
                 Text("•")
                     .font(.caption)
@@ -511,6 +518,16 @@ struct PostContentView: View {
             // Gallery images (if available)
             if !post.galleryImages.isEmpty {
                 ImageGalleryView(images: post.galleryImages, availableWidth: availableWidth)
+            }
+            // Reddit-hosted video. Ahead of the embed and image branches: a v.redd.it post also
+            // carries a preview image, and the still would otherwise win and hide the clip.
+            else if let videoURL = post.videoURL {
+                AnimatedMediaView(
+                    videoUrl: videoURL,
+                    posterUrl: post.imageUrl,
+                    availableWidth: availableWidth
+                )
+                .cornerRadius(8)
             }
             // Embedded media from external video services
             else if let mediaEmbedHtml = post.mediaEmbedHtml,
@@ -1886,13 +1903,7 @@ struct CommentRowView: View {
                             .font(.caption2)
                             .foregroundStyle(.secondary)
 
-                        HStack(spacing: 4) {
-                            Image(systemName: "arrow.up")
-                                .font(.caption2)
-                            Text("\(comment.score)")
-                                .font(.caption2)
-                        }
-                        .foregroundStyle(.secondary)
+                        // Score intentionally omitted — see the note on the post header.
 
                         Text("•")
                             .font(.caption2)

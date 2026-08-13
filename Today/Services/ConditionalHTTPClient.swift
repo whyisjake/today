@@ -141,6 +141,9 @@ enum ConditionalHTTPClient {
             request.setValue(value, forHTTPHeaderField: key)
         }
 
+        // Pace requests to hosts that rate-limit. A no-op for almost every host.
+        await HostThrottle.shared.waitForTurn(url)
+
         let redirectObserver = RedirectObserver()
         let (data, response) = try await session.data(for: request, delegate: redirectObserver)
 
@@ -188,6 +191,14 @@ enum ConditionalHTTPClient {
         // "this feed returned 403". Fail loudly here so the per-feed health record
         // (`lastSyncError`) names the real reason.
         guard (200...299).contains(httpResponse.statusCode) else {
+            // A 429 is the host asking for room. Record it so the next request to the same host
+            // waits rather than piling on and extending the penalty.
+            if httpResponse.statusCode == 429 {
+                await HostThrottle.shared.penalize(
+                    url,
+                    retryAfter: httpResponse.value(forHTTPHeaderField: "Retry-After")
+                )
+            }
             throw HTTPError.unexpectedStatus(
                 code: httpResponse.statusCode,
                 url: httpResponse.url ?? url

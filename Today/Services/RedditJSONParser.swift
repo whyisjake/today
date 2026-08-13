@@ -371,6 +371,10 @@ struct ParsedRedditPost {
     let mediaEmbedHtml: String? // Embedded media iframe for external video services
     let mediaEmbedWidth: Int?
     let mediaEmbedHeight: Int?
+    /// Directly playable video (an HLS manifest for Reddit-hosted `v.redd.it` clips).
+    ///
+    /// Defaulted so the JSON parser, which has no equivalent field, is unaffected.
+    var videoURL: String? = nil
 
     /// Convert to RSSParser.ParsedArticle format for compatibility
     func toArticle() -> RSSParser.ParsedArticle {

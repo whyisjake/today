@@ -102,6 +102,7 @@ final class RedditPostRSSParser: NSObject, XMLParserDelegate {
         // Where the post actually points, and whether that is something we can frame.
         let target = Self.linkTarget(in: selftextHTML)
         let embedHTML = target.flatMap(Self.redgifsSlug(in:)).map(Self.redgifsEmbedHTML(for:))
+        let videoURL = target.flatMap(Self.redditVideoHLSURL(in:))
 
         let post = ParsedRedditPost(
             id: Self.strippingPrefix(postEntry.id),
@@ -125,7 +126,8 @@ final class RedditPostRSSParser: NSObject, XMLParserDelegate {
             // redgifs' iframe letterboxes to its own aspect inside whatever it is given, so a
             // portrait clip is shown whole rather than cropped — just with bars.
             mediaEmbedWidth: embedHTML == nil ? nil : 640,
-            mediaEmbedHeight: embedHTML == nil ? nil : 360
+            mediaEmbedHeight: embedHTML == nil ? nil : 360,
+            videoURL: videoURL
         )
 
         let opName = Self.strippingUserPrefix(postEntry.authorName)
@@ -189,6 +191,26 @@ final class RedditPostRSSParser: NSObject, XMLParserDelegate {
         let slug = parts[1]
         guard !slug.isEmpty, slug.allSatisfy({ $0.isLetter || $0.isNumber }) else { return nil }
         return slug
+    }
+
+    /// The HLS manifest for a Reddit-hosted clip, or nil when the post is not one.
+    ///
+    /// A `v.redd.it/<id>` link is a landing page, not a media file, so it cannot be handed to
+    /// AVPlayer directly. The playable asset sits at a fixed path beneath it — verified against
+    /// a live clip, which returns a master playlist offering several bitrates. AVPlayer speaks
+    /// HLS natively, so no extra machinery is needed.
+    ///
+    /// As with the redgifs embed, the URL is rebuilt from a hardcoded host and a validated id
+    /// rather than passing the feed's href through.
+    static func redditVideoHLSURL(in urlString: String) -> String? {
+        guard let url = SafeURL.webOpenable(urlString),
+              url.host?.lowercased() == "v.redd.it"
+        else { return nil }
+
+        let id = url.path.split(separator: "/").map(String.init).first ?? ""
+        guard !id.isEmpty, id.allSatisfy({ $0.isLetter || $0.isNumber }) else { return nil }
+
+        return "https://v.redd.it/\(id)/HLSPlaylist.m3u8"
     }
 
     /// The iframe markup for a redgifs clip, or nil when the post is not one.

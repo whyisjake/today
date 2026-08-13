@@ -267,6 +267,50 @@ final class RedditPostRSSParserTests: XCTestCase {
         XCTAssertNil(plain.post.mediaEmbedWidth)
     }
 
+    // MARK: - Reddit-hosted video
+
+    /// A `v.redd.it/<id>` link is a landing page, not a media file. The playable asset is the
+    /// HLS manifest beneath it, which AVPlayer speaks natively.
+    func testRedditVideoLinkBecomesAnHLSManifestURL() {
+        XCTAssertEqual(
+            RedditPostRSSParser.redditVideoHLSURL(in: "https://v.redd.it/qdlv6zbd21jh1"),
+            "https://v.redd.it/qdlv6zbd21jh1/HLSPlaylist.m3u8"
+        )
+        XCTAssertEqual(
+            RedditPostRSSParser.redditVideoHLSURL(in: "https://v.redd.it/qdlv6zbd21jh1/"),
+            "https://v.redd.it/qdlv6zbd21jh1/HLSPlaylist.m3u8"
+        )
+    }
+
+    /// Same rule as the redgifs embed: the URL is rebuilt from a hardcoded host and a validated
+    /// id, so a feed cannot point the player wherever it likes.
+    func testNonRedditVideoHostsProduceNoVideoURL() {
+        for url in [
+            "https://i.redd.it/abc.jpeg",
+            "https://v.redd.it.evil.example/abc",
+            "https://evil.example/abc",
+            "file:///etc/passwd",
+        ] {
+            XCTAssertNil(RedditPostRSSParser.redditVideoHLSURL(in: url), "\(url) must not yield video")
+        }
+    }
+
+    func testVideoPostCarriesAVideoURLAndNoEmbed() throws {
+        let videoFeed = feed.replacingOccurrences(
+            of: "&lt;table&gt; &lt;tr&gt;&lt;td&gt;",
+            with: "&lt;table&gt; &lt;tr&gt;&lt;td&gt;&lt;span&gt;&lt;a href=&quot;https://v.redd.it/qdlv6zbd21jh1&quot;&gt;[link]&lt;/a&gt;&lt;/span&gt;"
+        )
+
+        let result = try RedditPostRSSParser().parse(data: Data(videoFeed.utf8), fallback: makeArticle())
+
+        XCTAssertEqual(result.post.videoURL, "https://v.redd.it/qdlv6zbd21jh1/HLSPlaylist.m3u8")
+        XCTAssertNil(result.post.mediaEmbedHtml, "a Reddit clip plays natively, not in an iframe")
+    }
+
+    func testImagePostCarriesNoVideoURL() throws {
+        XCTAssertNil(try parse().post.videoURL)
+    }
+
     // MARK: - Error paths
 
     func testNonFeedPayloadThrowsRatherThanProducingAnEmptyPost() {
