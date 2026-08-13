@@ -173,16 +173,53 @@ final class ConditionalHTTPClientTests: XCTestCase {
     func testMockProtocolIsInterceptingRatherThanHittingTheNetwork() async throws {
         let url = URL(string: "https://example.invalid/definitely-not-mapped.xml")!
 
-        let response = try await ConditionalHTTPClient.conditionalFetch(
-            url: url,
-            lastModified: nil,
-            etag: nil,
-            session: mockSession
+        // MockURLProtocol answers unmapped URLs with a synthetic 404, which the client now
+        // rejects rather than passing off as feed content. A *live* call to `.invalid` would
+        // fail with a DNS/connection error instead, so a clean 404 is still the proof that the
+        // mock is in the loading path.
+        do {
+            _ = try await ConditionalHTTPClient.conditionalFetch(
+                url: url,
+                lastModified: nil,
+                etag: nil,
+                session: mockSession
+            )
+            XCTFail("an unmapped URL must not resolve successfully")
+        } catch let error as HTTPError {
+            guard case .unexpectedStatus(let code, _) = error else {
+                return XCTFail("expected an unexpectedStatus error, got \(error)")
+            }
+            XCTAssertEqual(code, 404, "the mock's synthetic status, not a live network failure")
+        }
+    }
+
+    /// A non-success status is not feed content. Before this, only 304 was special-cased, so a
+    /// 403 body — Reddit's 190 KB HTML block page, in the case that prompted it — was handed to
+    /// the parser and surfaced as a JSON syntax error rather than "this feed returned 403".
+    func testNonSuccessStatusThrowsRatherThanReturningTheBodyAsFeedData() async throws {
+        let url = URL(string: "https://example.com/blocked.json")!
+        MockURLProtocol.mockResponses[url] = MockURLProtocol.MockResponse(
+            statusCode: 403,
+            headers: [:],
+            data: "<html><body>Blocked</body></html>".data(using: .utf8)!,
+            redirectURL: nil
         )
 
-        // MockURLProtocol answers unmapped URLs with a synthetic 404 and no body.
-        XCTAssertTrue(response.wasModified)
-        XCTAssertEqual(response.data?.count ?? 0, 0, "a live network response would carry a body")
+        do {
+            _ = try await ConditionalHTTPClient.conditionalFetch(
+                url: url, lastModified: nil, etag: nil, session: mockSession
+            )
+            XCTFail("a 403 must not be reported as a successful fetch")
+        } catch let error as HTTPError {
+            guard case .unexpectedStatus(let code, _) = error else {
+                return XCTFail("expected an unexpectedStatus error, got \(error)")
+            }
+            XCTAssertEqual(code, 403)
+            XCTAssertTrue(
+                error.localizedDescription.contains("403"),
+                "the message must name the status so lastSyncError is diagnosable: \(error.localizedDescription)"
+            )
+        }
     }
 
     // MARK: - Basic Fetch Tests

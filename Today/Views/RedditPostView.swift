@@ -332,7 +332,10 @@ struct RedditPostView: View {
         isLoading = true
         errorMessage = nil
 
+        Perf.log("🔵 [Reddit] loadPost begin — commentsUrl=\(article.redditCommentsUrl ?? "nil") subreddit=\(article.redditSubreddit ?? "nil") postId=\(article.redditPostId ?? "nil")")
+
         guard let commentsUrl = article.redditCommentsUrl else {
+            Perf.logError("🔴 [Reddit] no redditCommentsUrl on this article — nothing to fetch")
             errorMessage = "Invalid Reddit post URL"
             isLoading = false
             return
@@ -343,16 +346,24 @@ struct RedditPostView: View {
             // `redditCommentsUrl` is feed-supplied; refuse anything that is not http(s)
             // rather than handing it to URLSession.
             guard let requestURL = SafeURL.webOpenable(jsonURL) else {
+                Perf.logError("🔴 [Reddit] SafeURL rejected the comments URL: \(jsonURL)")
                 throw RedditError.invalidURL
             }
+            Perf.log("🔵 [Reddit] fetching \(requestURL.absoluteString)")
 
             var request = URLRequest(url: requestURL)
             request.setValue("ios:com.today.app:v1.0 (by /u/TodayApp)", forHTTPHeaderField: "User-Agent")
 
-            let (data, _) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await URLSession.shared.data(for: request)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+            Perf.log("🔵 [Reddit] HTTP \(status), \(data.count) bytes")
+            if status != 200 {
+                Perf.logError("🔴 [Reddit] non-200 response; body starts: \(String(data: data.prefix(200), encoding: .utf8) ?? "<non-utf8>")")
+            }
 
             let parser = RedditJSONParser()
             let (parsedPost, parsedComments) = try parser.parsePostWithComments(data: data)
+            Perf.log("🔵 [Reddit] parsed post=\(parsedPost.title.prefix(40))… selftextHtml=\(parsedPost.selftextHtml?.count ?? -1) chars, comments=\(parsedComments.count)")
 
             self.post = parsedPost
             self.comments = parsedComments
@@ -364,6 +375,7 @@ struct RedditPostView: View {
 
             isLoading = false
         } catch {
+            Perf.logError("🔴 [Reddit] loadPost failed: \(error) — \(error.localizedDescription)")
             errorMessage = error.localizedDescription
             isLoading = false
         }
@@ -600,6 +612,7 @@ struct PostWebView: UIViewRepresentable {
         let decodedHTML = WebViewSecurity.decodeForRendering(html)
 
         let styledHTML = createStyledHTML(from: decodedHTML, colorScheme: colorScheme, accentColor: accentColor, fontOption: fontOption)
+        Perf.log("🟣 [RedditWebView] load: raw=\(html.count) decoded=\(decodedHTML.count) styled=\(styledHTML.count) chars")
         context.coordinator.parent = self
         webView.loadHTMLString(styledHTML, baseURL: nil)
     }
@@ -614,9 +627,12 @@ struct PostWebView: UIViewRepresentable {
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             webView.evaluateJavaScript("Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)") { height, error in
                 if let height = height as? CGFloat {
+                    Perf.log("🟣 [RedditWebView] didFinish height=\(height)")
                     DispatchQueue.main.async {
                         self.parent.height = height
                     }
+                } else {
+                    Perf.logError("🔴 [RedditWebView] height measurement returned no value: \(String(describing: error)) — view will stay collapsed")
                 }
             }
         }
@@ -632,7 +648,9 @@ struct PostWebView: UIViewRepresentable {
                 UIApplication.shared.open(openable)
             }
 
-            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true, isSubframe: isSubframe))
+            let decision = WebViewSecurity.policy(for: navigationType, url: url, isContentView: true, isSubframe: isSubframe)
+            Perf.log("🟣 [RedditWebView] nav type=\(navigationType.rawValue) subframe=\(isSubframe) url=\(url?.absoluteString ?? "nil") -> \(decision == .allow ? "ALLOW" : "CANCEL")")
+            decisionHandler(decision)
         }
     }
 
@@ -762,6 +780,7 @@ struct PostWebView: NSViewRepresentable {
         let decodedHTML = WebViewSecurity.decodeForRendering(html)
 
         let styledHTML = createStyledHTML(from: decodedHTML, colorScheme: colorScheme, accentColor: accentColor, fontOption: fontOption)
+        Perf.log("🟣 [RedditWebView] load: raw=\(html.count) decoded=\(decodedHTML.count) styled=\(styledHTML.count) chars")
         context.coordinator.parent = self
         webView.loadHTMLString(styledHTML, baseURL: nil)
         disableWebViewScrolling(webView)
@@ -780,11 +799,14 @@ struct PostWebView: NSViewRepresentable {
 
             webView.evaluateJavaScript("Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)") { height, error in
                 if let height = height as? CGFloat {
+                    Perf.log("🟣 [RedditWebView] didFinish height=\(height)")
                     DispatchQueue.main.async {
                         self.parent.height = height
                         // Re-disable after height adjustment
                         self.parent.disableWebViewScrolling(webView)
                     }
+                } else {
+                    Perf.logError("🔴 [RedditWebView] height measurement returned no value: \(String(describing: error)) — view will stay collapsed")
                 }
             }
         }
@@ -800,7 +822,9 @@ struct PostWebView: NSViewRepresentable {
                 NSWorkspace.shared.open(openable)
             }
 
-            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true, isSubframe: isSubframe))
+            let decision = WebViewSecurity.policy(for: navigationType, url: url, isContentView: true, isSubframe: isSubframe)
+            Perf.log("🟣 [RedditWebView] nav type=\(navigationType.rawValue) subframe=\(isSubframe) url=\(url?.absoluteString ?? "nil") -> \(decision == .allow ? "ALLOW" : "CANCEL")")
+            decisionHandler(decision)
         }
     }
 
@@ -1967,6 +1991,7 @@ struct CommentWebView: UIViewRepresentable {
         let decodedHTML = WebViewSecurity.decodeForRendering(html)
 
         let styledHTML = createStyledHTML(from: decodedHTML, colorScheme: colorScheme, accentColor: accentColor, fontOption: fontOption)
+        Perf.log("🟣 [RedditWebView] load: raw=\(html.count) decoded=\(decodedHTML.count) styled=\(styledHTML.count) chars")
         context.coordinator.parent = self
         webView.loadHTMLString(styledHTML, baseURL: nil)
     }
@@ -1993,9 +2018,12 @@ struct CommentWebView: UIViewRepresentable {
             """
             webView.evaluateJavaScript(script) { height, error in
                 if let height = height as? CGFloat {
+                    Perf.log("🟣 [RedditWebView] didFinish height=\(height)")
                     DispatchQueue.main.async {
                         self.parent.height = height
                     }
+                } else {
+                    Perf.logError("🔴 [RedditWebView] height measurement returned no value: \(String(describing: error)) — view will stay collapsed")
                 }
             }
         }
@@ -2011,7 +2039,9 @@ struct CommentWebView: UIViewRepresentable {
                 UIApplication.shared.open(openable)
             }
 
-            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true, isSubframe: isSubframe))
+            let decision = WebViewSecurity.policy(for: navigationType, url: url, isContentView: true, isSubframe: isSubframe)
+            Perf.log("🟣 [RedditWebView] nav type=\(navigationType.rawValue) subframe=\(isSubframe) url=\(url?.absoluteString ?? "nil") -> \(decision == .allow ? "ALLOW" : "CANCEL")")
+            decisionHandler(decision)
         }
     }
 
@@ -2153,6 +2183,7 @@ struct CommentWebView: NSViewRepresentable {
         let decodedHTML = WebViewSecurity.decodeForRendering(html)
 
         let styledHTML = createStyledHTML(from: decodedHTML, colorScheme: colorScheme, accentColor: accentColor, fontOption: fontOption)
+        Perf.log("🟣 [RedditWebView] load: raw=\(html.count) decoded=\(decodedHTML.count) styled=\(styledHTML.count) chars")
         context.coordinator.parent = self
         webView.loadHTMLString(styledHTML, baseURL: nil)
         // disableWebViewScrolling(webView)
@@ -2183,11 +2214,14 @@ struct CommentWebView: NSViewRepresentable {
             """
             webView.evaluateJavaScript(script) { height, error in
                 if let height = height as? CGFloat {
+                    Perf.log("🟣 [RedditWebView] didFinish height=\(height)")
                     DispatchQueue.main.async {
                         self.parent.height = height
                         // Re-disable after height adjustment
                         // self.parent.disableWebViewScrolling(webView)
                     }
+                } else {
+                    Perf.logError("🔴 [RedditWebView] height measurement returned no value: \(String(describing: error)) — view will stay collapsed")
                 }
             }
         }
@@ -2203,7 +2237,9 @@ struct CommentWebView: NSViewRepresentable {
                 NSWorkspace.shared.open(openable)
             }
 
-            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true, isSubframe: isSubframe))
+            let decision = WebViewSecurity.policy(for: navigationType, url: url, isContentView: true, isSubframe: isSubframe)
+            Perf.log("🟣 [RedditWebView] nav type=\(navigationType.rawValue) subframe=\(isSubframe) url=\(url?.absoluteString ?? "nil") -> \(decision == .allow ? "ALLOW" : "CANCEL")")
+            decisionHandler(decision)
         }
     }
 
