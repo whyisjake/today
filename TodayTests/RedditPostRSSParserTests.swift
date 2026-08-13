@@ -105,8 +105,9 @@ final class RedditPostRSSParserTests: XCTestCase {
     func testPostBodyAndImageSurvive() throws {
         let result = try parse()
 
-        let html = try XCTUnwrap(result.post.selftextHtml)
-        XCTAssertTrue(html.contains("<img"), "the preview image markup is decoded, not left escaped")
+        // The fixture is a link post: its content is Reddit's scaffold, which is not shown.
+        // The image still reaches the view through the article's own imageUrl.
+        XCTAssertNil(result.post.selftextHtml, "scaffold is not body content")
         XCTAssertEqual(result.post.imageUrl, "https://preview.redd.it/xhfay7t4r3jh1.jpeg")
         XCTAssertEqual(
             result.post.permalink,
@@ -184,9 +185,13 @@ final class RedditPostRSSParserTests: XCTestCase {
     }
 
     /// The other side of the same rule: what Reddit sends as real markup must arrive as real
-    /// markup, so images and links in a post body still render.
+    /// markup. Checked on a self post, since a link post's body is scaffold and is dropped.
     func testGenuineMarkupSurvivesAsMarkup() throws {
-        let result = try parse()
+        let selfPost = feed.replacingOccurrences(
+            of: "&lt;table&gt; &lt;tr&gt;&lt;td&gt;",
+            with: "&lt;!-- SC_OFF --&gt;&lt;div class=\"md\"&gt;&lt;p&gt;&lt;img src=\"https://i.redd.it/a.jpeg\"/&gt;body&lt;/p&gt;&lt;/div&gt;&lt;!-- SC_ON --&gt;&lt;table&gt; &lt;tr&gt;&lt;td&gt;"
+        )
+        let result = try RedditPostRSSParser().parse(data: Data(selfPost.utf8), fallback: makeArticle())
         let html = try XCTUnwrap(result.post.selftextHtml)
 
         XCTAssertTrue(html.contains("<img"), "a real <img> must not be left escaped: \(html.prefix(120))")
@@ -309,6 +314,101 @@ final class RedditPostRSSParserTests: XCTestCase {
 
     func testImagePostCarriesNoVideoURL() throws {
         XCTAssertNil(try parse().post.videoURL)
+    }
+
+    // MARK: - Building a post with no network call
+
+    /// The view builds from the stored article now. Everything it renders must survive that,
+    /// or opening a post silently loses content.
+    func testPostIsBuiltFromTheStoredArticle() throws {
+        let article = makeArticle()
+        article.content = """
+        <table><tr><td><a href="https://www.reddit.com/r/itookapicture/comments/1vn4sxk/itap_of_a_splash/">\
+        <img src="https://preview.redd.it/xhfay7t4r3jh1.jpeg"/></a></td><td>
+        <span><a href="https://i.redd.it/xhfay7t4r3jh1.jpeg">[link]</a></span>
+        </td></tr></table>
+        """
+        article.author = "/u/Lower_Context3517"
+
+        let post = try XCTUnwrap(RedditPostRSSParser.makePost(from: article))
+
+        XCTAssertEqual(post.title, "ITAP of a splash")
+        XCTAssertEqual(post.author, "Lower_Context3517")
+        XCTAssertEqual(post.subreddit, "itookapicture")
+        XCTAssertEqual(post.id, "1vn4sxk")
+        XCTAssertEqual(post.url, "https://i.redd.it/xhfay7t4r3jh1.jpeg", "the [link] target, not the permalink")
+        XCTAssertEqual(post.imageUrl, "https://preview.redd.it/xhfay7t4r3jh1.jpeg")
+        XCTAssertNil(post.selftextHtml, "this article's content is scaffold, so there is no body")
+    }
+
+    /// Media detection must work from the stored article too, not only from a fetched feed.
+    func testMediaIsDetectedFromTheStoredArticle() throws {
+        let redgifs = makeArticle()
+        redgifs.content = #"<span><a href="https://www.redgifs.com/watch/wingedbreakablegonolek">[link]</a></span>"#
+        let redgifsPost = try XCTUnwrap(RedditPostRSSParser.makePost(from: redgifs))
+        XCTAssertTrue(try XCTUnwrap(redgifsPost.mediaEmbedHtml).contains("redgifs.com/ifr/wingedbreakablegonolek"))
+        XCTAssertNotNil(redgifsPost.mediaEmbedWidth)
+
+        let video = makeArticle()
+        video.content = #"<span><a href="https://v.redd.it/qdlv6zbd21jh1">[link]</a></span>"#
+        let videoPost = try XCTUnwrap(RedditPostRSSParser.makePost(from: video))
+        XCTAssertEqual(videoPost.videoURL, "https://v.redd.it/qdlv6zbd21jh1/HLSPlaylist.m3u8")
+        XCTAssertNil(videoPost.mediaEmbedHtml, "a Reddit clip plays natively rather than in an iframe")
+    }
+
+    /// The comments link needs a destination; without a permalink there is nothing to show.
+    func testArticleWithoutARedditPermalinkYieldsNoPost() {
+        let article = Article(
+            title: "no permalink", link: "", publishedDate: Date(), guid: "g"
+        )
+        XCTAssertNil(RedditPostRSSParser.makePost(from: article))
+    }
+
+    // MARK: - Reddit's scaffold is not post content
+
+    /// A link post's entire content is Reddit's chrome — thumbnail, "submitted by /u/name",
+    /// `[link]`, `[comments]`. Rendering it put a duplicate thumbnail and byline underneath the
+    /// media, repeating what the header already shows.
+    func testLinkPostHasNoBodyBecauseItsContentIsAllScaffold() {
+        let scaffold = """
+        <table> <tr><td> <a href="https://www.reddit.com/r/x/comments/abc/slug/">\
+        <img src="https://preview.redd.it/a.jpeg" alt="t"/></a> </td><td> &#32; submitted by &#32; \
+        <a href="https://www.reddit.com/user/someone"> /u/someone </a> <br/> \
+        <span><a href="https://www.redgifs.com/watch/abc">[link]</a></span> &#32; \
+        <span><a href="https://www.reddit.com/r/x/comments/abc/slug/">[comments]</a></span> </td></tr></table>
+        """
+        XCTAssertNil(RedditPostRSSParser.postBody(in: scaffold))
+    }
+
+    /// A self post does have a body, and only the author's part of it should survive.
+    func testSelfPostKeepsOnlyTheAuthorsText() throws {
+        let selfPost = """
+        <!-- SC_OFF --><div class="md"><p>Real body text.</p></div><!-- SC_ON --> &#32; submitted by &#32; \
+        <a href="https://www.reddit.com/user/someone"> /u/someone </a> <br/> \
+        <span><a href="https://www.reddit.com/r/x/comments/abc/slug/">[comments]</a></span>
+        """
+        let body = try XCTUnwrap(RedditPostRSSParser.postBody(in: selfPost))
+
+        XCTAssertTrue(body.contains("Real body text."))
+        XCTAssertFalse(body.contains("submitted by"), "the byline is already in the header")
+        XCTAssertFalse(body.contains("[comments]"), "the comments link is rendered separately")
+        XCTAssertFalse(body.contains("<img"), "no duplicate thumbnail under the media")
+    }
+
+    /// The `[link]` anchor lives inside the scaffold, so target detection has to keep reading the
+    /// raw content even though the body no longer does.
+    func testMediaStillDetectedEvenThoughScaffoldIsNotShown() throws {
+        let article = makeArticle()
+        article.content = """
+        <table><tr><td><img src="https://preview.redd.it/a.jpeg"/></td><td> submitted by \
+        <a href="https://www.reddit.com/user/someone">/u/someone</a> \
+        <span><a href="https://www.redgifs.com/watch/wingedbreakablegonolek">[link]</a></span></td></tr></table>
+        """
+
+        let post = try XCTUnwrap(RedditPostRSSParser.makePost(from: article))
+
+        XCTAssertNil(post.selftextHtml, "the scaffold is not body content")
+        XCTAssertTrue(try XCTUnwrap(post.mediaEmbedHtml).contains("redgifs.com/ifr/wingedbreakablegonolek"))
     }
 
     // MARK: - Error paths

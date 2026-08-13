@@ -85,9 +85,7 @@ struct RedditPostView: View {
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                     Button("Try Again") {
-                        Task {
-                            await loadPost()
-                        }
+                        loadPost()
                     }
                     .buttonStyle(.borderedProminent)
                 }
@@ -102,59 +100,16 @@ struct RedditPostView: View {
                         Divider()
                             .padding(.vertical, 16)
 
-                        // Comments section
-                        // On macOS, flatten the comment tree to avoid recursive view issues
-                        #if os(macOS)
-                        let displayComments = flattenComments(comments, maxDepth: 4, collapsedIds: collapsedCommentIds)
-                        #else
-                        let displayComments = comments
-                        #endif
+                        // Comments live on Reddit, not here.
+                        //
+                        // They used to be fetched from the post's own feed, but that meant a
+                        // network request per post opened — which competed with the sync for
+                        // Reddit's rate-limit budget and returned a flat, score-less, truncated
+                        // thread. Everything this view shows now comes from the article already
+                        // in the store, so opening a post costs nothing and cannot 429.
+                        RedditCommentsLink(url: post.commentsUrl, openURL: openURL)
+                            .padding(.horizontal, 16)
 
-                        if displayComments.isEmpty {
-                            VStack(spacing: 12) {
-                                Image(systemName: "bubble.left")
-                                    .font(.system(size: 36))
-                                    .foregroundStyle(.secondary)
-                                Text("No comments yet")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 32)
-                        } else {
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text("\(post.numComments) Comments")
-                                        .font(.headline)
-                                        .fontWeight(.semibold)
-                                    Spacer()
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.bottom, 8)
-
-                                LazyVStack(alignment: .leading, spacing: 0) {
-                                    ForEach(displayComments) { comment in
-                                        #if os(macOS)
-                                        CommentRowView(
-                                            comment: comment,
-                                            fontOption: fontOption,
-                                            isCollapsed: collapsedCommentIds.contains(comment.id),
-                                            hasChildren: commentsWithChildren.contains(comment.id),
-                                            onToggleCollapse: {
-                                                if collapsedCommentIds.contains(comment.id) {
-                                                    collapsedCommentIds.remove(comment.id)
-                                                } else {
-                                                    collapsedCommentIds.insert(comment.id)
-                                                }
-                                            }
-                                        )
-                                        #else
-                                        CommentRowView(comment: comment, fontOption: fontOption)
-                                        #endif
-                                    }
-                                }
-                            }
-                        }
                         }
                         .padding(.bottom, 32)
                     }
@@ -306,8 +261,9 @@ struct RedditPostView: View {
         .onDisappear {
             markAsRead()
         }
-        .task {
-            await loadPost()
+        // Synchronous and local: safe to re-run if SwiftUI rebuilds this view.
+        .onAppear {
+            loadPost()
         }
     }
 
@@ -328,74 +284,47 @@ struct RedditPostView: View {
         dismiss()
     }
 
-    private func loadPost() async {
-        isLoading = true
-        errorMessage = nil
+    /// Opens the post's Reddit page, where the comment thread actually lives.
+    private struct RedditCommentsLink: View {
+        let url: String
+        let openURL: OpenURLAction
 
-        Perf.log("🔵 [Reddit] loadPost begin — commentsUrl=\(article.redditCommentsUrl ?? "nil") subreddit=\(article.redditSubreddit ?? "nil") postId=\(article.redditPostId ?? "nil")")
-
-        guard let commentsUrl = article.redditCommentsUrl else {
-            Perf.logError("🔴 [Reddit] no redditCommentsUrl on this article — nothing to fetch")
-            errorMessage = "Invalid Reddit post URL"
-            isLoading = false
-            return
-        }
-
-        do {
-            // Fetch the post's Atom feed, not its `.json`.
-            //
-            // Reddit answers unauthenticated `.json` with 403 and a 190 KB HTML block page, and
-            // has said that shutdown is deliberate. The per-post `.rss` still answers 200 and
-            // carries the post *and* its comments, so the thread survives without the
-            // authenticated Data API — at the cost of score and reply nesting, which Atom does
-            // not express (see RedditPostRSSParser).
-            let base = commentsUrl.hasSuffix("/") ? String(commentsUrl.dropLast()) : commentsUrl
-            guard let requestURL = SafeURL.webOpenable(base + ".rss") else {
-                Perf.logError("🔴 [Reddit] SafeURL rejected the comments URL: \(base).rss")
-                throw RedditError.invalidURL
-            }
-            Perf.log("🔵 [Reddit] fetching \(requestURL.absoluteString)")
-
-            var request = URLRequest(url: requestURL)
-            request.setValue("ios:com.today.app:v1.0 (by /u/TodayApp)", forHTTPHeaderField: "User-Agent")
-
-            // This fetch does not go through ConditionalHTTPClient, so it has to observe the
-            // same pacing itself — otherwise opening posts competes with the sync for Reddit's
-            // budget and both get 429s.
-            await HostThrottle.shared.waitForTurn(requestURL)
-
-            let (data, response) = try await URLSession.shared.data(for: request)
-            let http = response as? HTTPURLResponse
-            let status = http?.statusCode ?? -1
-            Perf.log("🔵 [Reddit] HTTP \(status), \(data.count) bytes")
-            guard status == 200 else {
-                if status == 429 {
-                    await HostThrottle.shared.penalize(
-                        requestURL,
-                        retryAfter: http?.value(forHTTPHeaderField: "Retry-After")
-                    )
+        var body: some View {
+            Button {
+                if let target = SafeURL.webOpenable(url) { openURL(target) }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "bubble.left.and.bubble.right")
+                    Text("View comments on Reddit")
+                    Spacer()
+                    Image(systemName: "arrow.up.right")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                Perf.logError("🔴 [Reddit] non-200; body starts: \(String(data: data.prefix(160), encoding: .utf8) ?? "<non-utf8>")")
-                throw HTTPError.unexpectedStatus(code: status, url: requestURL)
+                .font(.subheadline)
+                .padding(.vertical, 12)
+                .padding(.horizontal, 14)
+                .frame(maxWidth: .infinity)
+                .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
             }
-
-            let parsed = try RedditPostRSSParser().parse(data: data, fallback: article)
-            Perf.log("🔵 [Reddit] parsed post=\(parsed.post.title.prefix(40))… selftextHtml=\(parsed.post.selftextHtml?.count ?? -1) chars, comments=\(parsed.comments.count)")
-
-            self.post = parsed.post
-            self.comments = parsed.comments
-
-            // Pre-compute which comments have children (for macOS collapse UI)
-            #if os(macOS)
-            self.commentsWithChildren = computeCommentsWithChildren(parsed.comments)
-            #endif
-
-            isLoading = false
-        } catch {
-            Perf.logError("🔴 [Reddit] loadPost failed: \(error) — \(error.localizedDescription)")
-            errorMessage = error.localizedDescription
-            isLoading = false
+            .buttonStyle(.plain)
         }
+    }
+
+    /// Build the post from the article already in the store. No network call.
+    ///
+    /// This used to GET the post's own feed. That cost a request per post opened, competed with
+    /// the sync for Reddit's rate-limit budget (the 429s), and could be fired repeatedly for the
+    /// same post whenever `@Query` updated and SwiftUI rebuilt the navigation destination.
+    ///
+    /// None of it was necessary: the subreddit feed entry already carries the title, author,
+    /// date, permalink, preview image, and the same content table the post feed returns —
+    /// including the `[link]` anchor that identifies a redgifs or v.redd.it target. The only
+    /// thing the request added was the comment thread, which now opens on Reddit instead.
+    private func loadPost() {
+        post = RedditPostRSSParser.makePost(from: article)
+        errorMessage = post == nil ? "Invalid Reddit post URL" : nil
+        isLoading = false
     }
 
     enum RedditError: LocalizedError {

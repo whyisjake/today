@@ -100,7 +100,10 @@ final class RedditPostRSSParser: NSObject, XMLParserDelegate {
         let selftextHTML = postEntry.content
 
         // Where the post actually points, and whether that is something we can frame.
+        // Target comes from the raw content (the scaffold is where the [link] anchor lives);
+        // the displayed body is the scaffold-free part.
         let target = Self.linkTarget(in: selftextHTML)
+        let displayBody = Self.postBody(in: selftextHTML)
         let embedHTML = target.flatMap(Self.redgifsSlug(in:)).map(Self.redgifsEmbedHTML(for:))
         let videoURL = target.flatMap(Self.redditVideoHLSURL(in:))
 
@@ -112,8 +115,8 @@ final class RedditPostRSSParser: NSObject, XMLParserDelegate {
             url: target ?? fallback.link,
             permalink: permalink,
             commentsUrl: permalink,
-            selftext: selftextHTML.htmlToPlainText,
-            selftextHtml: selftextHTML.isEmpty ? nil : selftextHTML,
+            selftext: displayBody?.htmlToPlainText,
+            selftextHtml: displayBody,
             // Not in the feed. Reported as 0 rather than guessed; the view hides a zero score.
             score: 0,
             numComments: max(entries.count - 1, 0),
@@ -151,6 +154,72 @@ final class RedditPostRSSParser: NSObject, XMLParserDelegate {
         }
 
         return Result(post: post, comments: comments)
+    }
+
+    // MARK: - Building a post without a network call
+
+    /// Build a post from the article the subreddit feed already produced.
+    ///
+    /// The per-post feed is not needed for anything the view renders. The subreddit entry
+    /// carries the same content table — title, author, date, permalink, preview image, and the
+    /// `[link]` anchor identifying a redgifs or v.redd.it target — so opening a post costs no
+    /// request and cannot be rate-limited. Only the comment thread required the extra fetch,
+    /// and that now opens on Reddit.
+    ///
+    /// Returns nil when the article carries no Reddit permalink, which is the one case the view
+    /// has nothing to show.
+    static func makePost(from article: Article) -> ParsedRedditPost? {
+        guard let permalink = article.redditCommentsUrl ?? article.articleURL?.absoluteString else {
+            return nil
+        }
+
+        // The stored content is the same table the post feed returns; `contentEncoded` wins when
+        // both are present, matching how the feed parser fills them.
+        let bodyHTML = article.contentEncoded ?? article.content ?? article.articleDescription ?? ""
+        let target = linkTarget(in: bodyHTML)
+        let displayBody = postBody(in: bodyHTML)
+
+        return ParsedRedditPost(
+            id: strippingPrefix(article.redditPostId ?? article.guid),
+            title: article.title,
+            author: strippingUserPrefix(article.author ?? ""),
+            subreddit: article.redditSubreddit ?? "",
+            url: target ?? article.link,
+            permalink: permalink,
+            commentsUrl: permalink,
+            selftext: displayBody?.htmlToPlainText,
+            selftextHtml: displayBody,
+            // RSS carries neither, and the view no longer shows either.
+            score: 0,
+            numComments: 0,
+            createdUtc: article.publishedDate,
+            imageUrl: article.imageUrl,
+            galleryImages: [],
+            mediaEmbedHtml: target.flatMap(redgifsSlug(in:)).map(redgifsEmbedHTML(for:)),
+            mediaEmbedWidth: target.flatMap(redgifsSlug(in:)) == nil ? nil : 640,
+            mediaEmbedHeight: target.flatMap(redgifsSlug(in:)) == nil ? nil : 360,
+            videoURL: target.flatMap(redditVideoHLSURL(in:))
+        )
+    }
+
+    /// The author's actual post text, with Reddit's scaffolding removed.
+    ///
+    /// Every RSS entry's content is wrapped in boilerplate Reddit builds for the web view: a
+    /// thumbnail table, then `submitted by /u/name`, then `[link]` and `[comments]` anchors.
+    /// Rendering that verbatim repeated the author and thumbnail already shown in the header,
+    /// and for a link post — an image, a redgifs clip, a v.redd.it video — the scaffold *is* the
+    /// whole content, so the body was nothing but duplicate chrome under the media.
+    ///
+    /// Reddit delimits real self-text with `<!-- SC_OFF -->` / `<!-- SC_ON -->`, so that marker
+    /// separates the two cases exactly: text between them is the author's, and its absence means
+    /// the post has no body.
+    static func postBody(in html: String) -> String? {
+        guard let start = html.range(of: "<!-- SC_OFF -->"),
+              let end = html.range(of: "<!-- SC_ON -->", range: start.upperBound..<html.endIndex)
+        else { return nil }
+
+        let body = html[start.upperBound..<end.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
+        return body.isEmpty ? nil : body
     }
 
     // MARK: - Link target and embeds
