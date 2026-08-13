@@ -51,6 +51,19 @@ enum WebViewSecurity {
         disableContentJavaScript(WKWebViewConfiguration())
     }
 
+    // MARK: - Entity decoding
+
+    /// Decode entity-encoded feed / Reddit HTML for rendering — exactly once.
+    ///
+    /// Reddit serves `selftext_html` / `body_html` entity-encoded, so one decode is required
+    /// to get markup. The render seams used to decode *twice* ("Reddit double-encodes"),
+    /// which meant `&amp;lt;script&amp;gt;` — text an upstream sanitizer had escaped —
+    /// became an executable `<script>`. Every seam calls this instead, so the "once" rule is
+    /// stated in one place and testable.
+    nonisolated static func decodeForRendering(_ html: String) -> String {
+        html.decodeHTMLEntities()
+    }
+
     // MARK: - Navigation policy
 
     /// True for the in-memory document produced by `loadHTMLString(_:baseURL: nil)`.

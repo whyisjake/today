@@ -595,8 +595,9 @@ struct PostWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
-        // Decode HTML entities (Reddit double-encodes, so decode twice)
-        let decodedHTML = html.decodeHTMLEntities().decodeHTMLEntities()
+        // Decode HTML entities exactly once. This used to decode twice — a second pass turns
+        // `&amp;lt;script&amp;gt;` back into live markup, defeating any upstream escaping.
+        let decodedHTML = WebViewSecurity.decodeForRendering(html)
 
         let styledHTML = createStyledHTML(from: decodedHTML, colorScheme: colorScheme, accentColor: accentColor, fontOption: fontOption)
         context.coordinator.parent = self
@@ -754,8 +755,9 @@ struct PostWebView: NSViewRepresentable {
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
-        // Decode HTML entities (Reddit double-encodes, so decode twice)
-        let decodedHTML = html.decodeHTMLEntities().decodeHTMLEntities()
+        // Decode HTML entities exactly once. This used to decode twice — a second pass turns
+        // `&amp;lt;script&amp;gt;` back into live markup, defeating any upstream escaping.
+        let decodedHTML = WebViewSecurity.decodeForRendering(html)
 
         let styledHTML = createStyledHTML(from: decodedHTML, colorScheme: colorScheme, accentColor: accentColor, fontOption: fontOption)
         context.coordinator.parent = self
@@ -1956,8 +1958,9 @@ struct CommentWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
-        // Decode HTML entities (Reddit double-encodes, so decode twice)
-        let decodedHTML = html.decodeHTMLEntities().decodeHTMLEntities()
+        // Decode HTML entities exactly once. This used to decode twice — a second pass turns
+        // `&amp;lt;script&amp;gt;` back into live markup, defeating any upstream escaping.
+        let decodedHTML = WebViewSecurity.decodeForRendering(html)
 
         let styledHTML = createStyledHTML(from: decodedHTML, colorScheme: colorScheme, accentColor: accentColor, fontOption: fontOption)
         context.coordinator.parent = self
@@ -2139,8 +2142,9 @@ struct CommentWebView: NSViewRepresentable {
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
-        // Decode HTML entities (Reddit double-encodes, so decode twice)
-        let decodedHTML = html.decodeHTMLEntities().decodeHTMLEntities()
+        // Decode HTML entities exactly once. This used to decode twice — a second pass turns
+        // `&amp;lt;script&amp;gt;` back into live markup, defeating any upstream escaping.
+        let decodedHTML = WebViewSecurity.decodeForRendering(html)
 
         let styledHTML = createStyledHTML(from: decodedHTML, colorScheme: colorScheme, accentColor: accentColor, fontOption: fontOption)
         context.coordinator.parent = self
