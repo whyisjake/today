@@ -193,6 +193,80 @@ final class RedditPostRSSParserTests: XCTestCase {
         XCTAssertFalse(html.contains("&lt;img"), "…and must not be double-escaped either")
     }
 
+    // MARK: - Link target and redgifs embeds
+
+    /// Atom's `<link href>` is the permalink; the post's real destination is the `[link]`
+    /// anchor inside the content table. Native image posts point at `i.redd.it`.
+    func testLinkTargetIsTakenFromTheLinkAnchorNotThePermalink() {
+        let html = """
+        <table><tr><td><a href="https://www.reddit.com/r/x/comments/abc/slug/"><img src="p.jpg"/></a></td><td>
+        <span><a href="https://i.redd.it/abc123.jpeg">[link]</a></span>
+        <span><a href="https://www.reddit.com/r/x/comments/abc/slug/">[comments]</a></span>
+        </td></tr></table>
+        """
+        XCTAssertEqual(RedditPostRSSParser.linkTarget(in: html), "https://i.redd.it/abc123.jpeg")
+    }
+
+    func testRedgifsSlugIsExtractedFromBothHostForms() {
+        XCTAssertEqual(
+            RedditPostRSSParser.redgifsSlug(in: "https://www.redgifs.com/watch/wingedbreakablegonolek"),
+            "wingedbreakablegonolek"
+        )
+        // Feeds carry the bare host too.
+        XCTAssertEqual(
+            RedditPostRSSParser.redgifsSlug(in: "https://redgifs.com/watch/fonddarkolivegreencollardlizard"),
+            "fonddarkolivegreencollardlizard"
+        )
+    }
+
+    /// The iframe lands in `EmbeddedMediaWebView`, which keeps JavaScript enabled so third-party
+    /// players work. Feed content must therefore not be able to choose the frame's origin.
+    func testNonRedgifsAndLookalikeHostsProduceNoEmbed() {
+        let rejected = [
+            "https://i.redd.it/abc.jpeg",
+            "https://redgifs.com.evil.example/watch/abc",   // look-alike host
+            "https://evil.example/watch/abc",
+            "https://www.redgifs.com/users/someone",         // not a watch URL
+            "javascript:alert(1)",
+            "file:///etc/passwd",
+        ]
+        for url in rejected {
+            XCTAssertNil(RedditPostRSSParser.redgifsSlug(in: url), "\(url) must not yield an embed")
+        }
+    }
+
+    func testEmbedURLIsBuiltFromTheHardcodedHostAndValidatedSlug() {
+        let embed = RedditPostRSSParser.redgifsEmbedHTML(for: "wingedbreakablegonolek")
+
+        XCTAssertTrue(embed.contains("https://www.redgifs.com/ifr/wingedbreakablegonolek"))
+        XCTAssertTrue(embed.hasPrefix("<iframe"), "the view renders this as embedded media")
+    }
+
+    /// End to end: a redgifs post yields a playable embed; a native image post does not.
+    func testRedgifsPostProducesAnEmbedAndImagePostDoesNot() throws {
+        let redgifsFeed = feed.replacingOccurrences(
+            of: "https://www.reddit.com/r/itookapicture/comments/1vn4sxk/itap_of_a_splash/&lt;/a&gt;&lt;/td&gt;",
+            with: "https://www.reddit.com/r/itookapicture/comments/1vn4sxk/itap_of_a_splash/&lt;/a&gt;&lt;/td&gt;"
+        ).replacingOccurrences(
+            of: "&lt;table&gt; &lt;tr&gt;&lt;td&gt;",
+            with: "&lt;table&gt; &lt;tr&gt;&lt;td&gt;&lt;span&gt;&lt;a href=&quot;https://www.redgifs.com/watch/wingedbreakablegonolek&quot;&gt;[link]&lt;/a&gt;&lt;/span&gt;"
+        )
+
+        let withEmbed = try RedditPostRSSParser().parse(
+            data: Data(redgifsFeed.utf8), fallback: makeArticle()
+        )
+        let embed = try XCTUnwrap(withEmbed.post.mediaEmbedHtml, "a redgifs post should be framable")
+        XCTAssertTrue(embed.contains("redgifs.com/ifr/wingedbreakablegonolek"))
+        XCTAssertEqual(withEmbed.post.url, "https://www.redgifs.com/watch/wingedbreakablegonolek")
+        XCTAssertNotNil(withEmbed.post.mediaEmbedWidth)
+        XCTAssertNotNil(withEmbed.post.mediaEmbedHeight)
+
+        // The plain image fixture has no [link] anchor at all, so no embed and no dimensions.
+        let plain = try parse()
+        XCTAssertNil(plain.post.mediaEmbedHtml)
+        XCTAssertNil(plain.post.mediaEmbedWidth)
+    }
+
     // MARK: - Error paths
 
     func testNonFeedPayloadThrowsRatherThanProducingAnEmptyPost() {

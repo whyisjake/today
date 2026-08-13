@@ -98,12 +98,17 @@ final class RedditPostRSSParser: NSObject, XMLParserDelegate {
         // user deliberately escaped (`&amp;lt;script&amp;gt;`) would arrive as `&lt;script&gt;`
         // — inert markup meant to display literally — and a second pass would make it live.
         let selftextHTML = postEntry.content
+
+        // Where the post actually points, and whether that is something we can frame.
+        let target = Self.linkTarget(in: selftextHTML)
+        let embedHTML = target.flatMap(Self.redgifsSlug(in:)).map(Self.redgifsEmbedHTML(for:))
+
         let post = ParsedRedditPost(
             id: Self.strippingPrefix(postEntry.id),
             title: postEntry.title,
             author: Self.strippingUserPrefix(postEntry.authorName),
             subreddit: fallback.redditSubreddit ?? "",
-            url: fallback.link,
+            url: target ?? fallback.link,
             permalink: permalink,
             commentsUrl: permalink,
             selftext: selftextHTML.htmlToPlainText,
@@ -115,9 +120,12 @@ final class RedditPostRSSParser: NSObject, XMLParserDelegate {
             imageUrl: fallback.imageUrl,
             // Gallery items are not enumerated in RSS — only the single preview image is.
             galleryImages: [],
-            mediaEmbedHtml: nil,
-            mediaEmbedWidth: nil,
-            mediaEmbedHeight: nil
+            mediaEmbedHtml: embedHTML,
+            // RSS carries no dimensions for the linked media, so the player gets a 16:9 box.
+            // redgifs' iframe letterboxes to its own aspect inside whatever it is given, so a
+            // portrait clip is shown whole rather than cropped — just with bars.
+            mediaEmbedWidth: embedHTML == nil ? nil : 640,
+            mediaEmbedHeight: embedHTML == nil ? nil : 360
         )
 
         let opName = Self.strippingUserPrefix(postEntry.authorName)
@@ -141,6 +149,56 @@ final class RedditPostRSSParser: NSObject, XMLParserDelegate {
         }
 
         return Result(post: post, comments: comments)
+    }
+
+    // MARK: - Link target and embeds
+
+    /// The URL a Reddit post actually points at, pulled from the `[link]` anchor in its entry.
+    ///
+    /// Atom's `<link href>` is the *permalink* (the comments page). The post's real destination
+    /// — `i.redd.it/…` for a native image, `redgifs.com/watch/…` for a hosted clip — appears
+    /// only inside the content table Reddit builds, as the anchor whose text is `[link]`.
+    static func linkTarget(in html: String) -> String? {
+        // Matches `<a href="TARGET">[link]</a>`, tolerating the whitespace Reddit inserts.
+        let pattern = #"<a\s+href="([^"]+)"\s*>\s*\[link\]\s*</a>"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+              let match = regex.firstMatch(
+                in: html, range: NSRange(html.startIndex..., in: html)
+              ),
+              let range = Range(match.range(at: 1), in: html)
+        else { return nil }
+
+        return String(html[range])
+    }
+
+    /// A redgifs slug, if this URL is a redgifs watch link.
+    ///
+    /// Accepts `www.redgifs.com` and the bare `redgifs.com` — feeds carry both — and rejects
+    /// anything else, including look-alike hosts such as `redgifs.com.evil.example`.
+    static func redgifsSlug(in urlString: String) -> String? {
+        guard let url = SafeURL.webOpenable(urlString),
+              let host = url.host?.lowercased(),
+              host == "redgifs.com" || host == "www.redgifs.com"
+        else { return nil }
+
+        let parts = url.path.split(separator: "/").map(String.init)
+        guard parts.count >= 2, parts[0].lowercased() == "watch" else { return nil }
+
+        // Slugs are alphanumeric. Validating rather than trusting keeps anything odd out of the
+        // iframe URL built below.
+        let slug = parts[1]
+        guard !slug.isEmpty, slug.allSatisfy({ $0.isLetter || $0.isNumber }) else { return nil }
+        return slug
+    }
+
+    /// The iframe markup for a redgifs clip, or nil when the post is not one.
+    ///
+    /// The URL is assembled from a hardcoded host and a validated slug — the feed's own href is
+    /// never interpolated. That matters because `EmbeddedMediaWebView`, which renders this,
+    /// deliberately keeps JavaScript enabled so third-party players work; letting feed content
+    /// choose the frame's origin would hand it a scripted context.
+    static func redgifsEmbedHTML(for slug: String) -> String {
+        "<iframe src=\"https://www.redgifs.com/ifr/\(slug)\" frameborder=\"0\" scrolling=\"no\" allowfullscreen></iframe>"
     }
 
     /// `t3_abc123` / `t1_abc123` → `abc123`. `ParsedRedditPost.toArticle()` re-adds the prefix.
