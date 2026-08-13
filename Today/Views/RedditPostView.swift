@@ -342,11 +342,16 @@ struct RedditPostView: View {
         }
 
         do {
-            let jsonURL = commentsUrl.hasSuffix("/") ? commentsUrl + ".json" : commentsUrl + ".json"
-            // `redditCommentsUrl` is feed-supplied; refuse anything that is not http(s)
-            // rather than handing it to URLSession.
-            guard let requestURL = SafeURL.webOpenable(jsonURL) else {
-                Perf.logError("🔴 [Reddit] SafeURL rejected the comments URL: \(jsonURL)")
+            // Fetch the post's Atom feed, not its `.json`.
+            //
+            // Reddit answers unauthenticated `.json` with 403 and a 190 KB HTML block page, and
+            // has said that shutdown is deliberate. The per-post `.rss` still answers 200 and
+            // carries the post *and* its comments, so the thread survives without the
+            // authenticated Data API — at the cost of score and reply nesting, which Atom does
+            // not express (see RedditPostRSSParser).
+            let base = commentsUrl.hasSuffix("/") ? String(commentsUrl.dropLast()) : commentsUrl
+            guard let requestURL = SafeURL.webOpenable(base + ".rss") else {
+                Perf.logError("🔴 [Reddit] SafeURL rejected the comments URL: \(base).rss")
                 throw RedditError.invalidURL
             }
             Perf.log("🔵 [Reddit] fetching \(requestURL.absoluteString)")
@@ -357,20 +362,20 @@ struct RedditPostView: View {
             let (data, response) = try await URLSession.shared.data(for: request)
             let status = (response as? HTTPURLResponse)?.statusCode ?? -1
             Perf.log("🔵 [Reddit] HTTP \(status), \(data.count) bytes")
-            if status != 200 {
-                Perf.logError("🔴 [Reddit] non-200 response; body starts: \(String(data: data.prefix(200), encoding: .utf8) ?? "<non-utf8>")")
+            guard status == 200 else {
+                Perf.logError("🔴 [Reddit] non-200; body starts: \(String(data: data.prefix(160), encoding: .utf8) ?? "<non-utf8>")")
+                throw HTTPError.unexpectedStatus(code: status, url: requestURL)
             }
 
-            let parser = RedditJSONParser()
-            let (parsedPost, parsedComments) = try parser.parsePostWithComments(data: data)
-            Perf.log("🔵 [Reddit] parsed post=\(parsedPost.title.prefix(40))… selftextHtml=\(parsedPost.selftextHtml?.count ?? -1) chars, comments=\(parsedComments.count)")
+            let parsed = try RedditPostRSSParser().parse(data: data, fallback: article)
+            Perf.log("🔵 [Reddit] parsed post=\(parsed.post.title.prefix(40))… selftextHtml=\(parsed.post.selftextHtml?.count ?? -1) chars, comments=\(parsed.comments.count)")
 
-            self.post = parsedPost
-            self.comments = parsedComments
+            self.post = parsed.post
+            self.comments = parsed.comments
 
             // Pre-compute which comments have children (for macOS collapse UI)
             #if os(macOS)
-            self.commentsWithChildren = computeCommentsWithChildren(parsedComments)
+            self.commentsWithChildren = computeCommentsWithChildren(parsed.comments)
             #endif
 
             isLoading = false
