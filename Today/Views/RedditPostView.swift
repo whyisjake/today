@@ -340,7 +340,9 @@ struct RedditPostView: View {
 
         do {
             let jsonURL = commentsUrl.hasSuffix("/") ? commentsUrl + ".json" : commentsUrl + ".json"
-            guard let requestURL = URL(string: jsonURL) else {
+            // `redditCommentsUrl` is feed-supplied; refuse anything that is not http(s)
+            // rather than handing it to URLSession.
+            guard let requestURL = SafeURL.webOpenable(jsonURL) else {
                 throw RedditError.invalidURL
             }
 
@@ -580,7 +582,8 @@ struct PostWebView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
+        // Untrusted Reddit HTML is rendered here — no page-authored script may run.
+        let configuration = WebViewSecurity.makeContentConfiguration()
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.isOpaque = false
         webView.backgroundColor = .clear
@@ -592,8 +595,9 @@ struct PostWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
-        // Decode HTML entities (Reddit double-encodes, so decode twice)
-        let decodedHTML = html.decodeHTMLEntities().decodeHTMLEntities()
+        // Decode HTML entities exactly once. This used to decode twice — a second pass turns
+        // `&amp;lt;script&amp;gt;` back into live markup, defeating any upstream escaping.
+        let decodedHTML = WebViewSecurity.decodeForRendering(html)
 
         let styledHTML = createStyledHTML(from: decodedHTML, colorScheme: colorScheme, accentColor: accentColor, fontOption: fontOption)
         context.coordinator.parent = self
@@ -618,21 +622,17 @@ struct PostWebView: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            if navigationAction.navigationType == .other {
-                decisionHandler(.allow)
-                return
+            let navigationType = navigationAction.navigationType
+            let url = navigationAction.request.url
+            // nil targetFrame means a new-window/popup navigation, which is not a subframe.
+            let isSubframe = navigationAction.targetFrame?.isMainFrame == false
+
+            // Link taps open in Safari; everything else is denied by the shared policy.
+            if let openable = WebViewSecurity.externalOpenURL(for: navigationType, url: url, isContentView: true) {
+                UIApplication.shared.open(openable)
             }
 
-            // Handle link taps - open in Safari
-            if navigationAction.navigationType == .linkActivated {
-                if let url = navigationAction.request.url {
-                    UIApplication.shared.open(url)
-                }
-                decisionHandler(.cancel)
-                return
-            }
-
-            decisionHandler(.allow)
+            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true, isSubframe: isSubframe))
         }
     }
 
@@ -646,6 +646,7 @@ struct PostWebView: UIViewRepresentable {
         <html>
         <head>
             <meta charset="utf-8">
+            \(WebViewSecurity.contentSecurityPolicyMeta)
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
             <style>
                 body {
@@ -726,7 +727,8 @@ struct PostWebView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
+        // Untrusted Reddit HTML is rendered here — no page-authored script may run.
+        let configuration = WebViewSecurity.makeContentConfiguration()
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         // macOS-specific: disable drawing background for dark mode transparency
@@ -755,8 +757,9 @@ struct PostWebView: NSViewRepresentable {
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
-        // Decode HTML entities (Reddit double-encodes, so decode twice)
-        let decodedHTML = html.decodeHTMLEntities().decodeHTMLEntities()
+        // Decode HTML entities exactly once. This used to decode twice — a second pass turns
+        // `&amp;lt;script&amp;gt;` back into live markup, defeating any upstream escaping.
+        let decodedHTML = WebViewSecurity.decodeForRendering(html)
 
         let styledHTML = createStyledHTML(from: decodedHTML, colorScheme: colorScheme, accentColor: accentColor, fontOption: fontOption)
         context.coordinator.parent = self
@@ -787,21 +790,17 @@ struct PostWebView: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            if navigationAction.navigationType == .other {
-                decisionHandler(.allow)
-                return
+            let navigationType = navigationAction.navigationType
+            let url = navigationAction.request.url
+            // nil targetFrame means a new-window/popup navigation, which is not a subframe.
+            let isSubframe = navigationAction.targetFrame?.isMainFrame == false
+
+            // Link taps open in the default browser; everything else is denied by the shared policy.
+            if let openable = WebViewSecurity.externalOpenURL(for: navigationType, url: url, isContentView: true) {
+                NSWorkspace.shared.open(openable)
             }
 
-            // Handle link taps - open in browser
-            if navigationAction.navigationType == .linkActivated {
-                if let url = navigationAction.request.url {
-                    NSWorkspace.shared.open(url)
-                }
-                decisionHandler(.cancel)
-                return
-            }
-
-            decisionHandler(.allow)
+            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true, isSubframe: isSubframe))
         }
     }
 
@@ -815,6 +814,7 @@ struct PostWebView: NSViewRepresentable {
         <html>
         <head>
             <meta charset="utf-8">
+            \(WebViewSecurity.contentSecurityPolicyMeta)
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
             <style>
                 body {
@@ -1536,7 +1536,9 @@ struct EmbeddedMediaView: View {
             if urlString.hasPrefix("//") {
                 urlString = "https:" + urlString
             }
-            return URL(string: urlString)
+            // The src comes from Reddit-supplied embed HTML, so it is scheme-checked before
+            // it can be opened externally.
+            return SafeURL.webOpenable(urlString)
         }
         return nil
     }
@@ -1577,7 +1579,17 @@ struct EmbeddedMediaWebView: UIViewRepresentable {
     let html: String
     let colorScheme: ColorScheme
 
+    func makeCoordinator() -> ExternalSiteNavigationDelegate {
+        ExternalSiteNavigationDelegate()
+    }
+
     func makeUIView(context: Context) -> WKWebView {
+        // NOTE: page JavaScript stays ENABLED here, deliberately. This view frames third-party
+        // oEmbed players (YouTube, redditmedia) whose own cross-origin document needs script to
+        // run, and `allowsContentJavaScript` is a page-wide setting that would also kill the
+        // subframe. The untrusted half — the wrapper document built from `media_embed` HTML — is
+        // instead locked down by `embeddedMediaSecurityPolicyMeta`, which omits `script-src`
+        // entirely, so no inline `<script>` or `onerror=` in that HTML can execute.
         let configuration = WKWebViewConfiguration()
         configuration.allowsInlineMediaPlayback = true
         configuration.allowsPictureInPictureMediaPlayback = true
@@ -1593,6 +1605,9 @@ struct EmbeddedMediaWebView: UIViewRepresentable {
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear
         webView.scrollView.isScrollEnabled = false
+        // Page script stays on for the player iframe, so the delegate is what keeps the wrapper
+        // document from navigating anywhere but `http(s)`.
+        webView.navigationDelegate = context.coordinator
 
         return webView
     }
@@ -1609,6 +1624,7 @@ struct EmbeddedMediaWebView: UIViewRepresentable {
         <html>
         <head>
             <meta charset="utf-8">
+            \(WebViewSecurity.embeddedMediaSecurityPolicyMeta)
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
             <style>
                 * {
@@ -1654,12 +1670,25 @@ struct EmbeddedMediaWebView: NSViewRepresentable {
     let html: String
     let colorScheme: ColorScheme
 
+    func makeCoordinator() -> ExternalSiteNavigationDelegate {
+        ExternalSiteNavigationDelegate()
+    }
+
     func makeNSView(context: Context) -> ScrollPassthroughWebView {
+        // NOTE: page JavaScript stays ENABLED here, deliberately. This view frames third-party
+        // oEmbed players (YouTube, redditmedia) whose own cross-origin document needs script to
+        // run, and `allowsContentJavaScript` is a page-wide setting that would also kill the
+        // subframe. The untrusted half — the wrapper document built from `media_embed` HTML — is
+        // instead locked down by `embeddedMediaSecurityPolicyMeta`, which omits `script-src`
+        // entirely, so no inline `<script>` or `onerror=` in that HTML can execute.
         let configuration = WKWebViewConfiguration()
         configuration.mediaTypesRequiringUserActionForPlayback = []
         configuration.preferences.isElementFullscreenEnabled = true
 
         let webView = ScrollPassthroughWebView(frame: .zero, configuration: configuration)
+        // Page script stays on for the player iframe, so the delegate is what keeps the wrapper
+        // document from navigating anywhere but `http(s)`.
+        webView.navigationDelegate = context.coordinator
         return webView
     }
 
@@ -1671,6 +1700,7 @@ struct EmbeddedMediaWebView: NSViewRepresentable {
         <html>
         <head>
             <meta charset="utf-8">
+            \(WebViewSecurity.embeddedMediaSecurityPolicyMeta)
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
             <style>
                 * {
@@ -1919,7 +1949,8 @@ struct CommentWebView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
+        // Untrusted Reddit HTML is rendered here — no page-authored script may run.
+        let configuration = WebViewSecurity.makeContentConfiguration()
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.isOpaque = false
         webView.backgroundColor = .clear
@@ -1931,8 +1962,9 @@ struct CommentWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
-        // Decode HTML entities (Reddit double-encodes, so decode twice)
-        let decodedHTML = html.decodeHTMLEntities().decodeHTMLEntities()
+        // Decode HTML entities exactly once. This used to decode twice — a second pass turns
+        // `&amp;lt;script&amp;gt;` back into live markup, defeating any upstream escaping.
+        let decodedHTML = WebViewSecurity.decodeForRendering(html)
 
         let styledHTML = createStyledHTML(from: decodedHTML, colorScheme: colorScheme, accentColor: accentColor, fontOption: fontOption)
         context.coordinator.parent = self
@@ -1969,21 +2001,17 @@ struct CommentWebView: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            if navigationAction.navigationType == .other {
-                decisionHandler(.allow)
-                return
+            let navigationType = navigationAction.navigationType
+            let url = navigationAction.request.url
+            // nil targetFrame means a new-window/popup navigation, which is not a subframe.
+            let isSubframe = navigationAction.targetFrame?.isMainFrame == false
+
+            // Link taps open in Safari; everything else is denied by the shared policy.
+            if let openable = WebViewSecurity.externalOpenURL(for: navigationType, url: url, isContentView: true) {
+                UIApplication.shared.open(openable)
             }
 
-            // Handle link taps - open in Safari
-            if navigationAction.navigationType == .linkActivated {
-                if let url = navigationAction.request.url {
-                    UIApplication.shared.open(url)
-                }
-                decisionHandler(.cancel)
-                return
-            }
-
-            decisionHandler(.allow)
+            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true, isSubframe: isSubframe))
         }
     }
 
@@ -1997,6 +2025,7 @@ struct CommentWebView: UIViewRepresentable {
         <html>
         <head>
             <meta charset="utf-8">
+            \(WebViewSecurity.contentSecurityPolicyMeta)
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
             <style>
                 html, body {
@@ -2089,7 +2118,8 @@ struct CommentWebView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
+        // Untrusted Reddit HTML is rendered here — no page-authored script may run.
+        let configuration = WebViewSecurity.makeContentConfiguration()
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         // macOS-specific: disable drawing background for dark mode transparency
@@ -2118,8 +2148,9 @@ struct CommentWebView: NSViewRepresentable {
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
-        // Decode HTML entities (Reddit double-encodes, so decode twice)
-        let decodedHTML = html.decodeHTMLEntities().decodeHTMLEntities()
+        // Decode HTML entities exactly once. This used to decode twice — a second pass turns
+        // `&amp;lt;script&amp;gt;` back into live markup, defeating any upstream escaping.
+        let decodedHTML = WebViewSecurity.decodeForRendering(html)
 
         let styledHTML = createStyledHTML(from: decodedHTML, colorScheme: colorScheme, accentColor: accentColor, fontOption: fontOption)
         context.coordinator.parent = self
@@ -2162,21 +2193,17 @@ struct CommentWebView: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            if navigationAction.navigationType == .other {
-                decisionHandler(.allow)
-                return
+            let navigationType = navigationAction.navigationType
+            let url = navigationAction.request.url
+            // nil targetFrame means a new-window/popup navigation, which is not a subframe.
+            let isSubframe = navigationAction.targetFrame?.isMainFrame == false
+
+            // Link taps open in the default browser; everything else is denied by the shared policy.
+            if let openable = WebViewSecurity.externalOpenURL(for: navigationType, url: url, isContentView: true) {
+                NSWorkspace.shared.open(openable)
             }
 
-            // Handle link taps - open in browser
-            if navigationAction.navigationType == .linkActivated {
-                if let url = navigationAction.request.url {
-                    NSWorkspace.shared.open(url)
-                }
-                decisionHandler(.cancel)
-                return
-            }
-
-            decisionHandler(.allow)
+            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true, isSubframe: isSubframe))
         }
     }
 
@@ -2190,6 +2217,7 @@ struct CommentWebView: NSViewRepresentable {
         <html>
         <head>
             <meta charset="utf-8">
+            \(WebViewSecurity.contentSecurityPolicyMeta)
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
             <style>
                 html, body {

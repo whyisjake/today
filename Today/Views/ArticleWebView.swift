@@ -55,20 +55,29 @@ struct SafariView: UIViewControllerRepresentable {
 struct ArticleWebView: UIViewRepresentable {
     let url: URL
 
+    func makeCoordinator() -> ExternalSiteNavigationDelegate {
+        ExternalSiteNavigationDelegate()
+    }
+
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.dataDetectorTypes = [.link, .phoneNumber]
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.allowsBackForwardNavigationGestures = true
+        // `SafeURL` below only gates the *initial* URL; the delegate scheme-checks every
+        // subsequent navigation the live page starts.
+        webView.navigationDelegate = context.coordinator
 
         return webView
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
         // Only load if not already loading this URL
-        if webView.url != url {
-            let request = URLRequest(url: url)
+        // The URL comes from feed content — never load a non-http(s) scheme (a `file://`
+        // link would give the page access to the container).
+        if webView.url != url, let safeURL = SafeURL.webOpenable(url) {
+            let request = URLRequest(url: safeURL)
             webView.load(request)
         }
     }
@@ -79,16 +88,23 @@ struct SafariView: NSViewRepresentable {
     let url: URL
     @Environment(\.dismiss) private var dismiss
 
+    func makeCoordinator() -> ExternalSiteNavigationDelegate {
+        ExternalSiteNavigationDelegate()
+    }
+
     func makeNSView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.allowsBackForwardNavigationGestures = true
+        // `SafeURL` below only gates the *initial* URL; the delegate scheme-checks every
+        // subsequent navigation the live page starts.
+        webView.navigationDelegate = context.coordinator
         return webView
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
-        if webView.url != url {
-            webView.load(URLRequest(url: url))
+        if webView.url != url, let safeURL = SafeURL.webOpenable(url) {
+            webView.load(URLRequest(url: safeURL))
         }
     }
 }
@@ -97,17 +113,26 @@ struct SafariView: NSViewRepresentable {
 struct ArticleWebView: NSViewRepresentable {
     let url: URL
 
+    func makeCoordinator() -> ExternalSiteNavigationDelegate {
+        ExternalSiteNavigationDelegate()
+    }
+
     func makeNSView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.allowsBackForwardNavigationGestures = true
+        // `SafeURL` below only gates the *initial* URL; the delegate scheme-checks every
+        // subsequent navigation the live page starts.
+        webView.navigationDelegate = context.coordinator
         return webView
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
         // Only load if not already loading this URL
-        if webView.url != url {
-            let request = URLRequest(url: url)
+        // The URL comes from feed content — never load a non-http(s) scheme (a `file://`
+        // link would give the page access to the container).
+        if webView.url != url, let safeURL = SafeURL.webOpenable(url) {
+            let request = URLRequest(url: safeURL)
             webView.load(request)
         }
     }
@@ -153,8 +178,14 @@ struct ArticleDetailViewEnhanced: View {
 
                         Divider()
 
-                        if let description = article.articleDescription {
-                            Text(description.htmlToAttributedString)
+                        // Plain text only. The WebKit HTML importer this used to call parses
+                        // feed markup on the main actor and synchronously fetches externally
+                        // referenced subresources, so a feed could turn a render into an
+                        // outbound request. Prefer the value computed at insert; the fallback
+                        // covers rows that predate the cache and have not been backfilled.
+                        if let description = article.plainTextDescription
+                            ?? article.articleDescription?.htmlToPlainText {
+                            Text(description)
                                 .font(.body)
                         }
 

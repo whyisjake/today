@@ -254,17 +254,17 @@ class RSSParser: NSObject, XMLParserDelegate {
                 finalImageUrl = feedImageUrl
             }
 
-            let processedTitle = decodeHTMLEntities(normalizeWhitespace(currentTitle)).texturize()
-            let processedDescription = currentDescription.isEmpty ? nil : decodeHTMLEntities(normalizeWhitespace(currentDescription)).texturize()
+            let processedTitle = normalizeWhitespace(currentTitle).decodeHTMLEntities().texturize()
+            let processedDescription = currentDescription.isEmpty ? nil : normalizeWhitespace(currentDescription).decodeHTMLEntities().texturize()
 
             var processedContent: String? = nil
             if !currentContent.isEmpty {
-                processedContent = decodeHTMLEntities(normalizeWhitespace(currentContent)).texturize()
+                processedContent = normalizeWhitespace(currentContent).decodeHTMLEntities().texturize()
             }
 
             var processedContentEncoded: String? = nil
             if !currentContentEncoded.isEmpty {
-                processedContentEncoded = decodeHTMLEntities(normalizeWhitespace(currentContentEncoded)).texturize()
+                processedContentEncoded = normalizeWhitespace(currentContentEncoded).decodeHTMLEntities().texturize()
             }
 
             // Extract Reddit metadata if this is a Reddit post
@@ -308,72 +308,6 @@ class RSSParser: NSObject, XMLParserDelegate {
             .filter { !$0.isEmpty }
             .joined(separator: " ")
         return normalized.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    /// Decode HTML entities (numeric and named) in text
-    /// This is needed because XMLParser doesn't decode entities within CDATA sections
-    private func decodeHTMLEntities(_ text: String) -> String {
-        var result = text
-
-        // Decode numeric entities (&#xxx;)
-        let numericEntityPattern = "&#(\\d+);"
-        if let regex = try? NSRegularExpression(pattern: numericEntityPattern, options: []) {
-            let nsString = result as NSString
-            let matches = regex.matches(in: result, options: [], range: NSRange(location: 0, length: nsString.length))
-
-            // Process matches in reverse to avoid index shifting
-            for match in matches.reversed() {
-                if match.numberOfRanges == 2 {
-                    let numberRange = match.range(at: 1)
-                    if let numberString = nsString.substring(with: numberRange) as String?,
-                       let codePoint = Int(numberString),
-                       let scalar = UnicodeScalar(codePoint) {
-                        let character = String(scalar)
-                        let fullRange = match.range
-                        result = (result as NSString).replacingCharacters(in: fullRange, with: character)
-                    }
-                }
-            }
-        }
-
-        // Decode hexadecimal entities (&#xHHHH;)
-        let hexEntityPattern = "&#[xX]([0-9A-Fa-f]+);"
-        if let regex = try? NSRegularExpression(pattern: hexEntityPattern, options: []) {
-            let nsString = result as NSString
-            let matches = regex.matches(in: result, options: [], range: NSRange(location: 0, length: nsString.length))
-
-            // Process matches in reverse to avoid index shifting
-            for match in matches.reversed() {
-                if match.numberOfRanges == 2 {
-                    let hexRange = match.range(at: 1)
-                    if let hexString = nsString.substring(with: hexRange) as String?,
-                       let codePoint = Int(hexString, radix: 16),
-                       let scalar = UnicodeScalar(codePoint) {
-                        let character = String(scalar)
-                        let fullRange = match.range
-                        result = (result as NSString).replacingCharacters(in: fullRange, with: character)
-                    }
-                }
-            }
-        }
-
-        // Decode common named entities
-        result = result.replacingOccurrences(of: "&nbsp;", with: " ")
-        result = result.replacingOccurrences(of: "&amp;", with: "&")
-        result = result.replacingOccurrences(of: "&lt;", with: "<")
-        result = result.replacingOccurrences(of: "&gt;", with: ">")
-        result = result.replacingOccurrences(of: "&quot;", with: "\"")
-        result = result.replacingOccurrences(of: "&#39;", with: "'")
-        result = result.replacingOccurrences(of: "&apos;", with: "'")
-        result = result.replacingOccurrences(of: "&rdquo;", with: "\u{201D}") // Right double quote
-        result = result.replacingOccurrences(of: "&ldquo;", with: "\u{201C}") // Left double quote
-        result = result.replacingOccurrences(of: "&rsquo;", with: "\u{2019}") // Right single quote
-        result = result.replacingOccurrences(of: "&lsquo;", with: "\u{2018}") // Left single quote
-        result = result.replacingOccurrences(of: "&mdash;", with: "\u{2014}") // Em dash
-        result = result.replacingOccurrences(of: "&ndash;", with: "\u{2013}") // En dash
-        result = result.replacingOccurrences(of: "&hellip;", with: "\u{2026}") // Ellipsis
-
-        return result
     }
 
     /// Extract the first image URL from HTML content
@@ -563,7 +497,7 @@ class RSSFeedService {
     private init() {}
 
     func fetchFeed(url: String) async throws -> (feedTitle: String, feedDescription: String, articles: [RSSParser.ParsedArticle]) {
-        guard let feedURL = URL(string: url) else {
+        guard let feedURL = SafeURL.webOpenable(url) else {
             throw RSSError.invalidURL
         }
 

@@ -312,8 +312,9 @@ class RedditJSONParser {
             }
         }
 
-        // Pre-compute decoded body once (Reddit double-encodes HTML entities)
-        let decodedBody = body.decodeHTMLEntities().decodeHTMLEntities()
+        // Pre-compute the decoded body. Decoding runs exactly once: a second pass would let
+        // `&amp;lt;script&amp;gt;` — text a feed escaped on purpose — turn back into markup.
+        let decodedBody = body.decodeHTMLEntities()
 
         return RedditComment(
             id: id,
@@ -397,20 +398,4 @@ struct ParsedRedditPost {
     }
 }
 
-// MARK: - String Extension for HTML Decoding
-
-extension String {
-    func decodeHTMLEntities() -> String {
-        var result = self
-
-        // Decode common HTML entities
-        result = result.replacingOccurrences(of: "&lt;", with: "<")
-        result = result.replacingOccurrences(of: "&gt;", with: ">")
-        result = result.replacingOccurrences(of: "&amp;", with: "&")
-        result = result.replacingOccurrences(of: "&quot;", with: "\"")
-        result = result.replacingOccurrences(of: "&#39;", with: "'")
-        result = result.replacingOccurrences(of: "&nbsp;", with: " ")
-
-        return result
-    }
-}
+// HTML entity decoding lives in `String.decodeHTMLEntities()` (Today/Utilities/HTMLHelper.swift).
