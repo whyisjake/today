@@ -86,7 +86,13 @@ class FeedManager: ObservableObject {
     func addFeed(url: String, category: String = "general") async throws -> Feed {
         // Canonicalise via the shared normaliser. This logic previously lived only here, which
         // is exactly why OPML matching drifted out of sync with it — see FeedURLNormalizer.
-        let feedURL = FeedURLNormalizer.canonical(url)
+        //
+        // `SafeURL.feedIngestable` canonicalises *and* applies the scheme allow-list, so a
+        // `file:///…` or `data:` URL arriving from an OPML document is refused here rather
+        // than being stored and handed to URLSession.
+        guard let feedURL = SafeURL.feedIngestable(url) else {
+            throw FeedError.invalidURL
+        }
 
         // Check for existing feed by input URL (avoids unnecessary network fetch)
         let inputURL = feedURL
@@ -182,7 +188,7 @@ class FeedManager: ObservableObject {
     ) async throws -> FeedFetchResult {
         if isRedditJSON(url) {
             // Use Reddit JSON parser
-            guard let feedURL = URL(string: url) else {
+            guard let feedURL = SafeURL.webOpenable(url) else {
                 throw FeedError.invalidURL
             }
 
@@ -258,7 +264,7 @@ class FeedManager: ObservableObject {
         lastModified: String? = nil,
         etag: String? = nil
     ) async throws -> FeedFetchResult {
-        guard let feedURL = URL(string: url) else {
+        guard let feedURL = SafeURL.webOpenable(url) else {
             throw FeedError.invalidURL
         }
 
@@ -300,7 +306,7 @@ class FeedManager: ObservableObject {
         lastModified: String? = nil,
         etag: String? = nil
     ) async throws -> FeedFetchResult {
-        guard let feedURL = URL(string: url) else {
+        guard let feedURL = SafeURL.webOpenable(url) else {
             throw FeedError.invalidURL
         }
 

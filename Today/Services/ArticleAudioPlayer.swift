@@ -316,7 +316,7 @@ class ArticleAudioPlayer: NSObject, ObservableObject {
             // Start loading article thumbnail asynchronously (only if we don't have it cached)
             if cachedArtworkArticleId != article.id,
                let imageUrlString = article.imageUrl,
-               let imageUrl = URL(string: imageUrlString) {
+               let imageUrl = SafeURL.webOpenable(imageUrlString) {
                 Task {
                     do {
                         let (data, _) = try await URLSession.shared.data(from: imageUrl)

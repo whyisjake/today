@@ -16,6 +16,7 @@ class DatabaseMigration {
     private let categoryMigrationKey = "hasRunCategoryMigration_v1"
     private let deduplicateFeedsMigrationKey = "hasRunDeduplicateFeedsMigration_v2"
     private let derivedFieldsBackfillKey = "hasCompletedDerivedArticleFieldsBackfill_v1"
+    private let redditRSSMigrationKey = "hasRunRedditJSONToRSSMigration_v1"
 
     /// Rows per batch. Bounded so a large store is worked through incrementally rather than
     /// in one long transaction, and large enough that a big store does not produce hundreds
@@ -124,6 +125,64 @@ class DatabaseMigration {
         await texturizExistingArticles(modelContext: modelContext)
         await titleCaseFeedCategories(modelContext: modelContext)
         await deduplicateFeeds(modelContext: modelContext)
+        await migrateRedditFeedsToRSS(modelContext: modelContext)
+    }
+
+    /// Point stored Reddit feeds at `.rss` instead of `.json`.
+    ///
+    /// Reddit answers unauthenticated `.json` with 403 and an HTML block page, and has stated
+    /// the shutdown is deliberate. Feeds already in the store still hold the `.json` URL, so
+    /// changing `FeedURLNormalizer` alone would leave every existing subscriber broken —
+    /// silently, since the failure looks like an empty feed.
+    ///
+    /// Only rewrites when the `.rss` form is not already subscribed, so a user who has both
+    /// does not end up with a duplicate pair. Unlike the other migrations here, the completion
+    /// flag is set only after a successful save, so a failed run retries next launch rather
+    /// than marking itself done.
+    private func migrateRedditFeedsToRSS(modelContext: ModelContext) async {
+        guard !userDefaults.bool(forKey: redditRSSMigrationKey) else { return }
+
+        await MainActor.run {
+            let descriptor = FetchDescriptor<Feed>()
+            guard let feeds = try? modelContext.fetch(descriptor) else {
+                print("Reddit RSS migration: could not fetch feeds; will retry next launch")
+                return
+            }
+
+            let existingURLs = Set(feeds.map(\.url))
+            var rewritten = 0
+
+            for feed in feeds where feed.url.contains("reddit.com/r/") && feed.url.hasSuffix(".json") {
+                let rssURL = FeedURLNormalizer.convertRedditURLToRSS(feed.url)
+                guard rssURL != feed.url else { continue }
+                guard !existingURLs.contains(rssURL) else {
+                    print("Reddit RSS migration: \(rssURL) already subscribed; leaving \(feed.url) alone")
+                    continue
+                }
+
+                feed.url = rssURL
+                // The cached validators describe the old endpoint's 403; keep them and the next
+                // sync sends a conditional request the new endpoint never issued an ETag for.
+                feed.httpEtag = nil
+                feed.httpLastModified = nil
+                feed.lastSyncError = nil
+                feed.consecutiveSyncFailureCount = 0
+                rewritten += 1
+            }
+
+            guard rewritten > 0 else {
+                userDefaults.set(true, forKey: redditRSSMigrationKey)
+                return
+            }
+
+            do {
+                try modelContext.save()
+                userDefaults.set(true, forKey: redditRSSMigrationKey)
+                print("Reddit RSS migration: repointed \(rewritten) feed(s) from .json to .rss")
+            } catch {
+                print("Reddit RSS migration failed, will retry next launch: \(error.localizedDescription)")
+            }
+        }
     }
 
     /// Migrate existing articles to apply texturization

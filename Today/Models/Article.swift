@@ -96,10 +96,14 @@ final class Article {
         self.feed = feed
     }
 
-    /// The article's link as a URL, or nil if the link is empty or invalid
+    /// The article's link as a URL, or nil if the link is empty, invalid, or carries a scheme
+    /// that is not web-openable.
+    ///
+    /// `link` comes straight out of an attacker-controlled feed, and every caller of this
+    /// property either opens it externally or loads it into a web view — so the scheme
+    /// allow-list is applied here rather than at each of the two dozen call sites.
     var articleURL: URL? {
-        guard !link.isEmpty else { return nil }
-        return URL(string: link)
+        SafeURL.webOpenable(link)
     }
 
     /// Returns true if the article has minimal content (short summary only)

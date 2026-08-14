@@ -230,4 +230,74 @@ final class RedditJSONParserTests: XCTestCase {
             XCTAssertFalse(comment.isOP, "No comments should be from OP")
         }
     }
+
+    // MARK: - Entity Decoding
+
+    /// Reddit content is entity-encoded once. It used to be decoded twice on the way to the
+    /// WebView ("Reddit double-encodes"), which turned deliberately-escaped markup back into
+    /// live markup. Everything on this path must decode exactly once.
+    func testRedditContentIsDecodedExactlyOnce() throws {
+        let jsonString = """
+        [
+            {
+                "kind": "Listing",
+                "data": {
+                    "children": [
+                        {
+                            "kind": "t3",
+                            "data": {
+                                "id": "xss1",
+                                "title": "AT&amp;T &#8216;quoted&#8217; &amp;lt;b&amp;gt;",
+                                "author": "op",
+                                "subreddit": "test",
+                                "permalink": "/r/test/comments/xss1/x/",
+                                "created_utc": 1234567890,
+                                "score": 1,
+                                "num_comments": 1,
+                                "selftext_html": "&lt;p&gt;hi &amp;lt;script&amp;gt;alert(1)&amp;lt;/script&amp;gt;&lt;/p&gt;"
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "kind": "Listing",
+                "data": {
+                    "children": [
+                        {
+                            "kind": "t1",
+                            "data": {
+                                "id": "c1",
+                                "author": "someone",
+                                "body": "AT&amp;amp;T &amp;lt;script&amp;gt;alert(1)&amp;lt;/script&amp;gt;",
+                                "body_html": "&lt;p&gt;x&lt;/p&gt;",
+                                "score": 1,
+                                "created_utc": 1234567890
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+        """
+
+        let parser = RedditJSONParser()
+        let result = try parser.parsePostWithComments(data: jsonString.data(using: .utf8)!)
+
+        // Titles get the full entity table (named + numeric), decoded once.
+        XCTAssertEqual(result.post.title, "AT&T \u{2018}quoted\u{2019} &lt;b&gt;")
+
+        // The comment body is decoded once, not twice: the escaped script stays escaped.
+        let comment = try XCTUnwrap(result.comments.first)
+        XCTAssertEqual(comment.decodedBody, "AT&amp;T &lt;script&gt;alert(1)&lt;/script&gt;")
+        XCTAssertFalse(comment.decodedBody.contains("<script"))
+        XCTAssertEqual(comment.decodedBody, comment.body.decodeHTMLEntities(),
+                       "decodedBody must be a single decode of body")
+
+        // `selftext_html` reaches the WebView raw and is decoded once at the render seam.
+        let selftextHTML = try XCTUnwrap(result.post.selftextHtml)
+        let rendered = WebViewSecurity.decodeForRendering(selftextHTML)
+        XCTAssertEqual(rendered, "<p>hi &lt;script&gt;alert(1)&lt;/script&gt;</p>")
+        XCTAssertFalse(rendered.contains("<script"), "the escaped payload must not become markup")
+    }
 }

@@ -85,9 +85,7 @@ struct RedditPostView: View {
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                     Button("Try Again") {
-                        Task {
-                            await loadPost()
-                        }
+                        loadPost()
                     }
                     .buttonStyle(.borderedProminent)
                 }
@@ -102,59 +100,16 @@ struct RedditPostView: View {
                         Divider()
                             .padding(.vertical, 16)
 
-                        // Comments section
-                        // On macOS, flatten the comment tree to avoid recursive view issues
-                        #if os(macOS)
-                        let displayComments = flattenComments(comments, maxDepth: 4, collapsedIds: collapsedCommentIds)
-                        #else
-                        let displayComments = comments
-                        #endif
+                        // Comments live on Reddit, not here.
+                        //
+                        // They used to be fetched from the post's own feed, but that meant a
+                        // network request per post opened — which competed with the sync for
+                        // Reddit's rate-limit budget and returned a flat, score-less, truncated
+                        // thread. Everything this view shows now comes from the article already
+                        // in the store, so opening a post costs nothing and cannot 429.
+                        RedditCommentsLink(url: post.commentsUrl, openURL: openURL)
+                            .padding(.horizontal, 16)
 
-                        if displayComments.isEmpty {
-                            VStack(spacing: 12) {
-                                Image(systemName: "bubble.left")
-                                    .font(.system(size: 36))
-                                    .foregroundStyle(.secondary)
-                                Text("No comments yet")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 32)
-                        } else {
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text("\(post.numComments) Comments")
-                                        .font(.headline)
-                                        .fontWeight(.semibold)
-                                    Spacer()
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.bottom, 8)
-
-                                LazyVStack(alignment: .leading, spacing: 0) {
-                                    ForEach(displayComments) { comment in
-                                        #if os(macOS)
-                                        CommentRowView(
-                                            comment: comment,
-                                            fontOption: fontOption,
-                                            isCollapsed: collapsedCommentIds.contains(comment.id),
-                                            hasChildren: commentsWithChildren.contains(comment.id),
-                                            onToggleCollapse: {
-                                                if collapsedCommentIds.contains(comment.id) {
-                                                    collapsedCommentIds.remove(comment.id)
-                                                } else {
-                                                    collapsedCommentIds.insert(comment.id)
-                                                }
-                                            }
-                                        )
-                                        #else
-                                        CommentRowView(comment: comment, fontOption: fontOption)
-                                        #endif
-                                    }
-                                }
-                            }
-                        }
                         }
                         .padding(.bottom, 32)
                     }
@@ -306,8 +261,9 @@ struct RedditPostView: View {
         .onDisappear {
             markAsRead()
         }
-        .task {
-            await loadPost()
+        // Synchronous and local: safe to re-run if SwiftUI rebuilds this view.
+        .onAppear {
+            loadPost()
         }
     }
 
@@ -328,43 +284,47 @@ struct RedditPostView: View {
         dismiss()
     }
 
-    private func loadPost() async {
-        isLoading = true
-        errorMessage = nil
+    /// Opens the post's Reddit page, where the comment thread actually lives.
+    private struct RedditCommentsLink: View {
+        let url: String
+        let openURL: OpenURLAction
 
-        guard let commentsUrl = article.redditCommentsUrl else {
-            errorMessage = "Invalid Reddit post URL"
-            isLoading = false
-            return
-        }
-
-        do {
-            let jsonURL = commentsUrl.hasSuffix("/") ? commentsUrl + ".json" : commentsUrl + ".json"
-            guard let requestURL = URL(string: jsonURL) else {
-                throw RedditError.invalidURL
+        var body: some View {
+            Button {
+                if let target = SafeURL.webOpenable(url) { openURL(target) }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "bubble.left.and.bubble.right")
+                    Text("View comments on Reddit")
+                    Spacer()
+                    Image(systemName: "arrow.up.right")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .font(.subheadline)
+                .padding(.vertical, 12)
+                .padding(.horizontal, 14)
+                .frame(maxWidth: .infinity)
+                .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
             }
-
-            var request = URLRequest(url: requestURL)
-            request.setValue("ios:com.today.app:v1.0 (by /u/TodayApp)", forHTTPHeaderField: "User-Agent")
-
-            let (data, _) = try await URLSession.shared.data(for: request)
-
-            let parser = RedditJSONParser()
-            let (parsedPost, parsedComments) = try parser.parsePostWithComments(data: data)
-
-            self.post = parsedPost
-            self.comments = parsedComments
-
-            // Pre-compute which comments have children (for macOS collapse UI)
-            #if os(macOS)
-            self.commentsWithChildren = computeCommentsWithChildren(parsedComments)
-            #endif
-
-            isLoading = false
-        } catch {
-            errorMessage = error.localizedDescription
-            isLoading = false
+            .buttonStyle(.plain)
         }
+    }
+
+    /// Build the post from the article already in the store. No network call.
+    ///
+    /// This used to GET the post's own feed. That cost a request per post opened, competed with
+    /// the sync for Reddit's rate-limit budget (the 429s), and could be fired repeatedly for the
+    /// same post whenever `@Query` updated and SwiftUI rebuilt the navigation destination.
+    ///
+    /// None of it was necessary: the subreddit feed entry already carries the title, author,
+    /// date, permalink, preview image, and the same content table the post feed returns —
+    /// including the `[link]` anchor that identifies a redgifs or v.redd.it target. The only
+    /// thing the request added was the comment thread, which now opens on Reddit instead.
+    private func loadPost() {
+        post = RedditPostRSSParser.makePost(from: article)
+        errorMessage = post == nil ? "Invalid Reddit post URL" : nil
+        isLoading = false
     }
 
     enum RedditError: LocalizedError {
@@ -472,13 +432,8 @@ struct PostContentView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.up")
-                        .font(.caption)
-                    Text("\(post.score)")
-                        .font(.subheadline)
-                }
-                .foregroundStyle(.secondary)
+                // Score intentionally omitted: Reddit's RSS carries no vote counts, so this
+                // would always read 0. Recovering it needs the authenticated Data API.
 
                 Text("•")
                     .font(.caption)
@@ -492,6 +447,16 @@ struct PostContentView: View {
             // Gallery images (if available)
             if !post.galleryImages.isEmpty {
                 ImageGalleryView(images: post.galleryImages, availableWidth: availableWidth)
+            }
+            // Reddit-hosted video. Ahead of the embed and image branches: a v.redd.it post also
+            // carries a preview image, and the still would otherwise win and hide the clip.
+            else if let videoURL = post.videoURL {
+                AnimatedMediaView(
+                    videoUrl: videoURL,
+                    posterUrl: post.imageUrl,
+                    availableWidth: availableWidth
+                )
+                .cornerRadius(8)
             }
             // Embedded media from external video services
             else if let mediaEmbedHtml = post.mediaEmbedHtml,
@@ -580,7 +545,8 @@ struct PostWebView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
+        // Untrusted Reddit HTML is rendered here — no page-authored script may run.
+        let configuration = WebViewSecurity.makeContentConfiguration()
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.isOpaque = false
         webView.backgroundColor = .clear
@@ -592,10 +558,12 @@ struct PostWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
-        // Decode HTML entities (Reddit double-encodes, so decode twice)
-        let decodedHTML = html.decodeHTMLEntities().decodeHTMLEntities()
+        // Decode HTML entities exactly once. This used to decode twice — a second pass turns
+        // `&amp;lt;script&amp;gt;` back into live markup, defeating any upstream escaping.
+        let decodedHTML = WebViewSecurity.decodeForRendering(html)
 
         let styledHTML = createStyledHTML(from: decodedHTML, colorScheme: colorScheme, accentColor: accentColor, fontOption: fontOption)
+        Perf.log("🟣 [RedditWebView] load: raw=\(html.count) decoded=\(decodedHTML.count) styled=\(styledHTML.count) chars")
         context.coordinator.parent = self
         webView.loadHTMLString(styledHTML, baseURL: nil)
     }
@@ -610,29 +578,30 @@ struct PostWebView: UIViewRepresentable {
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             webView.evaluateJavaScript("Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)") { height, error in
                 if let height = height as? CGFloat {
+                    Perf.log("🟣 [RedditWebView] didFinish height=\(height)")
                     DispatchQueue.main.async {
                         self.parent.height = height
                     }
+                } else {
+                    Perf.logError("🔴 [RedditWebView] height measurement returned no value: \(String(describing: error)) — view will stay collapsed")
                 }
             }
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            if navigationAction.navigationType == .other {
-                decisionHandler(.allow)
-                return
+            let navigationType = navigationAction.navigationType
+            let url = navigationAction.request.url
+            // nil targetFrame means a new-window/popup navigation, which is not a subframe.
+            let isSubframe = navigationAction.targetFrame?.isMainFrame == false
+
+            // Link taps open in Safari; everything else is denied by the shared policy.
+            if let openable = WebViewSecurity.externalOpenURL(for: navigationType, url: url, isContentView: true) {
+                UIApplication.shared.open(openable)
             }
 
-            // Handle link taps - open in Safari
-            if navigationAction.navigationType == .linkActivated {
-                if let url = navigationAction.request.url {
-                    UIApplication.shared.open(url)
-                }
-                decisionHandler(.cancel)
-                return
-            }
-
-            decisionHandler(.allow)
+            let decision = WebViewSecurity.policy(for: navigationType, url: url, isContentView: true, isSubframe: isSubframe)
+            Perf.log("🟣 [RedditWebView] nav type=\(navigationType.rawValue) subframe=\(isSubframe) url=\(url?.absoluteString ?? "nil") -> \(decision == .allow ? "ALLOW" : "CANCEL")")
+            decisionHandler(decision)
         }
     }
 
@@ -646,6 +615,7 @@ struct PostWebView: UIViewRepresentable {
         <html>
         <head>
             <meta charset="utf-8">
+            \(WebViewSecurity.contentSecurityPolicyMeta)
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
             <style>
                 body {
@@ -726,7 +696,8 @@ struct PostWebView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
+        // Untrusted Reddit HTML is rendered here — no page-authored script may run.
+        let configuration = WebViewSecurity.makeContentConfiguration()
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         // macOS-specific: disable drawing background for dark mode transparency
@@ -755,10 +726,12 @@ struct PostWebView: NSViewRepresentable {
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
-        // Decode HTML entities (Reddit double-encodes, so decode twice)
-        let decodedHTML = html.decodeHTMLEntities().decodeHTMLEntities()
+        // Decode HTML entities exactly once. This used to decode twice — a second pass turns
+        // `&amp;lt;script&amp;gt;` back into live markup, defeating any upstream escaping.
+        let decodedHTML = WebViewSecurity.decodeForRendering(html)
 
         let styledHTML = createStyledHTML(from: decodedHTML, colorScheme: colorScheme, accentColor: accentColor, fontOption: fontOption)
+        Perf.log("🟣 [RedditWebView] load: raw=\(html.count) decoded=\(decodedHTML.count) styled=\(styledHTML.count) chars")
         context.coordinator.parent = self
         webView.loadHTMLString(styledHTML, baseURL: nil)
         disableWebViewScrolling(webView)
@@ -777,31 +750,32 @@ struct PostWebView: NSViewRepresentable {
 
             webView.evaluateJavaScript("Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)") { height, error in
                 if let height = height as? CGFloat {
+                    Perf.log("🟣 [RedditWebView] didFinish height=\(height)")
                     DispatchQueue.main.async {
                         self.parent.height = height
                         // Re-disable after height adjustment
                         self.parent.disableWebViewScrolling(webView)
                     }
+                } else {
+                    Perf.logError("🔴 [RedditWebView] height measurement returned no value: \(String(describing: error)) — view will stay collapsed")
                 }
             }
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            if navigationAction.navigationType == .other {
-                decisionHandler(.allow)
-                return
+            let navigationType = navigationAction.navigationType
+            let url = navigationAction.request.url
+            // nil targetFrame means a new-window/popup navigation, which is not a subframe.
+            let isSubframe = navigationAction.targetFrame?.isMainFrame == false
+
+            // Link taps open in the default browser; everything else is denied by the shared policy.
+            if let openable = WebViewSecurity.externalOpenURL(for: navigationType, url: url, isContentView: true) {
+                NSWorkspace.shared.open(openable)
             }
 
-            // Handle link taps - open in browser
-            if navigationAction.navigationType == .linkActivated {
-                if let url = navigationAction.request.url {
-                    NSWorkspace.shared.open(url)
-                }
-                decisionHandler(.cancel)
-                return
-            }
-
-            decisionHandler(.allow)
+            let decision = WebViewSecurity.policy(for: navigationType, url: url, isContentView: true, isSubframe: isSubframe)
+            Perf.log("🟣 [RedditWebView] nav type=\(navigationType.rawValue) subframe=\(isSubframe) url=\(url?.absoluteString ?? "nil") -> \(decision == .allow ? "ALLOW" : "CANCEL")")
+            decisionHandler(decision)
         }
     }
 
@@ -815,6 +789,7 @@ struct PostWebView: NSViewRepresentable {
         <html>
         <head>
             <meta charset="utf-8">
+            \(WebViewSecurity.contentSecurityPolicyMeta)
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
             <style>
                 body {
@@ -1536,7 +1511,9 @@ struct EmbeddedMediaView: View {
             if urlString.hasPrefix("//") {
                 urlString = "https:" + urlString
             }
-            return URL(string: urlString)
+            // The src comes from Reddit-supplied embed HTML, so it is scheme-checked before
+            // it can be opened externally.
+            return SafeURL.webOpenable(urlString)
         }
         return nil
     }
@@ -1577,7 +1554,17 @@ struct EmbeddedMediaWebView: UIViewRepresentable {
     let html: String
     let colorScheme: ColorScheme
 
+    func makeCoordinator() -> ExternalSiteNavigationDelegate {
+        ExternalSiteNavigationDelegate()
+    }
+
     func makeUIView(context: Context) -> WKWebView {
+        // NOTE: page JavaScript stays ENABLED here, deliberately. This view frames third-party
+        // oEmbed players (YouTube, redditmedia) whose own cross-origin document needs script to
+        // run, and `allowsContentJavaScript` is a page-wide setting that would also kill the
+        // subframe. The untrusted half — the wrapper document built from `media_embed` HTML — is
+        // instead locked down by `embeddedMediaSecurityPolicyMeta`, which omits `script-src`
+        // entirely, so no inline `<script>` or `onerror=` in that HTML can execute.
         let configuration = WKWebViewConfiguration()
         configuration.allowsInlineMediaPlayback = true
         configuration.allowsPictureInPictureMediaPlayback = true
@@ -1593,6 +1580,9 @@ struct EmbeddedMediaWebView: UIViewRepresentable {
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear
         webView.scrollView.isScrollEnabled = false
+        // Page script stays on for the player iframe, so the delegate is what keeps the wrapper
+        // document from navigating anywhere but `http(s)`.
+        webView.navigationDelegate = context.coordinator
 
         return webView
     }
@@ -1609,6 +1599,7 @@ struct EmbeddedMediaWebView: UIViewRepresentable {
         <html>
         <head>
             <meta charset="utf-8">
+            \(WebViewSecurity.embeddedMediaSecurityPolicyMeta)
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
             <style>
                 * {
@@ -1654,12 +1645,25 @@ struct EmbeddedMediaWebView: NSViewRepresentable {
     let html: String
     let colorScheme: ColorScheme
 
+    func makeCoordinator() -> ExternalSiteNavigationDelegate {
+        ExternalSiteNavigationDelegate()
+    }
+
     func makeNSView(context: Context) -> ScrollPassthroughWebView {
+        // NOTE: page JavaScript stays ENABLED here, deliberately. This view frames third-party
+        // oEmbed players (YouTube, redditmedia) whose own cross-origin document needs script to
+        // run, and `allowsContentJavaScript` is a page-wide setting that would also kill the
+        // subframe. The untrusted half — the wrapper document built from `media_embed` HTML — is
+        // instead locked down by `embeddedMediaSecurityPolicyMeta`, which omits `script-src`
+        // entirely, so no inline `<script>` or `onerror=` in that HTML can execute.
         let configuration = WKWebViewConfiguration()
         configuration.mediaTypesRequiringUserActionForPlayback = []
         configuration.preferences.isElementFullscreenEnabled = true
 
         let webView = ScrollPassthroughWebView(frame: .zero, configuration: configuration)
+        // Page script stays on for the player iframe, so the delegate is what keeps the wrapper
+        // document from navigating anywhere but `http(s)`.
+        webView.navigationDelegate = context.coordinator
         return webView
     }
 
@@ -1671,6 +1675,7 @@ struct EmbeddedMediaWebView: NSViewRepresentable {
         <html>
         <head>
             <meta charset="utf-8">
+            \(WebViewSecurity.embeddedMediaSecurityPolicyMeta)
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
             <style>
                 * {
@@ -1827,13 +1832,7 @@ struct CommentRowView: View {
                             .font(.caption2)
                             .foregroundStyle(.secondary)
 
-                        HStack(spacing: 4) {
-                            Image(systemName: "arrow.up")
-                                .font(.caption2)
-                            Text("\(comment.score)")
-                                .font(.caption2)
-                        }
-                        .foregroundStyle(.secondary)
+                        // Score intentionally omitted — see the note on the post header.
 
                         Text("•")
                             .font(.caption2)
@@ -1919,7 +1918,8 @@ struct CommentWebView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
+        // Untrusted Reddit HTML is rendered here — no page-authored script may run.
+        let configuration = WebViewSecurity.makeContentConfiguration()
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.isOpaque = false
         webView.backgroundColor = .clear
@@ -1931,10 +1931,12 @@ struct CommentWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
-        // Decode HTML entities (Reddit double-encodes, so decode twice)
-        let decodedHTML = html.decodeHTMLEntities().decodeHTMLEntities()
+        // Decode HTML entities exactly once. This used to decode twice — a second pass turns
+        // `&amp;lt;script&amp;gt;` back into live markup, defeating any upstream escaping.
+        let decodedHTML = WebViewSecurity.decodeForRendering(html)
 
         let styledHTML = createStyledHTML(from: decodedHTML, colorScheme: colorScheme, accentColor: accentColor, fontOption: fontOption)
+        Perf.log("🟣 [RedditWebView] load: raw=\(html.count) decoded=\(decodedHTML.count) styled=\(styledHTML.count) chars")
         context.coordinator.parent = self
         webView.loadHTMLString(styledHTML, baseURL: nil)
     }
@@ -1961,29 +1963,30 @@ struct CommentWebView: UIViewRepresentable {
             """
             webView.evaluateJavaScript(script) { height, error in
                 if let height = height as? CGFloat {
+                    Perf.log("🟣 [RedditWebView] didFinish height=\(height)")
                     DispatchQueue.main.async {
                         self.parent.height = height
                     }
+                } else {
+                    Perf.logError("🔴 [RedditWebView] height measurement returned no value: \(String(describing: error)) — view will stay collapsed")
                 }
             }
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            if navigationAction.navigationType == .other {
-                decisionHandler(.allow)
-                return
+            let navigationType = navigationAction.navigationType
+            let url = navigationAction.request.url
+            // nil targetFrame means a new-window/popup navigation, which is not a subframe.
+            let isSubframe = navigationAction.targetFrame?.isMainFrame == false
+
+            // Link taps open in Safari; everything else is denied by the shared policy.
+            if let openable = WebViewSecurity.externalOpenURL(for: navigationType, url: url, isContentView: true) {
+                UIApplication.shared.open(openable)
             }
 
-            // Handle link taps - open in Safari
-            if navigationAction.navigationType == .linkActivated {
-                if let url = navigationAction.request.url {
-                    UIApplication.shared.open(url)
-                }
-                decisionHandler(.cancel)
-                return
-            }
-
-            decisionHandler(.allow)
+            let decision = WebViewSecurity.policy(for: navigationType, url: url, isContentView: true, isSubframe: isSubframe)
+            Perf.log("🟣 [RedditWebView] nav type=\(navigationType.rawValue) subframe=\(isSubframe) url=\(url?.absoluteString ?? "nil") -> \(decision == .allow ? "ALLOW" : "CANCEL")")
+            decisionHandler(decision)
         }
     }
 
@@ -1997,6 +2000,7 @@ struct CommentWebView: UIViewRepresentable {
         <html>
         <head>
             <meta charset="utf-8">
+            \(WebViewSecurity.contentSecurityPolicyMeta)
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
             <style>
                 html, body {
@@ -2089,7 +2093,8 @@ struct CommentWebView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
+        // Untrusted Reddit HTML is rendered here — no page-authored script may run.
+        let configuration = WebViewSecurity.makeContentConfiguration()
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         // macOS-specific: disable drawing background for dark mode transparency
@@ -2118,10 +2123,12 @@ struct CommentWebView: NSViewRepresentable {
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
-        // Decode HTML entities (Reddit double-encodes, so decode twice)
-        let decodedHTML = html.decodeHTMLEntities().decodeHTMLEntities()
+        // Decode HTML entities exactly once. This used to decode twice — a second pass turns
+        // `&amp;lt;script&amp;gt;` back into live markup, defeating any upstream escaping.
+        let decodedHTML = WebViewSecurity.decodeForRendering(html)
 
         let styledHTML = createStyledHTML(from: decodedHTML, colorScheme: colorScheme, accentColor: accentColor, fontOption: fontOption)
+        Perf.log("🟣 [RedditWebView] load: raw=\(html.count) decoded=\(decodedHTML.count) styled=\(styledHTML.count) chars")
         context.coordinator.parent = self
         webView.loadHTMLString(styledHTML, baseURL: nil)
         // disableWebViewScrolling(webView)
@@ -2152,31 +2159,32 @@ struct CommentWebView: NSViewRepresentable {
             """
             webView.evaluateJavaScript(script) { height, error in
                 if let height = height as? CGFloat {
+                    Perf.log("🟣 [RedditWebView] didFinish height=\(height)")
                     DispatchQueue.main.async {
                         self.parent.height = height
                         // Re-disable after height adjustment
                         // self.parent.disableWebViewScrolling(webView)
                     }
+                } else {
+                    Perf.logError("🔴 [RedditWebView] height measurement returned no value: \(String(describing: error)) — view will stay collapsed")
                 }
             }
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            if navigationAction.navigationType == .other {
-                decisionHandler(.allow)
-                return
+            let navigationType = navigationAction.navigationType
+            let url = navigationAction.request.url
+            // nil targetFrame means a new-window/popup navigation, which is not a subframe.
+            let isSubframe = navigationAction.targetFrame?.isMainFrame == false
+
+            // Link taps open in the default browser; everything else is denied by the shared policy.
+            if let openable = WebViewSecurity.externalOpenURL(for: navigationType, url: url, isContentView: true) {
+                NSWorkspace.shared.open(openable)
             }
 
-            // Handle link taps - open in browser
-            if navigationAction.navigationType == .linkActivated {
-                if let url = navigationAction.request.url {
-                    NSWorkspace.shared.open(url)
-                }
-                decisionHandler(.cancel)
-                return
-            }
-
-            decisionHandler(.allow)
+            let decision = WebViewSecurity.policy(for: navigationType, url: url, isContentView: true, isSubframe: isSubframe)
+            Perf.log("🟣 [RedditWebView] nav type=\(navigationType.rawValue) subframe=\(isSubframe) url=\(url?.absoluteString ?? "nil") -> \(decision == .allow ? "ALLOW" : "CANCEL")")
+            decisionHandler(decision)
         }
     }
 
@@ -2190,6 +2198,7 @@ struct CommentWebView: NSViewRepresentable {
         <html>
         <head>
             <meta charset="utf-8">
+            \(WebViewSecurity.contentSecurityPolicyMeta)
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
             <style>
                 html, body {

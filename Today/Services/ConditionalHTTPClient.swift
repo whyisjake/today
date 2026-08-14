@@ -57,6 +57,32 @@ private final class RedirectObserver: NSObject, URLSessionTaskDelegate {
     }
 }
 
+/// A response that carried a status the caller must not treat as feed content.
+enum HTTPError: LocalizedError {
+    case unexpectedStatus(code: Int, url: URL)
+
+    var errorDescription: String? {
+        switch self {
+        case .unexpectedStatus(let code, let url):
+            let reason: String
+            switch code {
+            case 401, 403:
+                // The case that prompted this: Reddit blocks unauthenticated `.json`.
+                reason = "access denied (\(code)) — this endpoint may require authentication"
+            case 404, 410:
+                reason = "not found (\(code)) — the feed may have moved or been removed"
+            case 429:
+                reason = "rate limited (429) — too many requests to this host"
+            case 500...599:
+                reason = "server error (\(code))"
+            default:
+                reason = "unexpected HTTP status \(code)"
+            }
+            return "\(url.host ?? url.absoluteString): \(reason)"
+        }
+    }
+}
+
 /// Helper for making conditional HTTP requests
 enum ConditionalHTTPClient {
 
@@ -115,6 +141,9 @@ enum ConditionalHTTPClient {
             request.setValue(value, forHTTPHeaderField: key)
         }
 
+        // Pace requests to hosts that rate-limit. A no-op for almost every host.
+        await HostThrottle.shared.waitForTurn(url)
+
         let redirectObserver = RedirectObserver()
         let (data, response) = try await session.data(for: request, delegate: redirectObserver)
 
@@ -150,6 +179,29 @@ enum ConditionalHTTPClient {
                 etag: etag,
                 finalURL: finalURL,
                 hadPermanentRedirect: hadPermanentRedirect
+            )
+        }
+
+        // Anything that is not a success is not feed data.
+        //
+        // Only 304 used to be special-cased, so every other status fell through and the body was
+        // handed to the parser as though it were a feed. When Reddit began answering `.json`
+        // with a 403 and a 190 KB HTML block page, that surfaced to the user as
+        // "JSON text did not start with array or object" — or as nothing at all — instead of
+        // "this feed returned 403". Fail loudly here so the per-feed health record
+        // (`lastSyncError`) names the real reason.
+        guard (200...299).contains(httpResponse.statusCode) else {
+            // A 429 is the host asking for room. Record it so the next request to the same host
+            // waits rather than piling on and extending the penalty.
+            if httpResponse.statusCode == 429 {
+                await HostThrottle.shared.penalize(
+                    url,
+                    retryAfter: httpResponse.value(forHTTPHeaderField: "Retry-After")
+                )
+            }
+            throw HTTPError.unexpectedStatus(
+                code: httpResponse.statusCode,
+                url: httpResponse.url ?? url
             )
         }
 

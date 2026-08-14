@@ -157,7 +157,7 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
 
     func play(article: Article) {
         guard let audioUrlString = article.audioUrl,
-              let audioUrl = URL(string: audioUrlString) else {
+              let audioUrl = SafeURL.webOpenable(audioUrlString) else {
             print("No audio URL found for article")
             return
         }
@@ -411,7 +411,7 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
             // Start loading article thumbnail asynchronously (only if we don't have it cached)
             if cachedArtworkArticleId != article.id,
                let imageUrlString = article.imageUrl,
-               let imageUrl = URL(string: imageUrlString) {
+               let imageUrl = SafeURL.webOpenable(imageUrlString) {
                 Task {
                     do {
                         let (data, _) = try await URLSession.shared.data(from: imageUrl)
@@ -648,7 +648,7 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
     private func extractChapters(from asset: AVAsset) async {
         // Check if this is an MP3 file - if so, try ID3 first for richer metadata (URLs, artwork)
         if let audioUrlString = currentArticle?.audioUrl,
-           let audioUrl = URL(string: audioUrlString),
+           let audioUrl = SafeURL.webOpenable(audioUrlString),
            audioUrl.pathExtension.lowercased() == "mp3" {
             print("📖 MP3 detected - trying ID3 extraction first for chapter URLs")
             let foundID3Chapters = await extractID3Chapters(from: asset)
@@ -731,7 +731,7 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
     private func extractID3Chapters(from asset: AVAsset) async -> Bool {
         // Get the audio URL from the current article
         guard let audioUrlString = currentArticle?.audioUrl,
-              let audioUrl = URL(string: audioUrlString) else {
+              let audioUrl = SafeURL.webOpenable(audioUrlString) else {
             print("📖 No audio URL available for ID3 chapter extraction")
             return false
         }
@@ -785,7 +785,7 @@ class PodcastAudioPlayer: NSObject, ObservableObject {
     /// This fetches ID3 chapter data in the background so it's ready when playback starts
     func prefetchChapters(for article: Article) {
         guard let audioUrlString = article.audioUrl,
-              let audioUrl = URL(string: audioUrlString),
+              let audioUrl = SafeURL.webOpenable(audioUrlString),
               audioUrl.pathExtension.lowercased() == "mp3" else {
             return // Only prefetch for MP3 files
         }

@@ -475,10 +475,10 @@ private func addDefaultFeedsIfNeeded(container: ModelContainer) async {
         ("Daring Fireball", "https://daringfireball.net/feeds/main", "technology"),
         ("The New York Times", "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml", "news"),
         ("NPR", "https://feeds.npr.org/1001/rss.xml", "news"),
-        ("r/politics", "https://www.reddit.com/r/politics/.json", "news"),
-        ("r/TodayRSS", "https://www.reddit.com/r/TodayRSS/.json", "tech"),
-        ("r/itookapicture", "https://www.reddit.com/r/itookapicture/.json", "social"),
-        ("r/astrophotography", "https://www.reddit.com/r/astrophotography/.json", "social"),
+        ("r/politics", "https://www.reddit.com/r/politics.rss", "news"),
+        ("r/TodayRSS", "https://www.reddit.com/r/TodayRSS.rss", "tech"),
+        ("r/itookapicture", "https://www.reddit.com/r/itookapicture.rss", "social"),
+        ("r/astrophotography", "https://www.reddit.com/r/astrophotography.rss", "social"),
     ]
 
     // Insert and save on a background context — avoids blocking the main thread

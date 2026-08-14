@@ -15,6 +15,168 @@ import UIKit
 import AppKit
 #endif
 
+/// Hardening applied to every WebView that renders untrusted feed / Reddit HTML.
+///
+/// Article bodies and Reddit selftext are attacker-controlled strings that get interpolated
+/// into an HTML template and handed to `loadHTMLString(_:baseURL: nil)`. Two independent
+/// controls close that off:
+///
+/// 1. `allowsContentJavaScript = false` — page-authored script never runs. Host-initiated
+///    `evaluateJavaScript` (used to measure content height in `didFinish`) is *not* affected;
+///    that separation is what makes this safe to turn off.
+/// 2. A `Content-Security-Policy` meta tag with **no `script-src` directive**, so
+///    `default-src 'none'` blocks every script source — inline `<script>` and inline event
+///    handlers such as `onerror` alike. This holds even where JavaScript stays enabled.
+enum WebViewSecurity {
+    /// CSP for documents built out of untrusted feed / Reddit HTML.
+    ///
+    /// `frame-src https:` is present because article bodies legitimately embed players —
+    /// omitting it blanked every YouTube/Vimeo/Spotify iframe in an ordinary WordPress feed.
+    /// It costs little: the framed document is cross-origin under its own CSP, the article
+    /// document around it still has no `script-src`, and `policy(...)` only lets a frame load
+    /// over http(s) while continuing to refuse any navigation of the article itself.
+    static let contentSecurityPolicyMeta =
+        "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; frame-src https:; img-src http: https: data:; style-src 'unsafe-inline'; media-src http: https:; font-src http: https: data:\">"
+
+    /// Same lockdown plus `frame-src https:`, for the embedded-media wrapper. Reddit / oEmbed
+    /// players live inside a cross-origin iframe that carries its own CSP and runs its own
+    /// JavaScript, so framing them costs nothing here: the wrapper document — the only part
+    /// built from attacker-supplied HTML — still has no script capability at all.
+    static let embeddedMediaSecurityPolicyMeta =
+        "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; frame-src https:; img-src http: https: data:; style-src 'unsafe-inline'; media-src http: https:; font-src http: https: data:\">"
+
+    /// Disables page-authored JavaScript on a content WebView configuration.
+    @discardableResult
+    static func disableContentJavaScript(_ configuration: WKWebViewConfiguration) -> WKWebViewConfiguration {
+        configuration.defaultWebpagePreferences.allowsContentJavaScript = false
+        return configuration
+    }
+
+    /// A fresh configuration for a WebView that renders untrusted HTML.
+    static func makeContentConfiguration() -> WKWebViewConfiguration {
+        disableContentJavaScript(WKWebViewConfiguration())
+    }
+
+    // MARK: - Entity decoding
+
+    /// Decode entity-encoded feed / Reddit HTML for rendering — exactly once.
+    ///
+    /// Reddit serves `selftext_html` / `body_html` entity-encoded, so one decode is required
+    /// to get markup. The render seams used to decode *twice* ("Reddit double-encodes"),
+    /// which meant `&amp;lt;script&amp;gt;` — text an upstream sanitizer had escaped —
+    /// became an executable `<script>`. Every seam calls this instead, so the "once" rule is
+    /// stated in one place and testable.
+    nonisolated static func decodeForRendering(_ html: String) -> String {
+        html.decodeHTMLEntities()
+    }
+
+    // MARK: - Navigation policy
+
+    /// True for the in-memory document produced by `loadHTMLString(_:baseURL: nil)`.
+    ///
+    /// WebKit reports that navigation with a nil or `about:blank` request URL. It is the one
+    /// `.other` navigation a content WebView legitimately performs, and the only one allowed.
+    static func isInMemoryDocument(_ url: URL?) -> Bool {
+        guard let url else { return true }
+        guard let scheme = url.scheme?.lowercased() else { return url.absoluteString.isEmpty }
+        return scheme == "about"
+    }
+
+    /// The single navigation policy every `decidePolicyFor` handler in the app defers to.
+    ///
+    /// Deny by default. The old handlers all began with
+    /// `if navigationType == .other { allow }`, which is the permissive end of this decision:
+    /// JavaScript-initiated navigations, `<meta http-equiv="refresh">`, iframe loads and
+    /// auto-submitted forms are *all* classified `.other`, so any of them could reach
+    /// `file:///` and read the app container.
+    ///
+    /// Two shapes, because the two kinds of WebView have genuinely different jobs:
+    ///
+    /// - `isContentView == true` — the WebViews that render untrusted feed / Reddit HTML from
+    ///   memory. They have exactly one legitimate navigation, the initial `loadHTMLString`.
+    ///   Everything else is cancelled; `.linkActivated` is cancelled here and re-opened
+    ///   externally by the caller (see `externalOpenURL(for:url:isContentView:)`).
+    /// - `isContentView == false` — the in-app browser (`WebViewRepresentable`, `ArticleWebView`)
+    ///   and the oEmbed player frame (`EmbeddedMediaWebView`). These render a live external site
+    ///   with JavaScript on by design, so blanket-cancelling `.other` would break normal
+    ///   browsing and stop the player iframe from loading. Their rule is a scheme check on every
+    ///   navigation instead: `http(s)` (or the in-memory wrapper document) allowed, `file:`,
+    ///   `data:` and custom app schemes cancelled.
+    static func policy(
+        for navigationType: WKNavigationType,
+        url: URL?,
+        isContentView: Bool,
+        isSubframe: Bool = false
+    ) -> WKNavigationActionPolicy {
+        if isInMemoryDocument(url) {
+            // The wrapper document itself. Only ever arrives as `.other`; a link tap or form
+            // post that resolves to `about:` is not something either view type should follow.
+            return navigationType == .other ? .allow : .cancel
+        }
+
+        if isContentView {
+            // Embeds. `content:encoded` in ordinary WordPress feeds routinely carries a
+            // YouTube/Vimeo/Spotify `<iframe>`, and cancelling every non-initial navigation
+            // blanked all of them. A subframe load is not a navigation *of the article*: the
+            // framed document is a separate cross-origin page under its own CSP, and the
+            // article document around it still cannot script it.
+            //
+            // Deliberately narrow. `isSubframe` is false when `targetFrame` is nil, which is
+            // how WebKit reports a new-window/popup navigation — those stay cancelled. Only
+            // http(s) frames load, and only the frame moves; anything trying to navigate the
+            // article itself is still refused below.
+            if isSubframe, SafeURL.webOpenable(url) != nil {
+                return .allow
+            }
+
+            // Nothing else is legitimate: page script is off, so any remaining navigation of
+            // the article document is either a link tap (handled externally) or an attack.
+            return .cancel
+        }
+
+        return SafeURL.webOpenable(url) == nil ? .cancel : .allow
+    }
+
+    /// The URL a content WebView should hand to `openURL` / `NSWorkspace` / `selectedURL`, or
+    /// nil if the navigation must not be opened at all.
+    ///
+    /// Only link taps open externally, and only `http(s)` ones — `SafeURL` is applied here so no
+    /// caller has to remember to. Non-content WebViews return nil: they are browsers, and follow
+    /// their links in place under `policy(for:url:isContentView:)`.
+    static func externalOpenURL(
+        for navigationType: WKNavigationType,
+        url: URL?,
+        isContentView: Bool
+    ) -> URL? {
+        guard isContentView, navigationType == .linkActivated else { return nil }
+        return SafeURL.webOpenable(url)
+    }
+}
+
+/// The navigation delegate for every WebView that shows a live external site: the in-app
+/// browser (`WebViewRepresentable`, `ArticleWebView`, macOS `SafariView`) and the oEmbed player
+/// frame (`EmbeddedMediaWebView`).
+///
+/// These views set no `navigationDelegate` at all before U2, which meant `SafeURL` only ever
+/// validated the *first* URL — a JS redirect or an in-page link on the live page could then
+/// navigate to any scheme unchecked. This is stateless and holds no reference to its view, so a
+/// single class serves all of them.
+final class ExternalSiteNavigationDelegate: NSObject, WKNavigationDelegate {
+    func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationAction: WKNavigationAction,
+        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+    ) {
+        decisionHandler(
+            WebViewSecurity.policy(
+                for: navigationAction.navigationType,
+                url: navigationAction.request.url,
+                isContentView: false
+            )
+        )
+    }
+}
+
 // Shared WebView configuration to speed up initialization
 class WebViewPool {
     static let shared = WebViewPool()
@@ -24,6 +186,8 @@ class WebViewPool {
         #if os(iOS)
         config.dataDetectorTypes = [.link, .phoneNumber]
         #endif
+        // Untrusted feed HTML is rendered here — no page-authored script may run.
+        WebViewSecurity.disableContentJavaScript(config)
         // iOS 15+ automatically shares process pools, no need to set manually
         return config
     }()
@@ -401,16 +565,24 @@ struct ArticleWebViewSimple: View {
 struct WebViewRepresentable: UIViewRepresentable {
     let url: URL
 
+    func makeCoordinator() -> ExternalSiteNavigationDelegate {
+        ExternalSiteNavigationDelegate()
+    }
+
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.allowsBackForwardNavigationGestures = true
+        // Live external site with JavaScript on: every navigation is scheme-checked, so a JS
+        // redirect or in-page link cannot reach `file://` after the initial load.
+        webView.navigationDelegate = context.coordinator
         return webView
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
-        if webView.url != url {
-            webView.load(URLRequest(url: url))
+        // Feed-controlled URL: only http(s) may be loaded.
+        if webView.url != url, let safeURL = SafeURL.webOpenable(url) {
+            webView.load(URLRequest(url: safeURL))
         }
     }
 }
@@ -418,16 +590,24 @@ struct WebViewRepresentable: UIViewRepresentable {
 struct WebViewRepresentable: NSViewRepresentable {
     let url: URL
 
+    func makeCoordinator() -> ExternalSiteNavigationDelegate {
+        ExternalSiteNavigationDelegate()
+    }
+
     func makeNSView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.allowsBackForwardNavigationGestures = true
+        // Live external site with JavaScript on: every navigation is scheme-checked, so a JS
+        // redirect or in-page link cannot reach `file://` after the initial load.
+        webView.navigationDelegate = context.coordinator
         return webView
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
-        if webView.url != url {
-            webView.load(URLRequest(url: url))
+        // Feed-controlled URL: only http(s) may be loaded.
+        if webView.url != url, let safeURL = SafeURL.webOpenable(url) {
+            webView.load(URLRequest(url: safeURL))
         }
     }
 }
@@ -565,20 +745,16 @@ struct ScrollableWebView: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            if navigationAction.navigationType == .other {
-                decisionHandler(.allow)
-                return
+            let navigationType = navigationAction.navigationType
+            let url = navigationAction.request.url
+            // nil targetFrame means a new-window/popup navigation, which is not a subframe.
+            let isSubframe = navigationAction.targetFrame?.isMainFrame == false
+
+            if let openable = WebViewSecurity.externalOpenURL(for: navigationType, url: url, isContentView: true) {
+                NSWorkspace.shared.open(openable)
             }
 
-            if navigationAction.navigationType == .linkActivated {
-                if let url = navigationAction.request.url {
-                    NSWorkspace.shared.open(url)
-                }
-                decisionHandler(.cancel)
-                return
-            }
-
-            decisionHandler(.allow)
+            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true, isSubframe: isSubframe))
         }
     }
 }
@@ -586,7 +762,7 @@ struct ScrollableWebView: NSViewRepresentable {
 
 // Shared HTML styling function for WebViewWithHeight
 // Uses Tailwind Typography-inspired styles embedded locally (no network request)
-private func createStyledHTML(from html: String, colorScheme: ColorScheme, accentColor: Color, fontOption: FontOption) -> String {
+func createStyledHTML(from html: String, colorScheme: ColorScheme, accentColor: Color, fontOption: FontOption) -> String {
     // Convert SwiftUI Color to hex string
     let accentColorHex = accentColor.toHex()
     let isDark = colorScheme == .dark
@@ -616,6 +792,7 @@ private func createStyledHTML(from html: String, colorScheme: ColorScheme, accen
     <html>
     <head>
         <meta charset="utf-8">
+        \(WebViewSecurity.contentSecurityPolicyMeta)
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
         <style>
             /* Tailwind Typography-inspired prose styles (embedded locally) */
@@ -950,22 +1127,18 @@ struct WebViewWithHeight: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            if navigationAction.navigationType == .other {
-                decisionHandler(.allow)
-                return
-            }
+            let navigationType = navigationAction.navigationType
+            let url = navigationAction.request.url
+            // nil targetFrame means a new-window/popup navigation, which is not a subframe.
+            let isSubframe = navigationAction.targetFrame?.isMainFrame == false
 
-            if navigationAction.navigationType == .linkActivated {
-                if let url = navigationAction.request.url {
-                    DispatchQueue.main.async {
-                        self.parent.selectedURL = url
-                    }
+            if let openable = WebViewSecurity.externalOpenURL(for: navigationType, url: url, isContentView: true) {
+                DispatchQueue.main.async {
+                    self.parent.selectedURL = openable
                 }
-                decisionHandler(.cancel)
-                return
             }
 
-            decisionHandler(.allow)
+            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true, isSubframe: isSubframe))
         }
     }
 }
@@ -1057,22 +1230,18 @@ struct WebViewWithHeight: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            if navigationAction.navigationType == .other {
-                decisionHandler(.allow)
-                return
-            }
+            let navigationType = navigationAction.navigationType
+            let url = navigationAction.request.url
+            // nil targetFrame means a new-window/popup navigation, which is not a subframe.
+            let isSubframe = navigationAction.targetFrame?.isMainFrame == false
 
-            if navigationAction.navigationType == .linkActivated {
-                if let url = navigationAction.request.url {
-                    DispatchQueue.main.async {
-                        self.parent.selectedURL = url
-                    }
+            if let openable = WebViewSecurity.externalOpenURL(for: navigationType, url: url, isContentView: true) {
+                DispatchQueue.main.async {
+                    self.parent.selectedURL = openable
                 }
-                decisionHandler(.cancel)
-                return
             }
 
-            decisionHandler(.allow)
+            decisionHandler(WebViewSecurity.policy(for: navigationType, url: url, isContentView: true, isSubframe: isSubframe))
         }
     }
 }

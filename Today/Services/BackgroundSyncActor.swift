@@ -261,7 +261,9 @@ enum BackgroundFeedSync {
         etag: String?,
         session: URLSession
     ) async throws -> FetchParseResult {
-        guard let feedURL = URL(string: url) else { throw SyncError.invalidURL }
+        // Scheme allow-list: a stored feed URL predating the ingestion guard could still be
+        // `file://`, and this is the point where it would be handed to URLSession.
+        guard let feedURL = SafeURL.webOpenable(url) else { throw SyncError.invalidURL }
 
         let response = try await ConditionalHTTPClient.conditionalFetch(
             url: feedURL,
@@ -300,7 +302,9 @@ enum BackgroundFeedSync {
         etag: String?,
         session: URLSession
     ) async throws -> FetchParseResult {
-        guard let feedURL = URL(string: url) else { throw SyncError.invalidURL }
+        // Scheme allow-list: a stored feed URL predating the ingestion guard could still be
+        // `file://`, and this is the point where it would be handed to URLSession.
+        guard let feedURL = SafeURL.webOpenable(url) else { throw SyncError.invalidURL }
 
         let response = try await ConditionalHTTPClient.conditionalFetch(
             url: feedURL,
@@ -340,7 +344,9 @@ enum BackgroundFeedSync {
         etag: String?,
         session: URLSession
     ) async throws -> FetchParseResult {
-        guard let feedURL = URL(string: url) else { throw SyncError.invalidURL }
+        // Scheme allow-list: a stored feed URL predating the ingestion guard could still be
+        // `file://`, and this is the point where it would be handed to URLSession.
+        guard let feedURL = SafeURL.webOpenable(url) else { throw SyncError.invalidURL }
 
         let response = try await ConditionalHTTPClient.conditionalFetch(
             url: feedURL,

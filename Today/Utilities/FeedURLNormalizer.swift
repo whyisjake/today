@@ -28,8 +28,14 @@ enum FeedURLNormalizer {
     /// Applies the same two transforms `FeedManager.addFeed` applies before persisting a feed:
     /// an `http://` → `https://` upgrade (except for the exempt domains above), and Reddit's
     /// `.json` rewrite.
+    ///
+    /// This is a pure string transform and says nothing about whether the URL is safe to
+    /// fetch — it is also used to compare URLs, where returning nil would be wrong. Anything
+    /// *ingesting* a URL (OPML `xmlUrl`, `addFeed`) must go through
+    /// `SafeURL.feedIngestable(_:)` instead, which applies the scheme allow-list and then
+    /// canonicalises through here.
     nonisolated static func canonical(_ url: String) -> String {
-        convertRedditURLToJSON(upgradingScheme(url))
+        convertRedditURLToRSS(upgradingScheme(url))
     }
 
     /// `http://` → `https://` — most servers support it and ATS blocks plain HTTP.
@@ -44,20 +50,31 @@ enum FeedURLNormalizer {
         return "https://" + url.dropFirst("http://".count)
     }
 
-    /// Reddit URLs are fetched as JSON:
-    /// `reddit.com/r/x.rss` → `reddit.com/r/x.json`, and `reddit.com/r/x` → `reddit.com/r/x.json`.
-    nonisolated static func convertRedditURLToJSON(_ url: String) -> String {
-        var urlString = url
+    /// Reddit URLs are fetched as RSS:
+    /// `reddit.com/r/x.json` → `reddit.com/r/x.rss`, and `reddit.com/r/x` → `reddit.com/r/x.rss`.
+    ///
+    /// This used to rewrite the other way, to `.json`. Reddit now answers unauthenticated
+    /// `.json` endpoints with 403 and an HTML block page, and has said the shutdown is
+    /// deliberate ("Deprecating unauthenticated JSON access", r/modnews). Every `.json` shape
+    /// is refused — `/r/x.json`, `/r/x/.json`, www, old and api hosts alike — so the rewrite
+    /// was turning a working endpoint into a blocked one. `.rss` still answers 200.
+    ///
+    /// The RSS path is not a strict downgrade for the feed itself: `RSSParser` already extracts
+    /// the subreddit, comments URL and post ID from Reddit RSS, so the badge and permalink
+    /// survive. Comment *threads* do need the JSON API and are not available this way.
+    nonisolated static func convertRedditURLToRSS(_ url: String) -> String {
+        guard url.contains("reddit.com/r/") else { return url }
 
-        if urlString.contains("reddit.com/r/") && urlString.hasSuffix(".rss") {
-            urlString = urlString.replacingOccurrences(of: ".rss", with: ".json")
-        } else if urlString.contains("reddit.com/r/") && !urlString.hasSuffix(".json") {
-            if urlString.hasSuffix("/") {
-                urlString = String(urlString.dropLast())
-            }
-            urlString += ".json"
+        if url.hasSuffix(".rss") { return url }
+
+        if url.hasSuffix(".json") {
+            // Covers both `/r/x.json` and the `/r/x/.json` shape the default feeds shipped with.
+            let withoutSuffix = String(url.dropLast(".json".count))
+            let trimmed = withoutSuffix.hasSuffix("/") ? String(withoutSuffix.dropLast()) : withoutSuffix
+            return trimmed + ".rss"
         }
 
-        return urlString
+        let trimmed = url.hasSuffix("/") ? String(url.dropLast()) : url
+        return trimmed + ".rss"
     }
 }
