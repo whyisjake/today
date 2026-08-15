@@ -161,6 +161,18 @@ struct RedditPostView: View {
                 }
             }
         }
+        #if os(iOS)
+        .swipeNavigable(
+            canGoNext: nextArticleID != nil,
+            canGoPrev: previousArticleID != nil,
+            onNext: {
+                if let nextID = nextArticleID { onNavigateToNext(nextID) }
+            },
+            onPrev: {
+                if let prevID = previousArticleID { onNavigateToPrevious(prevID) }
+            }
+        )
+        #endif
         .navigationTitle(article.feed?.title ?? "Reddit")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
